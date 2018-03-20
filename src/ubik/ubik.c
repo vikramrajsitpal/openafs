@@ -1339,21 +1339,6 @@ ubik_Seek(struct ubik_trans *transPtr, afs_int32 fileid,
 }
 
 /*!
- * \brief This call returns the file pointer associated with the specified
- * transaction in \p fileid and \p position.
- */
-int
-ubik_Tell(struct ubik_trans *transPtr, afs_int32 * fileid,
-	  afs_int32 * position)
-{
-    DBHOLD(transPtr->dbase);
-    *fileid = transPtr->seekFile;
-    *position = transPtr->seekPos;
-    DBRELE(transPtr->dbase);
-    return 0;
-}
-
-/*!
  * \brief set a lock; all locks are released on transaction end (commit/abort)
  */
 int

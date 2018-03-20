@@ -1122,18 +1122,17 @@ MAJOR SUBSYSTEMS
          The main Ubik transaction API consists of ubik_BeginTrans(),
          ubik_BeginTransReadAny(), ubik_BeginTransReadAnyWrite(),
          ubik_AbortTrans(), ubik_EndTrans(), ubik_Read(), ubik_Write(),
-         ubik_Flush(), ubik_Seek(), ubik_Tell(), ubik_Truncate(), and
-         ubik_SetLock().  The ubik_Begin* functions require a database
-         pointer; all others require an active transaction pointer.  These
-         functions are called directly by the application without any
-         locks, and are responsible for their own locking.  Note that many
-         of these examine the transaction type before acquiring any locks;
-         this is permissible because the transaction type is immutable once
-         the transaction is created (but it requires that the call be made
-         from the thread that created the transaction, or that the
-         application have used some mechanism to insure an appropriate
-         memory barrier exists; the same mechanism used to protect the
-         transaction pointer should suffice).
+         ubik_Flush(), ubik_Seek(), ubik_Truncate(), and ubik_SetLock().
+         The ubik_Begin* functions require a database pointer; all others
+         require an active transaction pointer.  These functions are called
+         directly by the application without any locks, and are responsible
+         for their own locking.  Note that many of these examine the transaction
+         type before acquiring any locks; this is permissible because the
+         transaction type is immutable once the transaction is created (but it
+         requires that the call be made from the thread that created the
+         transaction, or that the application have used some mechanism to
+         insure an appropriate memory barrier exists; the same mechanism used
+         to protect the transaction pointer should suffice).
 
          BeginTrans() contains the common code responsible for starting
          a new transaction; this is made available to applications as

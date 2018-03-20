@@ -187,8 +187,6 @@ extern int ubik_Write(struct ubik_trans *transPtr, void *buffer,
 		      afs_int32 length);
 extern int ubik_Seek(struct ubik_trans *transPtr, afs_int32 fileid,
 		     afs_int32 position);
-extern int ubik_Tell(struct ubik_trans *transPtr, afs_int32 * fileid,
-		     afs_int32 * position);
 extern int ubik_SetLock(struct ubik_trans *atrans, afs_int32 apos,
 			afs_int32 alen, int atype);
 extern int ubik_CheckCache(struct ubik_trans *atrans,
