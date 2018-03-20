@@ -544,8 +544,10 @@ GetEntryByID(struct rx_call *rxcall,
              rxinfo(rxstr, rxcall)));
     blockindex = FindByID(&ctx, volid, voltype, &tentry, &code);
     if (blockindex == 0) {	/* entry not found */
-	if (!code)
+	if (!code) {
 	    code = VL_NOENT;
+	    goto abort_endtrans;
+	}
 	goto abort;
     }
     if (tentry.flags & VLDELETED) {	/* Entry is deleted! */
@@ -564,6 +566,11 @@ GetEntryByID(struct rx_call *rxcall,
 	goto abort;
 
     return (ubik_EndTrans(ctx.trans));
+
+ abort_endtrans:
+    countAbort(this_op);
+    ubik_EndTrans(ctx.trans);
+    return code;
 
 abort:
     countAbort(this_op);
@@ -641,8 +648,10 @@ GetEntryByName(struct rx_call *rxcall,
     VLog(5, ("GetVolumeByName %s (%d) %s\n", volname, new, rxinfo(rxstr, rxcall)));
     blockindex = FindByName(&ctx, volname, &tentry, &code);
     if (blockindex == 0) {	/* entry not found */
-	if (!code)
+	if (!code) {
 	    code = VL_NOENT;
+	    goto abort_endtrans;
+	}
 	goto abort;
     }
     if (tentry.flags & VLDELETED) {	/* Entry is deleted */
@@ -661,6 +670,11 @@ GetEntryByName(struct rx_call *rxcall,
 	goto abort;
 
     return (ubik_EndTrans(ctx.trans));
+
+ abort_endtrans:
+    countAbort(this_op);
+    ubik_EndTrans(ctx.trans);
+    return code;
 
 abort:
     countAbort(this_op);
