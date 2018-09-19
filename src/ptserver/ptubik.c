@@ -80,12 +80,6 @@ ubik_Tell(struct ubik_trans *transPtr, afs_int32 * fileid,
 }
 
 int
-ubik_Truncate(struct ubik_trans *transPtr, afs_int32 length)
-{
-    return (0);
-}
-
-int
 ubik_SetLock(struct ubik_trans *atrans, afs_int32 apos, afs_int32 alen,
              int atype)
 {

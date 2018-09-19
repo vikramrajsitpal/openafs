@@ -50,10 +50,6 @@ static struct buffer *newslot(struct ubik_dbase *adbase, afs_int32 afid,
 			      afs_int32 apage);
 #define	BADFID	    0xffffffff
 
-static int DTrunc(struct ubik_trans *atrans, afs_int32 fid, afs_int32 length);
-
-static struct ubik_trunc *freeTruncList = 0;
-
 /*!
  * \brief Remove a transaction from the database's active transaction list.  Don't free it.
  */
@@ -106,7 +102,6 @@ udisk_Debug(struct ubik_debug *aparm)
  *
  * Begin transaction: opcode \n
  * Commit transaction: opcode, version (8 bytes) \n
- * Truncate file: opcode, file number, length \n
  * Abort transaction: opcode \n
  * Write data: opcode, file, position, length, <length> data bytes \n
  */
@@ -152,29 +147,6 @@ udisk_LogEnd(struct ubik_dbase *adbase, struct ubik_version *aversion)
     /* finally sync the log */
     code = (*adbase->sync) (adbase, LOGFILE);
     return code;
-}
-
-/*!
- * \brief Log a truncate operation, never syncing.
- */
-static int
-udisk_LogTruncate(struct ubik_dbase *adbase, afs_int32 afile,
-		  afs_int32 alength)
-{
-    afs_int32 code;
-    afs_int32 data[3];
-
-    /* setup data */
-    data[0] = htonl(LOGTRUNCATE);
-    data[1] = htonl(afile);
-    data[2] = htonl(alength);
-
-    /* do write */
-    code =
-	(*adbase->buffered_append)(adbase, LOGFILE, data, 3 * sizeof(afs_int32));
-    if (code != 3 * sizeof(afs_int32))
-	return UIOERROR;
-    return 0;
 }
 
 /*!
@@ -359,96 +331,6 @@ DRead(struct ubik_trans *atrans, afs_int32 fid, int page)
      * what it is searching for.
      */
     return tb->data;
-}
-
-/*!
- * \brief Zap truncated pages.
- */
-static int
-DTrunc(struct ubik_trans *atrans, afs_int32 fid, afs_int32 length)
-{
-    afs_int32 maxPage;
-    struct buffer *tb;
-    int i;
-    struct ubik_dbase *dbase = atrans->dbase;
-
-    maxPage = (length + UBIK_PAGESIZE - 1) >> UBIK_LOGPAGESIZE;	/* first invalid page now in file */
-    for (i = 0, tb = Buffers; i < nbuffers; i++, tb++) {
-	if (tb->page >= maxPage && tb->file == fid && tb->dbase == dbase) {
-	    tb->file = BADFID;
-	    Dlru(tb);
-	}
-    }
-    return 0;
-}
-
-/*!
- * \brief Allocate a truncation entry.
- *
- * We allocate special entries representing truncations, rather than
- * performing them immediately, so that we can abort a transaction easily by simply purging
- * the in-core memory buffers and discarding these truncation entries.
- */
-static struct ubik_trunc *
-GetTrunc(void)
-{
-    struct ubik_trunc *tt;
-    if (!freeTruncList) {
-	freeTruncList = malloc(sizeof(struct ubik_trunc));
-	freeTruncList->next = (struct ubik_trunc *)0;
-    }
-    tt = freeTruncList;
-    freeTruncList = tt->next;
-    return tt;
-}
-
-/*!
- * \brief Free a truncation entry.
- */
-static int
-PutTrunc(struct ubik_trunc *at)
-{
-    at->next = freeTruncList;
-    freeTruncList = at;
-    return 0;
-}
-
-/*!
- * \brief Find a truncation entry for a file, if any.
- */
-static struct ubik_trunc *
-FindTrunc(struct ubik_trans *atrans, afs_int32 afile)
-{
-    struct ubik_trunc *tt;
-    for (tt = atrans->activeTruncs; tt; tt = tt->next) {
-	if (tt->file == afile)
-	    return tt;
-    }
-    return (struct ubik_trunc *)0;
-}
-
-/*!
- * \brief Do truncates associated with \p atrans, and free them.
- */
-static int
-DoTruncs(struct ubik_trans *atrans)
-{
-    struct ubik_trunc *tt, *nt;
-    int (*tproc) (struct ubik_dbase *, afs_int32, afs_int32);
-    afs_int32 rcode = 0, code;
-
-    tproc = atrans->dbase->truncate;
-    for (tt = atrans->activeTruncs; tt; tt = nt) {
-	nt = tt->next;
-	DTrunc(atrans, tt->file, tt->length);	/* zap pages from buffer cache */
-	code = (*tproc) (atrans->dbase, tt->file, tt->length);
-	if (code)
-	    rcode = code;
-	PutTrunc(tt);
-    }
-    /* don't unthread, because we do the entire list's worth here */
-    atrans->activeTruncs = (struct ubik_trunc *)0;
-    return (rcode);
 }
 
 /*!
@@ -703,40 +585,6 @@ udisk_read(struct ubik_trans *atrans, afs_int32 afile, void *abuffer,
 }
 
 /*!
- * \brief Truncate file.
- */
-int
-udisk_truncate(struct ubik_trans *atrans, afs_int32 afile, afs_int32 alength)
-{
-    afs_int32 code;
-    struct ubik_trunc *tt;
-
-    if (atrans->flags & TRDONE)
-	return UDONE;
-    if (atrans->type != UBIK_WRITETRANS)
-	return UBADTYPE;
-
-    /* write a truncate log record */
-    code = udisk_LogTruncate(atrans->dbase, afile, alength);
-
-    /* don't truncate until commit time */
-    tt = FindTrunc(atrans, afile);
-    if (!tt) {
-	/* this file not truncated yet */
-	tt = GetTrunc();
-	tt->next = atrans->activeTruncs;
-	atrans->activeTruncs = tt;
-	tt->file = afile;
-	tt->length = alength;
-    } else {
-	/* already truncated to a certain length */
-	if (tt->length > alength)
-	    tt->length = alength;
-    }
-    return code;
-}
-
-/*!
  * \brief Write data to database, using logs.
  */
 int
@@ -745,7 +593,6 @@ udisk_write(struct ubik_trans *atrans, afs_int32 afile, void *abuffer,
 {
     char *bp;
     afs_int32 offset, len;
-    struct ubik_trunc *tt;
     afs_int32 code;
 
     if (atrans->flags & TRDONE)
@@ -757,14 +604,6 @@ udisk_write(struct ubik_trans *atrans, afs_int32 afile, void *abuffer,
     code = udisk_LogWriteData(atrans->dbase, afile, abuffer, apos, alen);
     if (code)
 	return code;
-
-    /* expand any truncations of this file */
-    tt = FindTrunc(atrans, afile);
-    if (tt) {
-	if (tt->length < apos + alen) {
-	    tt->length = apos + alen;
-	}
-    }
 
     /* now update vm */
     while (alen > 0) {
@@ -890,10 +729,6 @@ udisk_commit(struct ubik_trans *atrans)
 	code = DSync(atrans);	/* sync the files and mark pages not dirty */
 	if (code)
 	    panic("Synchronizing Ubik DB modifications\n");
-
-	code = DoTruncs(atrans);	/* Perform requested truncations */
-	if (code)
-	    panic("Truncating Ubik DB\n");
 
 	/* label the committed dbase */
 	code = (*dbase->setlabel) (dbase, 0, &dbase->version);

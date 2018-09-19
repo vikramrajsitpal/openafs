@@ -101,7 +101,6 @@ struct ubik_trans {
     struct ubik_dbase *dbase;	/*!< corresponding database */
     struct ubik_trans *next;	/*!< in the list */
     afs_int32 locktype;		/*!< transaction lock */
-    struct ubik_trunc *activeTruncs;	/*!< queued truncates */
     struct ubik_tid tid;	/*!< transaction id of this trans (if write trans.) */
     afs_int32 minCommitTime;	/*!< time before which this trans can't commit */
     afs_int32 seekFile;		/*!< seek ptr: file number */
@@ -110,15 +109,6 @@ struct ubik_trans {
     char type;			/*!< type of trans */
     iovec_wrt iovec_info;
     iovec_buf iovec_data;
-};
-
-/*!
- * \brief representation of a truncation operation
- */
-struct ubik_trunc {
-    struct ubik_trunc *next;
-    afs_int32 file;		/*!< file to truncate */
-    afs_int32 length;		/*!< new size */
 };
 
 struct ubik_stat {
@@ -257,7 +247,7 @@ extern int (*ubik_SyncWriterCacheProc) (void);
 #define	LOGEND		    101	/*!< commit (good) end transaction */
 #define	LOGABORT	    102	/*!< abort (fail) transaction */
 #define	LOGDATA		    103	/*!< data */
-#define	LOGTRUNCATE	    104	/*!< truncate operation */
+#define	LOGTRUNCATE	    104	/*!< truncate operation (no longer used) */
 /*\}*/
 
 /*!
@@ -504,8 +494,6 @@ extern void udisk_Debug(struct ubik_debug *aparm);
 extern int udisk_Invalidate(struct ubik_dbase *adbase, afs_int32 afid);
 extern int udisk_read(struct ubik_trans *atrans, afs_int32 afile,
 		      void *abuffer, afs_int32 apos, afs_int32 alen);
-extern int udisk_truncate(struct ubik_trans *atrans, afs_int32 afile,
-			  afs_int32 alength);
 extern int udisk_write(struct ubik_trans *atrans, afs_int32 afile,
 		       void *abuffer, afs_int32 apos, afs_int32 alen);
 extern int udisk_begin(struct ubik_dbase *adbase, int atype,
@@ -569,8 +557,6 @@ extern int ubik_Seek(struct ubik_trans *transPtr, afs_int32 fileid,
 		     afs_int32 position);
 extern int ubik_Tell(struct ubik_trans *transPtr, afs_int32 * fileid,
 		     afs_int32 * position);
-extern int ubik_Truncate(struct ubik_trans *transPtr,
-			 afs_int32 length);
 extern int ubik_SetLock(struct ubik_trans *atrans, afs_int32 apos,
 			afs_int32 alen, int atype);
 extern int ubik_CheckCache(struct ubik_trans *atrans,

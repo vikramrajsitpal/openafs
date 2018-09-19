@@ -18,6 +18,7 @@ prefix S
 
 Inc	() = SAMPLE_INC_OPCODE;
 Get	(OUT afs_int32 *temp) = SAMPLE_GET_OPCODE;
-Trun	() = SAMPLE_TRUN_OPCODE;
+/* SAMPLE_Trun is no longer used */
+/*Trun	() = SAMPLE_TRUN_OPCODE;*/
 Test	() = SAMPLE_TEST_OPCODE;
 QGet	(OUT afs_int32 *temp) = SAMPLE_QGET_OPCODE;

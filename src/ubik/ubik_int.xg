@@ -245,9 +245,12 @@ Abort		(IN ubik_tid *tid) = DISK_ABORT;
 
 ReleaseLocks	(IN ubik_tid *tid) = DISK_RELEASELOCKS;
 
-Truncate	(IN ubik_tid *tid,
-		afs_int32 file,
-		afs_int32 length) = DISK_TRUNCATE;
+/* DISK_Truncate is no longer used */
+/*
+ * Truncate	(IN ubik_tid *tid,
+ *		afs_int32 file,
+ *		afs_int32 length) = DISK_TRUNCATE;
+ */
 
 Probe		() multi = DISK_PROBE;
 

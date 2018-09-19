@@ -266,26 +266,6 @@ ContactQuorum_DISK_Lock(struct ubik_trans *atrans, int aflags,afs_int32 file,
 }
 
 static afs_int32
-ContactQuorum_DISK_Truncate(struct ubik_trans *atrans, int aflags,
-			    afs_int32 file, afs_int32 length)
-{
-    struct ubik_server *ts = NULL;
-    afs_int32 code = 0, rcode, okcalls;
-    struct rx_connection *conn;
-    int done;
-    char *procname = "DISK_Truncate";
-
-    done = ContactQuorum_iterate(atrans, aflags, &ts, &conn, &rcode, &okcalls, code, procname);
-    while (!done) {
-	if (conn)
-	    code = DISK_Truncate(conn, &atrans->tid, file, length);
-	done = ContactQuorum_iterate(atrans, aflags, &ts, &conn, &rcode, &okcalls, code, procname);
-    }
-    return ContactQuorum_rcode(okcalls, rcode);
-}
-
-
-static afs_int32
 ContactQuorum_DISK_WriteV(struct ubik_trans *atrans, int aflags,
 			  iovec_wrt * io_vector, iovec_buf *io_buffer)
 {
@@ -1155,47 +1135,6 @@ ubik_Tell(struct ubik_trans *transPtr, afs_int32 * fileid,
     *position = transPtr->seekPos;
     DBRELE(transPtr->dbase);
     return 0;
-}
-
-/*!
- * \brief This sets the file size for the currently-selected file to \p length
- * bytes, if length is less than the file's current size.
- */
-int
-ubik_Truncate(struct ubik_trans *transPtr, afs_int32 length)
-{
-    afs_int32 code, error = 0;
-
-    /* Will also catch if not UBIK_WRITETRANS */
-    code = ubik_Flush(transPtr);
-    if (code)
-	return (code);
-
-    DBHOLD(transPtr->dbase);
-    /* first, check that quorum is still good, and that dbase is up-to-date */
-    if (!urecovery_AllBetter(transPtr->dbase, transPtr->flags & TRREADANY))
-	ERROR_EXIT(UNOQUORUM);
-    if (!ubeacon_AmSyncSite())
-	ERROR_EXIT(UNOTSYNC);
-
-    /* now do the operation locally, and propagate it out */
-    code = udisk_truncate(transPtr, transPtr->seekFile, length);
-    if (!code) {
-	code =
-	    ContactQuorum_DISK_Truncate(transPtr, 0, transPtr->seekFile,
-			  		length);
-    }
-    if (code) {
-	/* we must abort the operation */
-	udisk_abort(transPtr);
-	/* force aborts to the others */
-	ContactQuorum_NoArguments(DISK_Abort, transPtr, 0, "DISK_Abort");
-	ERROR_EXIT(code);
-    }
-
-  error_exit:
-    DBRELE(transPtr->dbase);
-    return error;
 }
 
 /*!

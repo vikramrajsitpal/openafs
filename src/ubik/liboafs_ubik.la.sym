@@ -30,7 +30,6 @@ ubik_SetClientSecurityProcs
 ubik_SetLock
 ubik_SetServerSecurityProcs
 ubik_SyncWriterCacheProc
-ubik_Truncate
 ubik_Write
 ubik_dbase
 ubik_nBuffers

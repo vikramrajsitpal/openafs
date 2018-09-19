@@ -37,7 +37,7 @@ main(int argc, char **argv)
 
     if (argc == 1) {
 	printf
-	    ("uclient: usage is 'uclient -servers ... [-try] [-get] [-inc] [-minc] [-trunc]\n");
+	    ("uclient: usage is 'uclient -servers ... [-try] [-get] [-inc] [-minc]\n");
 	exit(0);
     }
 #ifdef AFS_NT40_ENV
@@ -91,9 +91,6 @@ main(int argc, char **argv)
 	} else if (!strcmp(argv[i], "-get")) {
 	    code = ubik_SAMPLE_Get(cstruct, 0, &temp);
 	    printf("got value %d (code %d)\n", temp, code);
-	} else if (!strcmp(argv[i], "-trunc")) {
-	    code = ubik_SAMPLE_Trun(cstruct, 0);
-	    printf("return code is %d\n", code);
 	} else if (!strcmp(argv[i], "-minc")) {
 	    afs_int32 temp;
 	    struct timeval tv;

@@ -177,45 +177,6 @@ SSAMPLE_QGet(struct rx_call *call, afs_int32 *gnumber)
 }
 
 int
-SSAMPLE_Trun(struct rx_call *call)
-{
-    afs_int32 code;
-    struct ubik_trans *tt;
-    struct timeval tv;
-
-    /* truncation operation requires a write transaction, too */
-    code = ubik_BeginTrans(dbase, UBIK_WRITETRANS, &tt);
-    if (code)
-	return code;
-    printf("about to set lock\n");
-    /* lock the database */
-    code = ubik_SetLock(tt, 1, 1, LOCKWRITE);
-    printf("now have lock\n");
-    if (code) {
-	ubik_AbortTrans(tt);
-	return code;
-    }
-    if (sleepTime) {
-	tv.tv_sec = sleepTime;
-	tv.tv_usec = 0;
-#ifdef AFS_PTHREAD_ENV
-	select(0, 0, 0, 0, &tv);
-#else
-	IOMGR_Select(0, 0, 0, 0, &tv);
-#endif
-    }
-    /* shrink the file */
-    code = ubik_Truncate(tt, 0);
-    if (code) {
-	ubik_AbortTrans(tt);
-	return code;
-    }
-    /* commit */
-    code = ubik_EndTrans(tt);
-    return code;
-}
-
-int
 SSAMPLE_Test(struct rx_call *call)
 {
     afs_int32 code, temp;

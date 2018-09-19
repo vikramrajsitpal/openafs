@@ -317,37 +317,6 @@ done:
 }
 
 afs_int32
-SDISK_Truncate(struct rx_call *rxcall, struct ubik_tid *atid,
-	       afs_int32 afile, afs_int32 alen)
-{
-    afs_int32 code;
-
-    if ((code = ubik_CheckAuth(rxcall))) {
-	return code;
-    }
-    DBHOLD(ubik_dbase);
-    if (!ubik_currentTrans) {
-	code = USYNC;
-	goto done;
-    }
-    /* sanity check to make sure only write trans appear here */
-    if (ubik_currentTrans->type != UBIK_WRITETRANS) {
-	code = UBADTYPE;
-	goto done;
-    }
-
-    urecovery_CheckTid(atid, 0);
-    if (!ubik_currentTrans) {
-	code = USYNC;
-	goto done;
-    }
-    code = udisk_truncate(ubik_currentTrans, afile, alen);
-done:
-    DBRELE(ubik_dbase);
-    return code;
-}
-
-afs_int32
 SDISK_GetVersion(struct rx_call *rxcall,
 		 struct ubik_version *aversion)
 {

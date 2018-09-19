@@ -192,7 +192,7 @@ urecovery_CheckTid(struct ubik_tid *atid, int abortalways)
  *
  * Begin transaction: opcode \n
  * Commit transaction: opcode, version (8 bytes) \n
- * Truncate file: opcode, file number, length \n
+ * Truncate file (no longer used): opcode, file number, length \n
  * Abort transaction: opcode \n
  * Write data: opcode, file, position, length, <length> data bytes \n
  *
@@ -238,14 +238,6 @@ ReplayLog(struct ubik_dbase *adbase)
 	else if (opcode == LOGEND) {
 	    logIsGood = 1;
 	    break;
-	} else if (opcode == LOGTRUNCATE) {
-	    tpos += 4;
-	    code =
-		(*adbase->read) (adbase, LOGFILE, (char *)buffer, tpos,
-				 2 * sizeof(afs_int32));
-	    if (code != 2 * sizeof(afs_int32))
-		break;		/* premature eof or io error */
-	    tpos += 2 * sizeof(afs_int32);
 	} else if (opcode == LOGDATA) {
 	    tpos += 4;
 	    code =
@@ -297,19 +289,6 @@ ReplayLog(struct ubik_dbase *adbase)
 		           (long) version.epoch, (long) version.counter));
 		logIsGood = 1;
 		break;		/* all done now */
-	    } else if (opcode == LOGTRUNCATE) {
-		tpos += 4;
-		code =
-		    (*adbase->read) (adbase, LOGFILE, (char *)buffer, tpos,
-				     2 * sizeof(afs_int32));
-		if (code != 2 * sizeof(afs_int32))
-		    break;	/* premature eof or io error */
-		tpos += 2 * sizeof(afs_int32);
-		code =
-		    (*adbase->truncate) (adbase, ntohl(buffer[0]),
-					 ntohl(buffer[1]));
-		if (code)
-		    return code;
 	    } else if (opcode == LOGDATA) {
 		tpos += 4;
 		code =
