@@ -108,13 +108,15 @@ multiHomedExtentBase(struct vl_ctx *ctx, int srvidx, struct extentaddr **exp,
 {
     int base;
     int index;
+    afs_uint32 *hostaddress = ctx->hostaddress;
+    struct extentaddr **ex_addr = ctx->ex_addr;
 
     *exp = NULL;
     *basePtr = 0;
 
-    if ((ctx->hostaddress[srvidx] & 0xff000000) == 0xff000000) {
-	base = (ctx->hostaddress[srvidx] >> 16) & 0xff;
-	index = ctx->hostaddress[srvidx] & 0x0000ffff;
+    if ((hostaddress[srvidx] & 0xff000000) == 0xff000000) {
+	base = (hostaddress[srvidx] >> 16) & 0xff;
+	index = hostaddress[srvidx] & 0x0000ffff;
 	if (base >= VL_MAX_ADDREXTBLKS) {
 	    VLog(0, ("Internal error: Multihome extent base is too large. "
 		     "Base %d index %d\n", base, index));
@@ -125,14 +127,14 @@ multiHomedExtentBase(struct vl_ctx *ctx, int srvidx, struct extentaddr **exp,
 		     "Base %d index %d\n", base, index));
 	    return VL_IO;
 	}
-	if (!ctx->ex_addr[base]) {
+	if (!ex_addr[base]) {
 	    VLog(0, ("Internal error: Multihome extent does not exist. "
 		     "Base %d\n", base));
 	    return VL_IO;
 	}
 
 	*basePtr = base;
-	*exp = &ctx->ex_addr[base][index];
+	*exp = &ex_addr[base][index];
     }
 
     return 0;
@@ -719,6 +721,7 @@ getNewVolumeId(struct rx_call *rxcall, afs_uint32 Maxvolidbump,
     afs_int32 code;
     afs_uint32 maxvolumeid;
     struct vl_ctx ctx;
+    struct vlheader *cheader;
     char rxstr[AFS_RXINFO_LEN];
 
     countRequest(this_op);
@@ -730,16 +733,17 @@ getNewVolumeId(struct rx_call *rxcall, afs_uint32 Maxvolidbump,
 
     if ((code = Init_VLdbase(&ctx, LOCKWRITE, this_op)))
 	return code;
+    cheader = ctx.cheader;
 
     *newvolumeid = maxvolumeid = NextUnusedID(&ctx,
-	ntohl(ctx.cheader->vital_header.MaxVolumeId), Maxvolidbump, &code);
+	ntohl(cheader->vital_header.MaxVolumeId), Maxvolidbump, &code);
     if (code) {
 	goto abort;
     }
 
     maxvolumeid += Maxvolidbump;
     VLog(1, ("GetNewVolid newmax=%u %s\n", maxvolumeid, rxinfo(rxstr, rxcall)));
-    ctx.cheader->vital_header.MaxVolumeId = htonl(maxvolumeid);
+    cheader->vital_header.MaxVolumeId = htonl(maxvolumeid);
     if (write_vital_vlheader(&ctx)) {
 	ABORT(VL_IO);
     }
@@ -2306,6 +2310,7 @@ GetStats(struct rx_call *rxcall,
     int this_op = VLGETSTATS;
     afs_int32 code;
     struct vl_ctx ctx;
+    struct vlheader *cheader;
     char rxstr[AFS_RXINFO_LEN];
 
     countRequest(this_op);
@@ -2316,8 +2321,9 @@ GetStats(struct rx_call *rxcall,
 
     if ((code = Init_VLdbase(&ctx, LOCKREAD, this_op)))
 	return code;
+    cheader = ctx.cheader;
     VLog(5, ("GetStats %s\n", rxinfo(rxstr, rxcall)));
-    memcpy(vital_header, &ctx.cheader->vital_header,
+    memcpy(vital_header, &cheader->vital_header,
 	   sizeof(vital_vlheader));
     memcpy(stats, &dynamic_statistics, sizeof(vldstats));
     return ubik_EndTrans(ctx.trans);
@@ -2350,6 +2356,7 @@ SVL_GetAddrs(struct rx_call *rxcall,
     int this_op = VLGETADDRS;
     afs_int32 code;
     struct vl_ctx ctx;
+    struct vlheader *cheader;
     int nservers, i;
     afs_uint32 *taddrp;
 
@@ -2360,6 +2367,7 @@ SVL_GetAddrs(struct rx_call *rxcall,
 
     if ((code = Init_VLdbase(&ctx, LOCKREAD, this_op)))
 	return code;
+    cheader = ctx.cheader;
 
     VLog(5, ("GetAddrs\n"));
     addrsp->bulkaddrs_val = taddrp =
@@ -2372,7 +2380,7 @@ SVL_GetAddrs(struct rx_call *rxcall,
     }
 
     for (i = 0; i <= MAXSERVERID; i++) {
-	if ((*taddrp = ntohl(ctx.cheader->IpMappedAddr[i]))) {
+	if ((*taddrp = ntohl(cheader->IpMappedAddr[i]))) {
 	    taddrp++;
 	    nservers++;
 	}
@@ -2405,6 +2413,8 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
     int this_op = VLREGADDR;
     afs_int32 code;
     struct vl_ctx ctx;
+    afs_uint32 *hostaddress;
+    struct extentaddr **ex_addr;
     int cnt, h, i, j, k, m;
     struct extentaddr *exp = 0, *tex;
     char addrbuf[256];
@@ -2422,6 +2432,8 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
 	return (VL_PERM);
     if ((code = Init_VLdbase(&ctx, LOCKWRITE, this_op)))
 	return code;
+    hostaddress = ctx.hostaddress;
+    ex_addr = ctx.ex_addr;
 
     /* Eliminate duplicates from IP address list */
     for (k = 0, cnt = 0; k < addrsp->bulkaddrs_len; k++) {
@@ -2485,7 +2497,7 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
 	     * See if the addresses to register will replace this server entry.
 	     */
 	    for (k = 0; k < cnt; k++) {
-		if (ctx.hostaddress[srvidx] == addrs[k]) {
+		if (hostaddress[srvidx] == addrs[k]) {
 		    willChangeEntry = 1;
 		    WillChange[count] = srvidx;
 		    WillReplaceEntry = 1;
@@ -2557,7 +2569,7 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
 		    append_addr(addrbuf, ntohl(exp->ex_addrs[mhidx]), sizeof(addrbuf));
 		}
 	    } else {
-		append_addr(addrbuf, ctx.hostaddress[srvidx], sizeof(addrbuf));
+		append_addr(addrbuf, hostaddress[srvidx], sizeof(addrbuf));
 	    }
 	    VLog(0, ("      entry %d: [%s]\n", srvidx, addrbuf));
 	}
@@ -2647,10 +2659,10 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
 	    VLog(0, ("      entry %d: [%s]\n", ReplaceEntry, addrbuf));
 	} else {
 	    /* Not a mh entry. So we have to create a new mh entry and
-	     * put it on the ReplaceEntry slot of the ctx.hostaddress array.
+	     * put it on the ReplaceEntry slot of the hostaddress array.
 	     */
 	    addrbuf[0] = '\0';
-	    append_addr(addrbuf, ctx.hostaddress[ReplaceEntry], sizeof(addrbuf));
+	    append_addr(addrbuf, hostaddress[ReplaceEntry], sizeof(addrbuf));
 	    VLog(0, ("   It will replace existing entry %d, %s,"
 		     " in the VLDB (new uuid):\n", ReplaceEntry, addrbuf));
 	    code =
@@ -2663,7 +2675,7 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
 	}
     } else {
 	/* There is no entry for this server, must create a new mh entry as
-	 * well as use a new slot of the ctx.hostaddress array.
+	 * well as use a new slot of the hostaddress array.
 	 */
 	VLog(0, ("   It will create a new entry in the VLDB.\n"));
 	code = FindExtentBlock(&ctx, uuidp, 1, -1, &exp, &base);
@@ -2691,8 +2703,8 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
     /* Write the new mh entry out */
     if (vlwrite
 	(ctx.trans,
-	 DOFFSET(ntohl(ctx.ex_addr[0]->ex_contaddrs[base]),
-		 ctx.ex_addr[base], exp), exp,
+	 DOFFSET(ntohl(ex_addr[0]->ex_contaddrs[base]),
+		 ex_addr[base], exp), exp,
 	 sizeof(*exp))) {
 	code = VL_IO;
 	goto abort;
@@ -2742,8 +2754,8 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
 	/* Write out the modified mh entry */
 	tex->ex_uniquifier = htonl(ntohl(tex->ex_uniquifier) + 1);
 	doff =
-	    DOFFSET(ntohl(ctx.ex_addr[0]->ex_contaddrs[base]),
-		    ctx.ex_addr[base], tex);
+	    DOFFSET(ntohl(ex_addr[0]->ex_contaddrs[base]),
+		    ex_addr[base], tex);
 	if (vlwrite(ctx.trans, doff, tex, sizeof(*tex))) {
 	    code = VL_IO;
 	    goto abort;
@@ -2769,6 +2781,7 @@ SVL_GetAddrsU(struct rx_call *rxcall,
     int this_op = VLGETADDRSU;
     afs_int32 code, index;
     struct vl_ctx ctx;
+    struct extentaddr **ex_addr;
     int nservers, i, j, base = 0;
     struct extentaddr *exp = 0;
     afsUUID tuuid;
@@ -2781,6 +2794,7 @@ SVL_GetAddrsU(struct rx_call *rxcall,
     VLog(5, ("GetAddrsU %s\n", rxinfo(rxstr, rxcall)));
     if ((code = Init_VLdbase(&ctx, LOCKREAD, this_op)))
 	return code;
+    ex_addr = ctx.ex_addr;
 
     if (attributes->Mask & VLADDR_IPADDR) {
 	if (attributes->Mask & (VLADDR_INDEX | VLADDR_UUID)) {
@@ -2829,7 +2843,7 @@ SVL_GetAddrsU(struct rx_call *rxcall,
 	    code = VL_BADMASK;
 	    goto abort;
 	}
-	if (!ctx.ex_addr[0]) {	/* mh servers probably aren't setup on this vldb */
+	if (!ex_addr[0]) {	/* mh servers probably aren't setup on this vldb */
 	    code = VL_NOENT;
 	    goto abort;
 	}
@@ -3352,6 +3366,7 @@ vlentry_to_vldbentry(struct vl_ctx *ctx, struct nvlentry *VlEntry,
 {
     int i, j, code;
     struct extentaddr *exp;
+    afs_uint32 *hostaddress = ctx->hostaddress;
 
     memset(VldbEntry, 0, sizeof(struct vldbentry));
     strncpy(VldbEntry->name, VlEntry->name, sizeof(VldbEntry->name));
@@ -3371,7 +3386,7 @@ vlentry_to_vldbentry(struct vl_ctx *ctx, struct nvlentry *VlEntry,
 	    }
 	} else
 	    VldbEntry->serverNumber[i] =
-		ctx->hostaddress[VlEntry->serverNumber[i]];
+		hostaddress[VlEntry->serverNumber[i]];
 	VldbEntry->serverPartition[i] = VlEntry->serverPartition[i];
 	VldbEntry->serverFlags[i] = VlEntry->serverFlags[i];
     }
@@ -3393,6 +3408,7 @@ vlentry_to_nvldbentry(struct vl_ctx *ctx, struct nvlentry *VlEntry,
 {
     int i, j, code;
     struct extentaddr *exp;
+    afs_uint32 *hostaddress = ctx->hostaddress;
 
     memset(VldbEntry, 0, sizeof(struct nvldbentry));
     strncpy(VldbEntry->name, VlEntry->name, sizeof(VldbEntry->name));
@@ -3413,7 +3429,7 @@ vlentry_to_nvldbentry(struct vl_ctx *ctx, struct nvlentry *VlEntry,
 	    }
 	} else
 	    VldbEntry->serverNumber[i] =
-		ctx->hostaddress[VlEntry->serverNumber[i]];
+		hostaddress[VlEntry->serverNumber[i]];
 	VldbEntry->serverPartition[i] = VlEntry->serverPartition[i];
 	VldbEntry->serverFlags[i] = VlEntry->serverFlags[i];
     }
@@ -3432,6 +3448,7 @@ vlentry_to_uvldbentry(struct vl_ctx *ctx, struct nvlentry *VlEntry,
 {
     int i, code;
     struct extentaddr *exp;
+    afs_uint32 *hostaddress = ctx->hostaddress;
 
     memset(VldbEntry, 0, sizeof(struct uvldbentry));
     strncpy(VldbEntry->name, VlEntry->name, sizeof(VldbEntry->name));
@@ -3454,7 +3471,7 @@ vlentry_to_uvldbentry(struct vl_ctx *ctx, struct nvlentry *VlEntry,
 	    VldbEntry->serverUnique[i] = ntohl(exp->ex_uniquifier);
 	} else {
 	    VldbEntry->serverNumber[i].time_low =
-		ctx->hostaddress[VlEntry->serverNumber[i]];
+		hostaddress[VlEntry->serverNumber[i]];
 	}
 	VldbEntry->serverPartition[i] = VlEntry->serverPartition[i];
 
@@ -3521,9 +3538,11 @@ IpAddrToRelAddr(struct vl_ctx *ctx, afs_uint32 ipaddr, int create)
     int i, j;
     afs_int32 code;
     struct extentaddr *exp;
+    struct vlheader *cheader = ctx->cheader;
+    afs_uint32 *hostaddress = ctx->hostaddress;
 
     for (i = 0; i <= MAXSERVERID; i++) {
-	if (ctx->hostaddress[i] == ipaddr)
+	if (hostaddress[i] == ipaddr)
 	    return i;
 	code = multiHomedExtent(ctx, i, &exp);
 	if (code)
@@ -3540,14 +3559,14 @@ IpAddrToRelAddr(struct vl_ctx *ctx, afs_uint32 ipaddr, int create)
     /* allocate the new server a server id pronto */
     if (create) {
 	for (i = 0; i <= MAXSERVERID; i++) {
-	    if (ctx->cheader->IpMappedAddr[i] == 0) {
-		ctx->cheader->IpMappedAddr[i] = htonl(ipaddr);
+	    if (cheader->IpMappedAddr[i] == 0) {
+		cheader->IpMappedAddr[i] = htonl(ipaddr);
 		code =
 		    vlwrite(ctx->trans,
-			    DOFFSET(0, ctx->cheader, &ctx->cheader->IpMappedAddr[i]),
-			    &ctx->cheader->IpMappedAddr[i],
+			    DOFFSET(0, cheader, &cheader->IpMappedAddr[i]),
+			    &cheader->IpMappedAddr[i],
 			    sizeof(afs_int32));
-		ctx->hostaddress[i] = ipaddr;
+		hostaddress[i] = ipaddr;
 		if (code)
 		    return -1;
 		return i;
@@ -3572,6 +3591,9 @@ ChangeIPAddr(struct vl_ctx *ctx, afs_uint32 ipaddr1, afs_uint32 ipaddr2)
     int ipaddr1_id = -1, ipaddr2_id = -1;
     char addrbuf1[256];
     char addrbuf2[256];
+    struct vlheader *cheader = ctx->cheader;
+    afs_uint32 *hostaddress = ctx->hostaddress;
+    struct extentaddr **ex_addr = ctx->ex_addr;
 
     /* Don't let addr change to 255.*.*.* : Causes internal error below */
     if ((ipaddr2 & 0xff000000) == 0xff000000)
@@ -3610,12 +3632,12 @@ ChangeIPAddr(struct vl_ctx *ctx, afs_uint32 ipaddr1, afs_uint32 ipaddr2)
 		}
 	    }
 	} else {
-	    if (ctx->hostaddress[i] == ipaddr1) {
+	    if (hostaddress[i] == ipaddr1) {
 		exp = NULL;
 		base = -1;
 		ipaddr1_id = i;
 	    }
-	    if (ipaddr2 != 0 && ctx->hostaddress[i] == ipaddr2) {
+	    if (ipaddr2 != 0 && hostaddress[i] == ipaddr2) {
 		ipaddr2_id = i;
 	    }
 	}
@@ -3701,19 +3723,19 @@ ChangeIPAddr(struct vl_ctx *ctx, afs_uint32 ipaddr1, afs_uint32 ipaddr2)
 	exp->ex_hostuuid = tuuid;
 	code =
 	    vlwrite(ctx->trans,
-		    DOFFSET(ntohl(ctx->ex_addr[0]->ex_contaddrs[base]),
-			    ctx->ex_addr[base], exp),
+		    DOFFSET(ntohl(ex_addr[0]->ex_contaddrs[base]),
+			    ex_addr[base], exp),
 		    &tuuid, sizeof(tuuid));
 	if (code)
 	    return VL_IO;
     }
 
     /* Now change the host address entry */
-    ctx->cheader->IpMappedAddr[ipaddr1_id] = htonl(ipaddr2);
+    cheader->IpMappedAddr[ipaddr1_id] = htonl(ipaddr2);
     code =
-	vlwrite(ctx->trans, DOFFSET(0, ctx->cheader, &ctx->cheader->IpMappedAddr[ipaddr1_id]),
-		&ctx->cheader->IpMappedAddr[ipaddr1_id], sizeof(afs_int32));
-    ctx->hostaddress[ipaddr1_id] = ipaddr2;
+	vlwrite(ctx->trans, DOFFSET(0, cheader, &cheader->IpMappedAddr[ipaddr1_id]),
+		&cheader->IpMappedAddr[ipaddr1_id], sizeof(afs_int32));
+    hostaddress[ipaddr1_id] = ipaddr2;
     if (code)
 	return VL_IO;
 
