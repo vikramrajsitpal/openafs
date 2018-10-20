@@ -89,7 +89,7 @@ CheckSignal(void *unused)
     for (i = 0; i < HASHSIZE; i++) {
 	HashIdDump(&ctx, i);
     }
-    return ((void *)(intptr_t)ubik_EndTrans(ctx.trans));
+    return ((void *)(intptr_t)vl_EndTrans(&ctx));
 }				/*CheckSignal */
 
 

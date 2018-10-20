@@ -194,6 +194,22 @@ rxinfo(char *str, struct rx_call *rxcall)
     return str;
 }
 
+int
+vl_EndTrans(struct vl_ctx *ctx)
+{
+    int code = ubik_EndTrans(ctx->trans);
+    ctx->trans = NULL;
+    return code;
+}
+
+static int
+vl_AbortTrans(struct vl_ctx *ctx)
+{
+    int code = ubik_AbortTrans(ctx->trans);
+    ctx->trans = NULL;
+    return code;
+}
+
 
 /* This is called to initialize the database, set the appropriate locks and make sure that the vldb header is valid */
 int
@@ -224,7 +240,7 @@ Init_VLdbase(struct vl_ctx *ctx,
 	code = ubik_SetLock(ctx->trans, 1, 1, locktype);
 	if (code) {
 	    countAbort(opcode);
-	    ubik_AbortTrans(ctx->trans);
+	    vl_AbortTrans(ctx);
 	    return code;
 	}
 
@@ -235,7 +251,7 @@ Init_VLdbase(struct vl_ctx *ctx,
 	    code = readExtents(ctx->trans);	/* Fix the mh extent blocks */
 	if (code) {
 	    countAbort(opcode);
-	    ubik_AbortTrans(ctx->trans);
+	    vl_AbortTrans(ctx);
 	    /* Only rebuld if the database is empty */
 	    /* Exit if can't rebuild */
 	    if ((pass == 1) && (code != VL_EMPTY))
@@ -249,7 +265,7 @@ Init_VLdbase(struct vl_ctx *ctx,
 		 * to the read header buffers, before calling vlsetache().
 		 * Do a third pass to re-acquire the original lock, which
 		 * may be a read lock. */
-		ubik_EndTrans(ctx->trans);
+		vl_EndTrans(ctx);
 	    } else {
 		break;		/* didn't rebuild and successful - exit */
 	    }
@@ -259,12 +275,11 @@ Init_VLdbase(struct vl_ctx *ctx,
 	code = vlsetcache(ctx, locktype);
 	if (code != 0) {
 	    countAbort(opcode);
-	    ubik_AbortTrans(ctx->trans);
+	    vl_AbortTrans(ctx);
 	}
     }
     return code;
 }
-
 
 /* Create a new vldb entry; both new volume id and name must be unique
  * (non-existant in vldb).
@@ -328,12 +343,12 @@ CreateEntry(struct rx_call *rxcall, struct vldbentry *newentry)
 	FreeBlock(&ctx, blockindex);
 	goto abort;
     } else {
-	return ubik_EndTrans(ctx.trans);
+	return vl_EndTrans(&ctx);
     }
 
   abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -406,12 +421,12 @@ CreateEntryN(struct rx_call *rxcall, struct nvldbentry *newentry)
 	FreeBlock(&ctx, blockindex);
 	goto abort;
     } else {
-	return ubik_EndTrans(ctx.trans);
+	return vl_EndTrans(&ctx);
     }
 
   abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -446,13 +461,13 @@ ChangeAddr(struct rx_call *rxcall, afs_uint32 ip1, afs_uint32 ip2)
     if ((code = ChangeIPAddr(&ctx, ip1, ip2)))
 	goto abort;
     else {
-	code = ubik_EndTrans(ctx.trans);
+	code = vl_EndTrans(&ctx);
 	return code;
     }
 
   abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -501,11 +516,11 @@ DeleteEntry(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype)
     if ((code = RemoveEntry(&ctx, blockindex, &tentry))) {
 	goto abort;
     }
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 
   abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -567,16 +582,16 @@ GetEntryByID(struct rx_call *rxcall,
     if (code)
 	goto abort;
 
-    return (ubik_EndTrans(ctx.trans));
+    return (vl_EndTrans(&ctx));
 
  abort_endtrans:
     countAbort(this_op);
-    ubik_EndTrans(ctx.trans);
+    vl_EndTrans(&ctx);
     return code;
 
 abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -671,16 +686,16 @@ GetEntryByName(struct rx_call *rxcall,
     if (code)
 	goto abort;
 
-    return (ubik_EndTrans(ctx.trans));
+    return (vl_EndTrans(&ctx));
 
  abort_endtrans:
     countAbort(this_op);
-    ubik_EndTrans(ctx.trans);
+    vl_EndTrans(&ctx);
     return code;
 
 abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 
 }
@@ -747,11 +762,11 @@ getNewVolumeId(struct rx_call *rxcall, afs_uint32 Maxvolidbump,
     if (write_vital_vlheader(&ctx)) {
 	ABORT(VL_IO);
     }
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 
   abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -885,11 +900,11 @@ ReplaceEntry(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype,
 	ABORT(VL_IO);
     }
 
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 
   abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -994,11 +1009,11 @@ ReplaceEntryN(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype,
 	ABORT(VL_IO);
     }
 
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 
   abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -1060,11 +1075,11 @@ UpdateEntry(struct rx_call *rxcall,
     if (vlentrywrite(&ctx, blockindex, &tentry)) {
 	ABORT(VL_IO);
     }
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 
   abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -1118,11 +1133,11 @@ UpdateEntryByName(struct rx_call *rxcall,
     if (vlentrywrite(&ctx, blockindex, &tentry)) {
 	ABORT(VL_IO);
     }
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 
   abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -1192,11 +1207,11 @@ SetLock(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype,
     if (vlentrywrite(&ctx, blockindex, &tentry)) {
 	ABORT(VL_IO);
     }
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 
   abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -1250,11 +1265,11 @@ ReleaseLock(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype,
     if (vlentrywrite(&ctx, blockindex, &tentry)) {
 	ABORT(VL_IO);
     }
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 
   abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -1299,11 +1314,11 @@ ListEntry(struct rx_call *rxcall, afs_int32 previous_index,
 	code = vlentry_to_vldbentry(&ctx, &tentry, aentry);
 	if (code) {
 	    countAbort(this_op);
-	    ubik_AbortTrans(ctx.trans);
+	    vl_AbortTrans(&ctx);
 	    return code;
 	}
     }
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 }
 
 afs_int32
@@ -1347,12 +1362,12 @@ ListEntryN(struct rx_call *rxcall, afs_int32 previous_index,
 	code = vlentry_to_nvldbentry(&ctx, &tentry, aentry);
 	if (code) {
 	    countAbort(this_op);
-	    ubik_AbortTrans(ctx.trans);
+	    vl_AbortTrans(&ctx);
 	    return code;
 	}
     }
 
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 }
 
 afs_int32
@@ -1494,7 +1509,7 @@ ListAttributes(struct rx_call *rxcall,
     VLog(5,
 	 ("ListAttrs nentries=%d %s\n", vldbentries->bulkentries_len,
 	  rxinfo(rxstr, rxcall)));
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 
 abort:
     if (vldbentries->bulkentries_val)
@@ -1503,7 +1518,7 @@ abort:
     vldbentries->bulkentries_len = 0;
 
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -1642,11 +1657,11 @@ ListAttributesN(struct rx_call *rxcall,
     VLog(5,
 	 ("NListAttrs nentries=%d %s\n", vldbentries->nbulkentries_len,
 	  rxinfo(rxstr, rxcall)));
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 
 abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     if (vldbentries->nbulkentries_val)
 	free(vldbentries->nbulkentries_val);
     vldbentries->nbulkentries_val = 0;
@@ -1717,7 +1732,7 @@ ListAttributesN2(struct rx_call *rxcall,
 	malloc(maxCount * sizeof(nvldbentry));
     if (Vldbentry == NULL) {
 	countAbort(this_op);
-	ubik_AbortTrans(ctx.trans);
+	vl_AbortTrans(&ctx);
 	return VL_NOMEM;
     }
 
@@ -1951,7 +1966,7 @@ ListAttributesN2(struct rx_call *rxcall,
 
     if (code) {
 	countAbort(this_op);
-	ubik_AbortTrans(ctx.trans);
+	vl_AbortTrans(&ctx);
 	if (vldbentries->nbulkentries_val)
 	    free(vldbentries->nbulkentries_val);
 	vldbentries->nbulkentries_val = 0;
@@ -1961,7 +1976,7 @@ ListAttributesN2(struct rx_call *rxcall,
 	VLog(5,
 	     ("N2ListAttrs nentries=%d %s\n", vldbentries->nbulkentries_len,
 	      rxinfo(rxstr, rxcall)));
-	code = ubik_EndTrans(ctx.trans);
+	code = vl_EndTrans(&ctx);
     }
 
     return code;
@@ -2123,11 +2138,11 @@ LinkedList(struct rx_call *rxcall,
 	}
     }
     *vllistptr = NULL;
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 
 abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -2277,11 +2292,11 @@ LinkedListN(struct rx_call *rxcall,
 	}
     }
     *vllistptr = NULL;
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 
 abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -2326,7 +2341,7 @@ GetStats(struct rx_call *rxcall,
     memcpy(vital_header, &cheader->vital_header,
 	   sizeof(vital_vlheader));
     memcpy(stats, &dynamic_statistics, sizeof(vldstats));
-    return ubik_EndTrans(ctx.trans);
+    return vl_EndTrans(&ctx);
 }
 
 afs_int32
@@ -2387,11 +2402,11 @@ SVL_GetAddrs(struct rx_call *rxcall,
     }
 
     addrsp->bulkaddrs_len = *nentries = nservers;
-    return (ubik_EndTrans(ctx.trans));
+    return (vl_EndTrans(&ctx));
 
 abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -2609,7 +2624,7 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
 		change = 1;
 	}
 	if (!change) {
-	    return (ubik_EndTrans(ctx.trans));
+	    return (vl_EndTrans(&ctx));
 	}
     }
 
@@ -2762,11 +2777,11 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
 	}
     }
 
-    return (ubik_EndTrans(ctx.trans));
+    return (vl_EndTrans(&ctx));
 
 abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
@@ -2891,11 +2906,11 @@ SVL_GetAddrsU(struct rx_call *rxcall,
 	}
     }
     addrsp->bulkaddrs_len = *nentries = nservers;
-    return (ubik_EndTrans(ctx.trans));
+    return (vl_EndTrans(&ctx));
 
 abort:
     countAbort(this_op);
-    ubik_AbortTrans(ctx.trans);
+    vl_AbortTrans(&ctx);
     return code;
 }
 
