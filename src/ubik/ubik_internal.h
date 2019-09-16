@@ -274,15 +274,20 @@ struct addr_data {
 
 /*!
  * \brief The version lock protects the structure member, as well as
- * the database version, dbFlags, tidCounter, writeTidCounter. Reading these
- * values can be done while holding either UBIK_VERSION_LOCK or DBHOLD. Writing
- * these requires holding both locks.
+ * the database version, tidCounter, writeTidCounter. Reading these values can
+ * be done while holding either UBIK_VERSION_LOCK or DBHOLD. Writing these
+ * requires holding both locks.
  */
 struct version_data {
 #ifdef AFS_PTHREAD_ENV
     pthread_mutex_t version_lock;
 #endif
     afs_int32 ubik_epochTime;	/* time when this site started */
+    int db_writing;		/* Is there a write tx running?
+				 * This is the same as
+				 * (ubik_dbase->dbFlags & DBWRITING)
+				 * but is protected by UBIK_VERSION_LOCK
+				 * instead of by DBHOLD. */
 };
 extern struct version_data version_globals;
 
