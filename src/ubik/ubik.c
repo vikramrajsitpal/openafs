@@ -659,11 +659,11 @@ BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
     /* label trans and dbase with new tid */
     tt->tid.epoch = version_globals.ubik_epochTime;
     /* bump by two, since tidCounter+1 means trans id'd by tidCounter has finished */
-    tt->tid.counter = (dbase->tidCounter += 2);
+    tt->tid.counter = (version_globals.tidCounter += 2);
 
     if (transMode == UBIK_WRITETRANS) {
 	/* for a write trans, we have to keep track of the write tid counter too */
-	dbase->writeTidCounter = tt->tid.counter;
+	version_globals.writeTidCounter = tt->tid.counter;
     }
 
     UBIK_VERSION_UNLOCK;

@@ -432,7 +432,7 @@ SVOTE_Debug(struct rx_call * rxcall, struct ubik_debug * aparm)
 	aparm->recoveryState |= UBIK_RECLABELDB;
     }
     aparm->activeWrite = (ubik_dbase->dbFlags & DBWRITING);
-    aparm->tidCounter = ubik_dbase->tidCounter;
+    aparm->tidCounter = version_globals.tidCounter;
 
     if (ubik_currentTrans) {
 	aparm->currentTrans = 1;
@@ -512,7 +512,7 @@ SVOTE_DebugOld(struct rx_call * rxcall,
 	aparm->recoveryState |= UBIK_RECLABELDB;
     }
     aparm->activeWrite = (ubik_dbase->dbFlags & DBWRITING);
-    aparm->tidCounter = ubik_dbase->tidCounter;
+    aparm->tidCounter = version_globals.tidCounter;
 
     if (ubik_currentTrans) {
 	aparm->currentTrans = 1;

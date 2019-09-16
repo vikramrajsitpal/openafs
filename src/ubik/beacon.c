@@ -498,9 +498,9 @@ ubeacon_Interact(void *dummy)
 	     * send the tidCounter value which holds the tid counter of the
 	     * last transaction.
 	     */
-	    ttid.counter = ubik_dbase->writeTidCounter;
+	    ttid.counter = version_globals.writeTidCounter;
 	} else
-	    ttid.counter = ubik_dbase->tidCounter + 1;
+	    ttid.counter = version_globals.tidCounter + 1;
 	tversion.epoch = ubik_dbase->version.epoch;
 	tversion.counter = ubik_dbase->version.counter;
 	UBIK_VERSION_UNLOCK;

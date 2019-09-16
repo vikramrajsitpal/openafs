@@ -38,14 +38,13 @@ struct ubik_stat {
 struct ubik_dbase {
     char *pathName;		/*!< root name for dbase */
     struct ubik_trans *activeTrans;	/*!< active transaction list */
-    struct ubik_version version;	/*!< version number */
+    struct ubik_version version;	/*!< version number. protected by
+					 *   DBHOLD and UBIK_VERSION_LOCK */
 #ifdef AFS_PTHREAD_ENV
     pthread_mutex_t versionLock;	/*!< lock on version number */
 #else
     struct Lock versionLock;	/*!< lock on version number */
 #endif
-    afs_int32 tidCounter;	/*!< last RW or RO trans tid counter */
-    afs_int32 writeTidCounter;	/*!< last write trans tid counter */
     afs_int32 dbFlags;		/*!< flags */
     /* physio procedures */
     int (*read) (struct ubik_dbase * adbase, afs_int32 afile, void *abuffer,
@@ -273,16 +272,18 @@ struct addr_data {
 #define UBIK_ADDR_UNLOCK opr_mutex_exit(&addr_globals.addr_lock)
 
 /*!
- * \brief The version lock protects the structure member, as well as
- * the database version, tidCounter, writeTidCounter. Reading these values can
- * be done while holding either UBIK_VERSION_LOCK or DBHOLD. Writing these
- * requires holding both locks.
+ * \brief The version lock protects the structure members, as well as
+ * partially protecting ubik_dbase->version. Reading ubik_dbase->version can be
+ * done while holding either UBIK_VERSION_LOCK or DBHOLD. Writing
+ * ubik_dbase->version requires holding both locks.
  */
 struct version_data {
 #ifdef AFS_PTHREAD_ENV
     pthread_mutex_t version_lock;
 #endif
     afs_int32 ubik_epochTime;	/* time when this site started */
+    afs_int32 tidCounter;	/* last RW or RO trans tid counter */
+    afs_int32 writeTidCounter;	/* last write trans tid counter */
     int db_writing;		/* Is there a write tx running?
 				 * This is the same as
 				 * (ubik_dbase->dbFlags & DBWRITING)
