@@ -381,7 +381,7 @@ extern int udisk_begin(struct ubik_dbase *adbase, int atype,
 		       struct ubik_trans **atrans);
 extern int udisk_commit(struct ubik_trans *atrans);
 extern int udisk_abort(struct ubik_trans *atrans);
-extern int udisk_end(struct ubik_trans *atrans);
+extern void udisk_end(struct ubik_trans *atrans);
 /*\}*/
 
 /*! \name lock.c */

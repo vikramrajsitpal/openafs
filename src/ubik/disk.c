@@ -782,7 +782,7 @@ udisk_abort(struct ubik_trans *atrans)
  * If it hasn't committed before you call this routine, we'll abort the
  * transaction for you.
  */
-int
+void
 udisk_end(struct ubik_trans *atrans)
 {
     struct ubik_dbase *dbase;
@@ -817,5 +817,4 @@ udisk_end(struct ubik_trans *atrans)
 #else
     LWP_NoYieldSignal(&dbase->dbFlags);
 #endif
-    return 0;
 }
