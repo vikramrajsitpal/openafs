@@ -23,6 +23,7 @@ ptserver/recovery
 rx/event
 rx/opaque
 rx/perf
+rxgk/derive
 vlserver/badversion
 vlserver/check4
 vlserver/recovery
