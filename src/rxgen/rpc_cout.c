@@ -119,6 +119,13 @@ static void
 print_header(definition * def)
 {
     space();
+    f_print(fout, "void\n");
+    f_print(fout, "xdrfree_%s(%s *objp)", def->def_name, def->def_name);
+    f_print(fout, "{\n");
+    f_print(fout, "\t(void)xdr_free((xdrproc_t) xdr_%s, objp);\n",
+		  def->def_name);
+    f_print(fout, "}\n");
+
     f_print(fout, "bool_t\n");
     f_print(fout, "xdr_%s(XDR *xdrs, ", def->def_name);
     f_print(fout, "%s ", def->def_name);
@@ -462,6 +469,7 @@ print_hout(declaration * dec)
 	f_print(fout, ";\n");
 	f_print(fout, "bool_t xdr_%s(XDR *xdrs, %s *objp);\n", dec->name,
 		dec->name);
+	f_print(fout, "void xdrfree_%s(%s *objp);\n", dec->name, dec->name);
     }
 }
 
@@ -477,6 +485,12 @@ print_cout(declaration * dec)
 	print_ifstat(1, dec->prefix, dec->type, dec->rel, dec->array_max,
 		     "objp", dec->name);
 	print_trailer();
+
+	f_print(fout, "void\n");
+	f_print(fout, "xdrfree_%s(%s *objp)\n", dec->name, dec->name);
+	f_print(fout, "{\n");
+	f_print(fout, "\t(void)xdr_free((xdrproc_t) xdr_%s, objp);\n", dec->name);
+	f_print(fout, "}\n");
     }
 }
 
