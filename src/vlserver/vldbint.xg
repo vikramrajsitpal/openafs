@@ -22,8 +22,8 @@ statindex 15
 %#define VldbVersion "4"
 
 const	VLDBVERSION_4	=	4;
-const	VLDBVERSION	=	3;
-const	OVLDBVERSION	=	2;
+const	VLDBVERSION_3	=	3;
+const	VLDBVERSION_2	=	2;
 const	VL_MAXNAMELEN	=	65;
 const	OMAXNSERVERS	=	8;
 const	NMAXNSERVERS	=	13;

@@ -340,7 +340,7 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 	    /* The read cache will be sync'ed to this new header
 	     * when the ubik transaction is ended by vlsynccache(). */
 	    memset(cheader, 0, sizeof(*cheader));
-	    cheader->vital_header.vldbversion = htonl(VLDBVERSION);
+	    cheader->vital_header.vldbversion = htonl(VLDBVERSION_3);
 	    cheader->vital_header.headersize = htonl(sizeof(*cheader));
 	    /* DANGER: Must get this from a master place!! */
 	    cheader->vital_header.MaxVolumeId = htonl(0x20000000);
@@ -361,15 +361,19 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 	}
     }
 
-    if ((vldbversion != VLDBVERSION) && (vldbversion != OVLDBVERSION)
+    if ((vldbversion != VLDBVERSION_3) && (vldbversion != VLDBVERSION_2)
         && (vldbversion != VLDBVERSION_4)) {
 	VLog(0,
 	    ("VLDB version %d doesn't match this software version(%d, %d or %d), quitting!\n",
-	     vldbversion, VLDBVERSION_4, VLDBVERSION, OVLDBVERSION));
+	     vldbversion, VLDBVERSION_4, VLDBVERSION_3, VLDBVERSION_2));
 	ERROR_EXIT(VL_BADVERSION);
     }
 
-    maxnservers = ((vldbversion == 3 || vldbversion == 4) ? 13 : 8);
+    if (vldbversion == VLDBVERSION_3 || vldbversion == VLDBVERSION_4) {
+	maxnservers = 13;
+    } else {
+	maxnservers = 8;
+    }
 
   error_exit:
     /* all done */
@@ -392,7 +396,7 @@ CheckInit(struct ubik_trans *trans, int builddb)
     if (vldbversion == 0) {
 	return VL_EMPTY;
     }
-    if ((vldbversion != VLDBVERSION) && (vldbversion != OVLDBVERSION)
+    if ((vldbversion != VLDBVERSION_3) && (vldbversion != VLDBVERSION_2)
         && (vldbversion != VLDBVERSION_4)) {
 	return VL_BADVERSION;
     }
