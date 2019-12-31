@@ -1,0 +1,31 @@
+
+srcdir=@srcdir@
+abs_top_builddir=@abs_top_builddir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+include @TOP_OBJDIR@/src/config/Makefile.pthread
+
+BINS = badversion-t \
+       vldb4-t
+
+MODULE_CFLAGS=-I$(TOP_OBJDIR) -I$(srcdir)/../common/
+
+all check test tests: $(BINS)
+
+MODULE_LIBS = 	$(abs_top_builddir)/tests/common/libafstest_common.la \
+		$(abs_top_builddir)/src/vlserver/liboafs_vldb.la \
+		$(XLIBS)
+
+vltest_objs = vltest.o
+vltest_deps = $(vltest_objs) vltest.h
+vltest_libs =	$(vltest_objs) \
+		$(MODULE_LIBS)
+
+badversion-t: badversion-t.o
+	$(LT_LDRULE_static) badversion-t.o $(MODULE_LIBS)
+
+vldb4-t: vldb4-t.o $(vltest_deps)
+	$(LT_LDRULE_static) vldb4-t.o $(vltest_libs)
+
+clean:
+	$(LT_CLEAN)
+	rm -f *.o $(BINS)

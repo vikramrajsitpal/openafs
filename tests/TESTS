@@ -20,6 +20,8 @@ ptserver/pt_util
 ptserver/pts-man
 rx/event
 rx/perf
+vlserver/badversion
+vlserver/vldb4
 volser/vos-man
 volser/vos
 bucoord/backup-man

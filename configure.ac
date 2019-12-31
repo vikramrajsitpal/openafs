@@ -195,6 +195,7 @@ AC_CONFIG_FILES([
     tests/rx/Makefile
     tests/tap/Makefile
     tests/util/Makefile
+    tests/vlserver/Makefile
     tests/volser/Makefile])
 AC_CONFIG_COMMANDS([default],[chmod a+x src/config/shlib-build
  chmod a+x src/config/shlib-install

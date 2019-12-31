@@ -188,3 +188,17 @@ afstest_file_contains(char *path, char *target)
     }
     return found;
 }
+
+int
+afstest_cp(char *src_path, char *dest_path)
+{
+    int code;
+
+    /* Instead of needing to reimplement the logic for copying a file, just run
+     * 'cp'. */
+    code = afstest_systemlp("cp", src_path, dest_path, (char*)NULL);
+    if (code != 0) {
+	return EIO;
+    }
+    return 0;
+}

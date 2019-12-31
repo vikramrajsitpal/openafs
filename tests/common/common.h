@@ -22,6 +22,20 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef OPENAFS_TEST_COMMON_H
+#define OPENAFS_TEST_COMMON_H
+
+#include <errno.h>
+#include <stdarg.h>
+#include <stdio.h>
+
+#include <roken.h>
+
+#include <afs/opr.h>
+#include <afs/com_err.h>
+
+#include <tests/tap/basic.h>
+
 /* config.c */
 
 struct afstest_configinfo {
@@ -60,6 +74,7 @@ extern void afstest_rmdtemp(char *path);
 extern char *afstest_src_path(char *path);
 extern char *afstest_obj_path(char *path);
 extern int afstest_file_contains(char *path, char *target);
+extern int afstest_cp(char *src_path, char *dest_path);
 
 /* rxkad.c */
 
@@ -83,6 +98,87 @@ extern int afstest_GetUbikClient(struct afsconf_dir *dir, char *service,
 				 int secIndex,
 				 struct ubik_client **ubikClient);
 
+/*
+ * Defines an existing database file for a dataset. (e.g. a .DB0 file in vldb4
+ * format)
+ */
+struct ubiktest_dbdef {
+    char *name;		/**< Name to refer to this db in 'use_db'. */
+    char *flat_path;	/**< Path to a .DB0 file, relative to the top of the
+			 *   source tree. */
+};
+
+/*
+ * Defines a scenario to setup a server process to test against a sample
+ * dataset. (e.g. "use this existing db", or "create the db from scratch")
+ */
+struct ubiktest_ops {
+    char *descr;
+    char *use_db;   /**< Find the dbase in 'existing_dbs' with this name, and
+		     *   install that db before starting up the server process.
+		     *   If "none", then don't install a db for this test. If
+		     *   NULL and 'create_db' is set, we treat this as "none". */
+
+    int create_db;  /**< If nonzero, run the dataset's 'create_func' function
+		     *   to create the sample dataset via RPCs and commands,
+		     *   etc. */
+};
+
+/*
+ * Defines a single test against a sample dataset. (e.g. "Run vos listvldb
+ * root.cell")
+ */
+struct ubiktest_dbtest {
+    char *descr;
+    void (*func)(char *dirname);    /**< If non-NULL, run this function instead
+				      *  of running a command. */
+
+    char *cmd_args;	/**< Run a command with these args (command is run by
+			 *   calling 'dbtest_func'). */
+    int cmd_exitcode;	/**< Command should exit with this exit code. */
+    int cmd_auth;	/**< If non-zero, run command with -localauh. */
+    char *cmd_stdout;   /**< Command's stdout should match this. */
+    char *cmd_stderr;	/**< Command's stderr should match this. */
+};
+
+/*
+ * Defines a dataset for testing an ubik application. For example, the
+ * 'vlsmall' dataset is a VLDB that contains specific definitions for volumes
+ * root.cell et al, and specific server definitions. The dataset may exist in
+ * different database formats in the tree, or we can create the dataset from
+ * scratch (via 'create_func'). So the dataset is not a specific pre-existing
+ * database, but represents the set of data (volumes, or users, etc) that
+ * should be in that database.
+ */
+struct ubiktest_dataset {
+    char *descr;
+    struct ubik_client **uclientp;  /**< If non-NULL, this will be set to a
+				     *   ubik_client struct for communicating
+				     *   with the running server. */
+
+    struct ubiktest_dbtest *tests;  /**< A list of tests to run to check that
+				     *   the running server responds with the
+				     *   correct data for the dataset. */
+
+    void (*dbtest_func)(char *dirname, struct ubiktest_dbtest *test);
+				    /**< The function to call to run the
+				     *   commands specified in 'tests'. */
+
+    void (*create_func)(char *dirname);
+				    /**< Run this function to create the
+				     *   dataset from scratch (that is, from a
+				     *   blank db). */
+
+    struct ubiktest_dbdef existing_dbs[2];
+				    /**< Existing databases for the dataset. */
+    struct ubiktest_dbdef _existing_dbs_nul;
+};
+extern void ubiktest_init(char *service, char **argv);
+extern void ubiktest_runtest(struct ubiktest_dataset *ds,
+			     struct ubiktest_ops *ops);
+extern void ubiktest_runtest_list(struct ubiktest_dataset *ds,
+				  struct ubiktest_ops *ops);
+
 /* network.c */
 extern int afstest_IsLoopbackNetworkDefault(void);
 extern int afstest_SkipTestsIfLoopbackNetIsDefault(void);
@@ -95,3 +191,5 @@ extern char *afstest_GetProgname(char **argv);
 extern char *afstest_vasprintf(const char *fmt, va_list ap);
 extern char *afstest_asprintf(const char *fmt, ...)
 	AFS_ATTRIBUTE_FORMAT(__printf__, 1, 2);
+
+#endif /* OPENAFS_TEST_COMMON_H */

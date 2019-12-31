@@ -939,6 +939,7 @@ distclean: clean
 	tests/rx/Makefile \
 	tests/opr/Makefile \
 	tests/util/Makefile \
+	tests/vlserver/Makefile \
 	tests/volser/Makefile \
 	src/helper-splint.sh \
 	doc/xml/AdminGuide/Makefile \
