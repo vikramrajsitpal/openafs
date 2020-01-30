@@ -254,7 +254,7 @@ readheader(struct vlheader *headerp)
 {
     int i, j;
 
-    vldbread(0, (char *)headerp, sizeof(*headerp));
+    vldbread(0, headerp, sizeof(*headerp));
 
     headerp->vital_header.vldbversion =
 	ntohl(headerp->vital_header.vldbversion);
@@ -346,7 +346,7 @@ writeheader(struct vlheader *headerp)
 	for (j = 0; j < HASHSIZE; j++)
 	    headerp->VolidHash[i][j] = htonl(headerp->VolidHash[i][j]);
 
-    vldbwrite(0, (char *)headerp, sizeof(*headerp));
+    vldbwrite(0, headerp, sizeof(*headerp));
 }
 
 static void
@@ -355,7 +355,7 @@ readMH(afs_int64 addr, int block, struct extentaddr *mhblockP)
     int i, j;
     struct extentaddr *e;
 
-    vldbread(addr, (char *)mhblockP, VL_ADDREXTBLK_SIZE);
+    vldbread(addr, mhblockP, VL_ADDREXTBLK_SIZE);
 
     /* Every mh block has the VLCONTBLOCK flag set in the header to
      * indicate the entry is an 8192 byte extended block. The
@@ -387,7 +387,7 @@ readentry(afs_int64 addr, struct nvlentry *vlentryp, afs_int32 *type)
 {
     int i;
 
-    vldbread(addr, (char *)vlentryp, sizeof(*vlentryp));
+    vldbread(addr, vlentryp, sizeof(*vlentryp));
 
     for (i = 0; i < MAXTYPES; i++)
 	vlentryp->volumeId[i] = ntohl(vlentryp->volumeId[i]);
@@ -502,7 +502,7 @@ writeMH(afs_int64 addr, int block, struct extentaddr *mhblockP)
 	    e->ex_addrs[j] = htonl(e->ex_addrs[j]);
 	}
     }
-    vldbwrite(addr, (char *)mhblockP, VL_ADDREXTBLK_SIZE);
+    vldbwrite(addr, mhblockP, VL_ADDREXTBLK_SIZE);
 }
 
 static void
@@ -526,7 +526,7 @@ writeentry(afs_int64 addr, struct nvlentry *vlentryp)
 	vlentryp->serverPartition[i] = vlentryp->serverPartition[i] ;
 	vlentryp->serverFlags[i] = vlentryp->serverFlags[i] ;
     }
-    vldbwrite(addr, (char *)vlentryp, sizeof(*vlentryp));
+    vldbwrite(addr, vlentryp, sizeof(*vlentryp));
 }
 
 /*

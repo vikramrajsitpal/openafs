@@ -291,7 +291,7 @@ readentry(int fd, int version, void *addr)
     int rc, rc1;
     struct vlentry_3 *vl3p = (struct vlentry_3 *)addr;
     int toread;
-    char *caddr = (char *)addr;
+    char *caddr = addr;
 
     toread =
 	((version ==
@@ -412,7 +412,7 @@ read_mhentries(afs_uint32 mh_addr, int oldfd)
 	perror("malloc1");
 	exit(1);
     }
-    code = read(oldfd, (char *)base[0], VL_ADDREXTBLK_SIZE);
+    code = read(oldfd, base[0], VL_ADDREXTBLK_SIZE);
     if (code != VL_ADDREXTBLK_SIZE) {
 	perror("read MH block");
 	free(base[0]);
@@ -457,7 +457,7 @@ read_mhentries(afs_uint32 mh_addr, int oldfd)
 	    perror("malloc1");
 	    exit(1);
 	}
-	code = read(oldfd, (char *)base[j], VL_ADDREXTBLK_SIZE);
+	code = read(oldfd, base[j], VL_ADDREXTBLK_SIZE);
 	if (code != VL_ADDREXTBLK_SIZE) {
 	    perror("read MH block");
 	    exit(1);
@@ -535,7 +535,7 @@ convert_mhentries(int oldfd, int newfd, struct vlheader_2 *header,
 		perror("seek MH Block");
 		exit(1);
 	    }
-	    w = write(newfd, (char *)base[0], VL_ADDREXTBLK_SIZE);
+	    w = write(newfd, base[0], VL_ADDREXTBLK_SIZE);
 	    if (w != VL_ADDREXTBLK_SIZE) {
 		perror("write MH Block");
 		exit(1);

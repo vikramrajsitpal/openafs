@@ -72,8 +72,8 @@ vlwrite(struct ubik_trans *trans, afs_int32 offset, void *buffer,
 
 
 /* Package up seek and read into one procedure for ease of use */
-afs_int32
-vlread(struct ubik_trans *trans, afs_int32 offset, char *buffer,
+static afs_int32
+vlread(struct ubik_trans *trans, afs_int32 offset, void *buffer,
        afs_int32 length)
 {
     afs_int32 errorcode;
@@ -91,7 +91,7 @@ vlentrywrite(struct ubik_trans *trans, afs_int32 offset, void *buffer,
 {
     struct vlentry oentry;
     struct nvlentry nentry, *nep;
-    char *bufp;
+    void *bufp;
     afs_int32 i;
 
     if (length != sizeof(oentry))
@@ -111,7 +111,7 @@ vlentrywrite(struct ubik_trans *trans, afs_int32 offset, void *buffer,
 	memcpy(nentry.serverNumber, nep->serverNumber, NMAXNSERVERS);
 	memcpy(nentry.serverPartition, nep->serverPartition, NMAXNSERVERS);
 	memcpy(nentry.serverFlags, nep->serverFlags, NMAXNSERVERS);
-	bufp = (char *)&nentry;
+	bufp = &nentry;
     } else {
 	memset(&oentry, 0, sizeof(struct vlentry));
 	nep = (struct nvlentry *)buffer;
@@ -128,19 +128,19 @@ vlentrywrite(struct ubik_trans *trans, afs_int32 offset, void *buffer,
 	memcpy(oentry.serverNumber, nep->serverNumber, OMAXNSERVERS);
 	memcpy(oentry.serverPartition, nep->serverPartition, OMAXNSERVERS);
 	memcpy(oentry.serverFlags, nep->serverFlags, OMAXNSERVERS);
-	bufp = (char *)&oentry;
+	bufp = &oentry;
     }
     return vlwrite(trans, offset, bufp, length);
 }
 
 /* read entry and convert to host order and write to disk */
 afs_int32
-vlentryread(struct ubik_trans *trans, afs_int32 offset, char *buffer,
+vlentryread(struct ubik_trans *trans, afs_int32 offset, void *buffer,
 	    afs_int32 length)
 {
     struct vlentry *oep, tentry;
     struct nvlentry *nep, *nbufp;
-    char *bufp = (char *)&tentry;
+    void *bufp = &tentry;
     afs_int32 i;
 
     if (length != sizeof(vlentry))
@@ -149,8 +149,8 @@ vlentryread(struct ubik_trans *trans, afs_int32 offset, char *buffer,
     if (i)
 	return i;
     if (maxnservers == 13) {
-	nep = (struct nvlentry *)bufp;
-	nbufp = (struct nvlentry *)buffer;
+	nep = bufp;
+	nbufp = buffer;
 	for (i = 0; i < MAXTYPES; i++)
 	    nbufp->volumeId[i] = ntohl(nep->volumeId[i]);
 	nbufp->flags = ntohl(nep->flags);
@@ -165,8 +165,8 @@ vlentryread(struct ubik_trans *trans, afs_int32 offset, char *buffer,
 	memcpy(nbufp->serverPartition, nep->serverPartition, NMAXNSERVERS);
 	memcpy(nbufp->serverFlags, nep->serverFlags, NMAXNSERVERS);
     } else {
-	oep = (struct vlentry *)bufp;
-	nbufp = (struct nvlentry *)buffer;
+	oep = bufp;
+	nbufp = buffer;
 	memset(nbufp, 0, sizeof(struct nvlentry));
 	for (i = 0; i < MAXTYPES; i++)
 	    nbufp->volumeId[i] = ntohl(oep->volumeId[i]);
@@ -196,7 +196,7 @@ int
 write_vital_vlheader(struct vl_ctx *ctx)
 {
     if (vlwrite
-	(ctx->trans, 0, (char *)&ctx->cheader->vital_header, sizeof(vital_vlheader)))
+	(ctx->trans, 0, &ctx->cheader->vital_header, sizeof(vital_vlheader)))
 	return VL_IO;
     return 0;
 }
@@ -230,7 +230,7 @@ readExtents(struct ubik_trans *trans)
 	if (!rd_ex_addr[0])
 	    ERROR_EXIT(VL_NOMEM);
     }
-    code = vlread(trans, extentAddr, (char *)rd_ex_addr[0], VL_ADDREXTBLK_SIZE);
+    code = vlread(trans, extentAddr, rd_ex_addr[0], VL_ADDREXTBLK_SIZE);
     if (code) {
 	free(rd_ex_addr[0]);	/* Not the place to create it */
 	rd_ex_addr[0] = 0;
@@ -263,7 +263,7 @@ readExtents(struct ubik_trans *trans)
 	}
 	code =
 	    vlread(trans, ntohl(rd_ex_addr[0]->ex_contaddrs[i]),
-		   (char *)rd_ex_addr[i], VL_ADDREXTBLK_SIZE);
+		   rd_ex_addr[i], VL_ADDREXTBLK_SIZE);
 	if (code) {
 	    free(rd_ex_addr[i]);	/* Not the place to create it */
 	    rd_ex_addr[i] = 0;
@@ -314,7 +314,7 @@ UpdateCache(struct ubik_trans *trans, void *rock)
     afs_int32 error = 0, i, code, ubcode;
 
     /* if version changed (or first call), read the header */
-    ubcode = vlread(trans, 0, (char *)&rd_cheader, sizeof(rd_cheader));
+    ubcode = vlread(trans, 0, &rd_cheader, sizeof(rd_cheader));
     vldbversion = ntohl(rd_cheader.vital_header.vldbversion);
 
     if (!ubcode && (vldbversion != 0)) {
@@ -346,7 +346,7 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 		wr_cheader.IpMappedAddr[i] = 0;
 		wr_HostAddress[i] = 0;
 	    }
-	    code = vlwrite(trans, 0, (char *)&wr_cheader, sizeof(wr_cheader));
+	    code = vlwrite(trans, 0, &wr_cheader, sizeof(wr_cheader));
 	    if (code) {
 		VLog(0, ("Can't write VLDB header (error = %d)\n", code));
 		ERROR_EXIT(VL_IO);
@@ -448,7 +448,7 @@ GetExtentBlock(struct vl_ctx *ctx, afs_int32 base)
 	    ERROR_EXIT(VL_IO);
 
 	code =
-	    vlwrite(ctx->trans, blockindex, (char *)ctx->ex_addr[base],
+	    vlwrite(ctx->trans, blockindex, ctx->ex_addr[base],
 		    VL_ADDREXTBLK_SIZE);
 	if (code)
 	    ERROR_EXIT(VL_IO);
@@ -463,7 +463,7 @@ GetExtentBlock(struct vl_ctx *ctx, afs_int32 base)
 	    ctx->cheader->SIT = htonl(blockindex);
 	    code =
 		vlwrite(ctx->trans, DOFFSET(0, ctx->cheader, &ctx->cheader->SIT),
-			(char *)&ctx->cheader->SIT, sizeof(ctx->cheader->SIT));
+			&ctx->cheader->SIT, sizeof(ctx->cheader->SIT));
 	    if (code)
 		ERROR_EXIT(VL_IO);
 	}
@@ -549,8 +549,8 @@ FindExtentBlock(struct vl_ctx *ctx, afsUUID *uuidp,
 		    code =
 			vlwrite(ctx->trans,
 				DOFFSET(ntohl(ctx->ex_addr[0]->ex_contaddrs[base]),
-					(char *)ctx->ex_addr[base], (char *)exp),
-				(char *)&tuuid, sizeof(tuuid));
+					ctx->ex_addr[base], exp),
+				&tuuid, sizeof(tuuid));
 		    if (code)
 			ERROR_EXIT(VL_IO);
 		    ctx->hostaddress[i] =
@@ -569,7 +569,7 @@ FindExtentBlock(struct vl_ctx *ctx, afsUUID *uuidp,
 			vlwrite(ctx->trans,
 				DOFFSET(0, ctx->cheader,
 					&ctx->cheader->IpMappedAddr[i]),
-				(char *)&ctx->cheader->IpMappedAddr[i],
+				&ctx->cheader->IpMappedAddr[i],
 				sizeof(afs_int32));
 		    if (code)
 			ERROR_EXIT(VL_IO);
@@ -594,7 +594,7 @@ AllocBlock(struct vl_ctx *ctx, struct nvlentry *tentry)
     if (ctx->cheader->vital_header.freePtr) {
 	/* allocate this dude */
 	blockindex = ntohl(ctx->cheader->vital_header.freePtr);
-	if (vlentryread(ctx->trans, blockindex, (char *)tentry, sizeof(vlentry)))
+	if (vlentryread(ctx->trans, blockindex, tentry, sizeof(vlentry)))
 	    return 0;
 	ctx->cheader->vital_header.freePtr = htonl(tentry->nextIdHash[0]);
     } else {
@@ -625,7 +625,7 @@ FreeBlock(struct vl_ctx *ctx, afs_int32 blockindex)
     tentry.nextIdHash[0] = ctx->cheader->vital_header.freePtr;	/* already in network order */
     tentry.flags = htonl(VLFREE);
     ctx->cheader->vital_header.freePtr = htonl(blockindex);
-    if (vlwrite(ctx->trans, blockindex, (char *)&tentry, sizeof(nvlentry)))
+    if (vlwrite(ctx->trans, blockindex, &tentry, sizeof(nvlentry)))
 	return VL_IO;
     ctx->cheader->vital_header.frees++;
     if (write_vital_vlheader(ctx))
@@ -654,7 +654,7 @@ FindByID(struct vl_ctx *ctx, afs_uint32 volid, afs_int32 voltype,
 		 blockindex != NULLO;
 		 blockindex = tentry->nextIdHash[typeindex]) {
 		if (vlentryread
-		    (ctx->trans, blockindex, (char *)tentry, sizeof(nvlentry))) {
+		    (ctx->trans, blockindex, tentry, sizeof(nvlentry))) {
 		    *error = VL_IO;
 		    return 0;
 		}
@@ -666,7 +666,7 @@ FindByID(struct vl_ctx *ctx, afs_uint32 volid, afs_int32 voltype,
 	for (blockindex = ntohl(ctx->cheader->VolidHash[voltype][hashindex]);
 	     blockindex != NULLO; blockindex = tentry->nextIdHash[voltype]) {
 	    if (vlentryread
-		(ctx->trans, blockindex, (char *)tentry, sizeof(nvlentry))) {
+		(ctx->trans, blockindex, tentry, sizeof(nvlentry))) {
 		*error = VL_IO;
 		return 0;
 	    }
@@ -720,7 +720,7 @@ FindByName(struct vl_ctx *ctx, char *volname, struct nvlentry *tentry,
     hashindex = NameHash(tname);
     for (blockindex = ntohl(ctx->cheader->VolnameHash[hashindex]);
 	 blockindex != NULLO; blockindex = tentry->nextNameHash) {
-	if (vlentryread(ctx->trans, blockindex, (char *)tentry, sizeof(nvlentry))) {
+	if (vlentryread(ctx->trans, blockindex, tentry, sizeof(nvlentry))) {
 	    *error = VL_IO;
 	    return 0;
 	}
@@ -816,7 +816,7 @@ HashNDump(struct vl_ctx *ctx, int hashindex)
 
     for (blockindex = ntohl(ctx->cheader->VolnameHash[hashindex]);
 	 blockindex != NULLO; blockindex = tentry.nextNameHash) {
-	if (vlentryread(ctx->trans, blockindex, (char *)&tentry, sizeof(nvlentry)))
+	if (vlentryread(ctx->trans, blockindex, &tentry, sizeof(nvlentry)))
 	    return 0;
 	i++;
 	VLog(0,
@@ -836,7 +836,7 @@ HashIdDump(struct vl_ctx *ctx, int hashindex)
 
     for (blockindex = ntohl(ctx->cheader->VolidHash[0][hashindex]);
 	 blockindex != NULLO; blockindex = tentry.nextIdHash[0]) {
-	if (vlentryread(ctx->trans, blockindex, (char *)&tentry, sizeof(nvlentry)))
+	if (vlentryread(ctx->trans, blockindex, &tentry, sizeof(nvlentry)))
 	    return 0;
 	i++;
 	VLog(0,
@@ -883,7 +883,7 @@ ThreadVLentry(struct vl_ctx *ctx, afs_int32 blockindex,
 	return VL_IO;
 
     /* Update hash list pointers in the entry itself */
-    if (vlentrywrite(ctx->trans, blockindex, (char *)tentry, sizeof(nvlentry)))
+    if (vlentrywrite(ctx->trans, blockindex, tentry, sizeof(nvlentry)))
 	return VL_IO;
     return 0;
 }
@@ -954,7 +954,7 @@ HashVolid(struct vl_ctx *ctx, afs_int32 voltype, afs_int32 blockindex,
     ctx->cheader->VolidHash[voltype][hashindex] = htonl(blockindex);
     if (vlwrite
 	(ctx->trans, DOFFSET(0, ctx->cheader, &ctx->cheader->VolidHash[voltype][hashindex]),
-	 (char *)&ctx->cheader->VolidHash[voltype][hashindex], sizeof(afs_int32)))
+	 &ctx->cheader->VolidHash[voltype][hashindex], sizeof(afs_int32)))
 	return VL_IO;
     return 0;
 }
@@ -983,7 +983,7 @@ UnhashVolid(struct vl_ctx *ctx, afs_int32 voltype, afs_int32 blockindex,
 	    vlwrite(ctx->trans,
 		    DOFFSET(0, ctx->cheader,
 			    &ctx->cheader->VolidHash[voltype][hashindex]),
-		    (char *)&ctx->cheader->VolidHash[voltype][hashindex],
+		    &ctx->cheader->VolidHash[voltype][hashindex],
 		    sizeof(afs_int32));
 	if (code)
 	    return VL_IO;
@@ -991,7 +991,7 @@ UnhashVolid(struct vl_ctx *ctx, afs_int32 voltype, afs_int32 blockindex,
 	while (nextblockindex != blockindex) {
 	    prevblockindex = nextblockindex;	/* always done once */
 	    if (vlentryread
-		(ctx->trans, nextblockindex, (char *)&tentry, sizeof(nvlentry)))
+		(ctx->trans, nextblockindex, &tentry, sizeof(nvlentry)))
 		return VL_IO;
 	    if ((nextblockindex = tentry.nextIdHash[voltype]) == NULLO)
 		return VL_NOENT;
@@ -1001,7 +1001,7 @@ UnhashVolid(struct vl_ctx *ctx, afs_int32 voltype, afs_int32 blockindex,
 	if (vlwrite
 	    (ctx->trans,
 	     DOFFSET(prevblockindex, &tentry, &tentry.nextIdHash[voltype]),
-	     (char *)&temp, sizeof(afs_int32)))
+	     &temp, sizeof(afs_int32)))
 	    return VL_IO;
     }
     aentry->nextIdHash[voltype] = 0;
@@ -1022,7 +1022,7 @@ HashVolname(struct vl_ctx *ctx, afs_int32 blockindex,
     ctx->cheader->VolnameHash[hashindex] = htonl(blockindex);
     code =
 	vlwrite(ctx->trans, DOFFSET(0, ctx->cheader, &ctx->cheader->VolnameHash[hashindex]),
-		(char *)&ctx->cheader->VolnameHash[hashindex], sizeof(afs_int32));
+		&ctx->cheader->VolnameHash[hashindex], sizeof(afs_int32));
     if (code)
 	return VL_IO;
     return 0;
@@ -1045,13 +1045,13 @@ UnhashVolname(struct vl_ctx *ctx, afs_int32 blockindex,
 	ctx->cheader->VolnameHash[hashindex] = htonl(aentry->nextNameHash);
 	if (vlwrite
 	    (ctx->trans, DOFFSET(0, ctx->cheader, &ctx->cheader->VolnameHash[hashindex]),
-	     (char *)&ctx->cheader->VolnameHash[hashindex], sizeof(afs_int32)))
+	     &ctx->cheader->VolnameHash[hashindex], sizeof(afs_int32)))
 	    return VL_IO;
     } else {
 	while (nextblockindex != blockindex) {
 	    prevblockindex = nextblockindex;	/* always done at least once */
 	    if (vlentryread
-		(ctx->trans, nextblockindex, (char *)&tentry, sizeof(nvlentry)))
+		(ctx->trans, nextblockindex, &tentry, sizeof(nvlentry)))
 		return VL_IO;
 	    if ((nextblockindex = tentry.nextNameHash) == NULLO)
 		return VL_NOENT;
@@ -1060,7 +1060,7 @@ UnhashVolname(struct vl_ctx *ctx, afs_int32 blockindex,
 	temp = htonl(tentry.nextNameHash);
 	if (vlwrite
 	    (ctx->trans, DOFFSET(prevblockindex, &tentry, &tentry.nextNameHash),
-	     (char *)&temp, sizeof(afs_int32)))
+	     &temp, sizeof(afs_int32)))
 	    return VL_IO;
     }
     aentry->nextNameHash = 0;
@@ -1091,7 +1091,7 @@ NextEntry(struct vl_ctx *ctx, afs_int32 blockindex,
     /* now search for the first entry that isn't free */
     for (lastblockindex = ntohl(ctx->cheader->vital_header.eofPtr);
 	 blockindex < lastblockindex;) {
-	if (vlentryread(ctx->trans, blockindex, (char *)tentry, sizeof(nvlentry))) {
+	if (vlentryread(ctx->trans, blockindex, tentry, sizeof(nvlentry))) {
 	    *remaining = -1;
 	    return 0;
 	}

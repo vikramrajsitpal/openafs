@@ -524,7 +524,7 @@ static int
 GetEntryByID(struct rx_call *rxcall,
 	     afs_uint32 volid,
 	     afs_int32 voltype,
-	     char *aentry,	/* entry data copied here */
+	     void *aentry,	/* entry data copied here */
 	     afs_int32 new,
 	     afs_int32 this_op)
 {
@@ -556,11 +556,11 @@ GetEntryByID(struct rx_call *rxcall,
     }
     /* Convert from the internal to external form */
     if (new == 1)
-	code = vlentry_to_nvldbentry(&ctx, &tentry, (struct nvldbentry *)aentry);
+	code = vlentry_to_nvldbentry(&ctx, &tentry, aentry);
     else if (new == 2)
-	code = vlentry_to_uvldbentry(&ctx, &tentry, (struct uvldbentry *)aentry);
+	code = vlentry_to_uvldbentry(&ctx, &tentry, aentry);
     else
-	code = vlentry_to_vldbentry(&ctx, &tentry, (struct vldbentry *)aentry);
+	code = vlentry_to_vldbentry(&ctx, &tentry, aentry);
 
     if (code)
 	goto abort;
@@ -584,7 +584,7 @@ SVL_GetEntryByID(struct rx_call *rxcall,
 		 afs_int32 voltype,
 		 vldbentry *aentry)		/* entry data copied here */
 {
-    return (GetEntryByID(rxcall, volid, voltype, (char *)aentry, 0,
+    return (GetEntryByID(rxcall, volid, voltype, aentry, 0,
 			 VLGETENTRYBYID));
 }
 
@@ -594,7 +594,7 @@ SVL_GetEntryByIDN(struct rx_call *rxcall,
 		  afs_int32 voltype,
 		  nvldbentry *aentry)	/* entry data copied here */
 {
-    return (GetEntryByID(rxcall, volid, voltype, (char *)aentry, 1,
+    return (GetEntryByID(rxcall, volid, voltype, aentry, 1,
 			 VLGETENTRYBYIDN));
 }
 
@@ -604,7 +604,7 @@ SVL_GetEntryByIDU(struct rx_call *rxcall,
 		  afs_int32 voltype,
 		  uvldbentry *aentry)	/* entry data copied here */
 {
-    return (GetEntryByID(rxcall, volid, voltype, (char *)aentry, 2,
+    return (GetEntryByID(rxcall, volid, voltype, aentry, 2,
 			 VLGETENTRYBYIDU));
 }
 
@@ -626,7 +626,7 @@ NameIsId(char *aname)
 static afs_int32
 GetEntryByName(struct rx_call *rxcall,
 	       char *volname,
-	       char *aentry,		/* entry data copied here */
+	       void *aentry,		/* entry data copied here */
 	       int new,
 	       int this_op)
 {
@@ -660,11 +660,11 @@ GetEntryByName(struct rx_call *rxcall,
     }
     /* Convert to external entry representation */
     if (new == 1)
-	code = vlentry_to_nvldbentry(&ctx, &tentry, (struct nvldbentry *)aentry);
+	code = vlentry_to_nvldbentry(&ctx, &tentry, aentry);
     else if (new == 2)
-	code = vlentry_to_uvldbentry(&ctx, &tentry, (struct uvldbentry *)aentry);
+	code = vlentry_to_uvldbentry(&ctx, &tentry, aentry);
     else
-	code = vlentry_to_vldbentry(&ctx, &tentry, (struct vldbentry *)aentry);
+	code = vlentry_to_vldbentry(&ctx, &tentry, aentry);
 
     if (code)
 	goto abort;
@@ -688,7 +688,7 @@ SVL_GetEntryByNameO(struct rx_call *rxcall,
 		    char *volname,
 		    struct vldbentry *aentry)	/* entry data copied here */
 {
-    return (GetEntryByName(rxcall, volname, (char *)aentry, 0,
+    return (GetEntryByName(rxcall, volname, aentry, 0,
 			   VLGETENTRYBYNAME));
 }
 
@@ -697,7 +697,7 @@ SVL_GetEntryByNameN(struct rx_call *rxcall,
 		    char *volname,
 		    struct nvldbentry *aentry)	/* entry data copied here */
 {
-    return (GetEntryByName(rxcall, volname, (char *)aentry, 1,
+    return (GetEntryByName(rxcall, volname, aentry, 1,
 			   VLGETENTRYBYNAMEN));
 }
 
@@ -706,7 +706,7 @@ SVL_GetEntryByNameU(struct rx_call *rxcall,
 		    char *volname,
 		    struct uvldbentry *aentry)	/* entry data copied here */
 {
-    return (GetEntryByName(rxcall, volname, (char *)aentry, 2,
+    return (GetEntryByName(rxcall, volname, aentry, 2,
 			   VLGETENTRYBYNAMEU));
 }
 
@@ -1770,7 +1770,7 @@ ListAttributesN2(struct rx_call *rxcall,
 	    }
 	    need_regfree = 1;
 #else
-	    t = (char *)re_comp(volumename);
+	    t = re_comp(volumename);
 	    if (t) {
 		code = VL_BADNAME;
 		goto done;
@@ -2317,9 +2317,9 @@ GetStats(struct rx_call *rxcall,
     if ((code = Init_VLdbase(&ctx, LOCKREAD, this_op)))
 	return code;
     VLog(5, ("GetStats %s\n", rxinfo(rxstr, rxcall)));
-    memcpy((char *)vital_header, (char *)&ctx.cheader->vital_header,
+    memcpy(vital_header, &ctx.cheader->vital_header,
 	   sizeof(vital_vlheader));
-    memcpy((char *)stats, (char *)&dynamic_statistics, sizeof(vldstats));
+    memcpy(stats, &dynamic_statistics, sizeof(vldstats));
     return ubik_EndTrans(ctx.trans);
 }
 
@@ -2692,7 +2692,7 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
     if (vlwrite
 	(ctx.trans,
 	 DOFFSET(ntohl(ctx.ex_addr[0]->ex_contaddrs[base]),
-		 (char *)ctx.ex_addr[base], (char *)exp), (char *)exp,
+		 ctx.ex_addr[base], exp), exp,
 	 sizeof(*exp))) {
 	code = VL_IO;
 	goto abort;
@@ -2743,8 +2743,8 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
 	tex->ex_uniquifier = htonl(ntohl(tex->ex_uniquifier) + 1);
 	doff =
 	    DOFFSET(ntohl(ctx.ex_addr[0]->ex_contaddrs[base]),
-		    (char *)ctx.ex_addr[base], (char *)tex);
-	if (vlwrite(ctx.trans, doff, (char *)tex, sizeof(*tex))) {
+		    ctx.ex_addr[base], tex);
+	if (vlwrite(ctx.trans, doff, tex, sizeof(*tex))) {
 	    code = VL_IO;
 	    goto abort;
 	}
@@ -3545,7 +3545,7 @@ IpAddrToRelAddr(struct vl_ctx *ctx, afs_uint32 ipaddr, int create)
 		code =
 		    vlwrite(ctx->trans,
 			    DOFFSET(0, ctx->cheader, &ctx->cheader->IpMappedAddr[i]),
-			    (char *)&ctx->cheader->IpMappedAddr[i],
+			    &ctx->cheader->IpMappedAddr[i],
 			    sizeof(afs_int32));
 		ctx->hostaddress[i] = ipaddr;
 		if (code)
@@ -3702,8 +3702,8 @@ ChangeIPAddr(struct vl_ctx *ctx, afs_uint32 ipaddr1, afs_uint32 ipaddr2)
 	code =
 	    vlwrite(ctx->trans,
 		    DOFFSET(ntohl(ctx->ex_addr[0]->ex_contaddrs[base]),
-			    (char *)ctx->ex_addr[base], (char *)exp),
-		    (char *)&tuuid, sizeof(tuuid));
+			    ctx->ex_addr[base], exp),
+		    &tuuid, sizeof(tuuid));
 	if (code)
 	    return VL_IO;
     }
@@ -3712,7 +3712,6 @@ ChangeIPAddr(struct vl_ctx *ctx, afs_uint32 ipaddr1, afs_uint32 ipaddr2)
     ctx->cheader->IpMappedAddr[ipaddr1_id] = htonl(ipaddr2);
     code =
 	vlwrite(ctx->trans, DOFFSET(0, ctx->cheader, &ctx->cheader->IpMappedAddr[ipaddr1_id]),
-		(char *)
 		&ctx->cheader->IpMappedAddr[ipaddr1_id], sizeof(afs_int32));
     ctx->hostaddress[ipaddr1_id] = ipaddr2;
     if (code)
