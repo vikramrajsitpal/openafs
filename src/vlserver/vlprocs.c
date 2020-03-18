@@ -877,7 +877,7 @@ ReplaceEntry(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype,
 
     if (releasetype)
 	ReleaseEntry(&tentry, releasetype);	/* Unlock entry if necessary */
-    if (vlentrywrite(ctx.trans, blockindex, &tentry, sizeof(tentry))) {
+    if (vlentrywrite(ctx.trans, blockindex, &tentry)) {
 	ABORT(VL_IO);
     }
 
@@ -986,7 +986,7 @@ ReplaceEntryN(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype,
 
     if (releasetype)
 	ReleaseEntry(&tentry, releasetype);	/* Unlock entry if necessary */
-    if (vlentrywrite(ctx.trans, blockindex, &tentry, sizeof(tentry))) {
+    if (vlentrywrite(ctx.trans, blockindex, &tentry)) {
 	ABORT(VL_IO);
     }
 
@@ -1053,7 +1053,7 @@ UpdateEntry(struct rx_call *rxcall,
     }
     if (releasetype)
 	ReleaseEntry(&tentry, releasetype);	/* Unlock entry if necessary */
-    if (vlentrywrite(ctx.trans, blockindex, &tentry, sizeof(tentry))) {
+    if (vlentrywrite(ctx.trans, blockindex, &tentry)) {
 	ABORT(VL_IO);
     }
     return ubik_EndTrans(ctx.trans);
@@ -1111,7 +1111,7 @@ UpdateEntryByName(struct rx_call *rxcall,
     }
     if (releasetype)
 	ReleaseEntry(&tentry, releasetype);	/* Unlock entry if necessary */
-    if (vlentrywrite(ctx.trans, blockindex, &tentry, sizeof(tentry))) {
+    if (vlentrywrite(ctx.trans, blockindex, &tentry)) {
 	ABORT(VL_IO);
     }
     return ubik_EndTrans(ctx.trans);
@@ -1185,7 +1185,7 @@ SetLock(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype,
     tentry.flags &= ~VLOP_ALLOPERS;	/* Clear any possible older operation bit */
     tentry.flags |= voloper;
 
-    if (vlentrywrite(ctx.trans, blockindex, &tentry, sizeof(tentry))) {
+    if (vlentrywrite(ctx.trans, blockindex, &tentry)) {
 	ABORT(VL_IO);
     }
     return ubik_EndTrans(ctx.trans);
@@ -1243,7 +1243,7 @@ ReleaseLock(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype,
     }
     if (releasetype)
 	ReleaseEntry(&tentry, releasetype);	/* Unlock the appropriate fields */
-    if (vlentrywrite(ctx.trans, blockindex, &tentry, sizeof(tentry))) {
+    if (vlentrywrite(ctx.trans, blockindex, &tentry)) {
 	ABORT(VL_IO);
     }
     return ubik_EndTrans(ctx.trans);

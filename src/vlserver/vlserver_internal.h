@@ -27,7 +27,7 @@ extern int Init_VLdbase(struct vl_ctx *ctx, int locktype, int this_op);
 extern afs_int32 vlwrite(struct ubik_trans *trans, afs_int32 offset,
 		         void *buffer, afs_int32 length);
 extern afs_int32 vlentrywrite(struct ubik_trans *trans, afs_int32 offset,
-			      void *buffer, afs_int32 length);
+			      struct nvlentry *nep);
 extern int write_vital_vlheader(struct vl_ctx *ctx);
 extern afs_int32 readExtents(struct ubik_trans *trans);
 extern afs_int32 CheckInit(struct ubik_trans *trans, int builddb);
