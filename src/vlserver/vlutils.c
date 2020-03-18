@@ -80,6 +80,31 @@ vlread(struct ubik_trans *trans, afs_int32 offset, void *buffer,
     return (ubik_Read(trans, buffer, length));
 }
 
+static void
+nvlentry_htonl(struct nvlentry *src, struct nvlentry *dest)
+{
+    afs_int32 i;
+    for (i = 0; i < MAXTYPES; i++)
+	dest->volumeId[i] = htonl(src->volumeId[i]);
+    dest->flags = htonl(src->flags);
+    dest->LockAfsId = htonl(src->LockAfsId);
+    dest->LockTimestamp = htonl(src->LockTimestamp);
+    dest->cloneId = htonl(src->cloneId);
+    for (i = 0; i < MAXTYPES; i++)
+	dest->nextIdHash[i] = htonl(src->nextIdHash[i]);
+    dest->nextNameHash = htonl(src->nextNameHash);
+    memcpy(dest->name, src->name, VL_MAXNAMELEN);
+    memcpy(dest->serverNumber, src->serverNumber, NMAXNSERVERS);
+    memcpy(dest->serverPartition, src->serverPartition, NMAXNSERVERS);
+    memcpy(dest->serverFlags, src->serverFlags, NMAXNSERVERS);
+}
+
+static void
+nvlentry_ntohl(struct nvlentry *src, struct nvlentry *dest)
+{
+    /* ntohl() and htonl() are the same, so just call htonl() to do this. */
+    nvlentry_htonl(src, dest);
+}
 
 /* take entry and convert to network order and write to disk */
 afs_int32
@@ -94,19 +119,7 @@ vlentrywrite(struct vl_ctx *ctx, afs_int32 offset, struct nvlentry *nep)
     opr_StaticAssert(sizeof(oentry) == sizeof(nentry));
 
     if (cache->maxnservers == 13) {
-	for (i = 0; i < MAXTYPES; i++)
-	    nentry.volumeId[i] = htonl(nep->volumeId[i]);
-	nentry.flags = htonl(nep->flags);
-	nentry.LockAfsId = htonl(nep->LockAfsId);
-	nentry.LockTimestamp = htonl(nep->LockTimestamp);
-	nentry.cloneId = htonl(nep->cloneId);
-	for (i = 0; i < MAXTYPES; i++)
-	    nentry.nextIdHash[i] = htonl(nep->nextIdHash[i]);
-	nentry.nextNameHash = htonl(nep->nextNameHash);
-	memcpy(nentry.name, nep->name, VL_MAXNAMELEN);
-	memcpy(nentry.serverNumber, nep->serverNumber, NMAXNSERVERS);
-	memcpy(nentry.serverPartition, nep->serverPartition, NMAXNSERVERS);
-	memcpy(nentry.serverFlags, nep->serverFlags, NMAXNSERVERS);
+	nvlentry_htonl(nep, &nentry);
 	bufp = &nentry;
     } else {
 	memset(&oentry, 0, sizeof(struct vlentry));
@@ -145,19 +158,7 @@ vlentryread(struct vl_ctx *ctx, afs_int32 offset, struct nvlentry *nbufp)
 	return i;
     if (cache->maxnservers == 13) {
 	nep = bufp;
-	for (i = 0; i < MAXTYPES; i++)
-	    nbufp->volumeId[i] = ntohl(nep->volumeId[i]);
-	nbufp->flags = ntohl(nep->flags);
-	nbufp->LockAfsId = ntohl(nep->LockAfsId);
-	nbufp->LockTimestamp = ntohl(nep->LockTimestamp);
-	nbufp->cloneId = ntohl(nep->cloneId);
-	for (i = 0; i < MAXTYPES; i++)
-	    nbufp->nextIdHash[i] = ntohl(nep->nextIdHash[i]);
-	nbufp->nextNameHash = ntohl(nep->nextNameHash);
-	memcpy(nbufp->name, nep->name, VL_MAXNAMELEN);
-	memcpy(nbufp->serverNumber, nep->serverNumber, NMAXNSERVERS);
-	memcpy(nbufp->serverPartition, nep->serverPartition, NMAXNSERVERS);
-	memcpy(nbufp->serverFlags, nep->serverFlags, NMAXNSERVERS);
+	nvlentry_ntohl(nep, nbufp);
     } else {
 	oep = bufp;
 	memset(nbufp, 0, sizeof(struct nvlentry));
