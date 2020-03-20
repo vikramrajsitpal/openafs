@@ -630,7 +630,7 @@ udisk_begin(struct ubik_dbase *adbase, int atype, struct ubik_trans **atrans)
 
     *atrans = NULL;
     if (atype == UBIK_WRITETRANS) {
-	if (adbase->dbFlags & DBWRITING)
+	if (adbase->dbFlags & (DBWRITING | DBRECEIVING | DBSENDING))
 	    return USYNC;
 	code = udisk_LogOpcode(adbase, LOGNEW, 0);
 	if (code)
@@ -647,7 +647,7 @@ udisk_begin(struct ubik_dbase *adbase, int atype, struct ubik_trans **atrans)
 	UBIK_VERSION_LOCK;
 	version_globals.db_writing = 1;
 	UBIK_VERSION_UNLOCK;
-	adbase->dbFlags |= DBWRITING;
+	ubik_set_db_flags(adbase, DBWRITING);
     }
     *atrans = tt;
     return 0;
@@ -801,7 +801,7 @@ udisk_end(struct ubik_trans *atrans)
 	UBIK_VERSION_LOCK;
 	version_globals.db_writing = 0;
 	UBIK_VERSION_UNLOCK;
-	dbase->dbFlags &= ~DBWRITING;
+	ubik_clear_db_flags(dbase, DBWRITING);
     } else {
 	dbase->readers--;
     }

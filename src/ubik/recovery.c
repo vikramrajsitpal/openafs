@@ -582,6 +582,18 @@ urecovery_Interact(void *dummy)
 	} else {
 	    /* we don't have the best version; we should fetch it. */
 	    int newdb_visible;
+
+	    /* wait until we're not sending the database to someone. since every
+	     * transaction will be aborted (via urecovery_AbortAll below), we do
+	     * not have to wait for DBWRITING to go away. */
+	    if (ubik_wait_db_flags(ubik_dbase, DBSENDING)) {
+		ViceLog(0, ("Ubik: Unexpected database flags before DISK_GetFile "
+			   "(flags: 0x%x)\n", ubik_dbase->dbFlags));
+		DBRELE(ubik_dbase);
+		continue;
+	    }
+	    ubik_set_db_flags(ubik_dbase, DBRECEIVING);
+
 	    urecovery_AbortAll(ubik_dbase);
 
 	    pbuffer[0] = '\0';
@@ -598,6 +610,16 @@ urecovery_Interact(void *dummy)
 			"from server %s begin\n",
 		       afs_inet_ntoa_r(bestServer->addr[0], hoststr)));
 	    UBIK_ADDR_UNLOCK;
+
+	    /* at this point, we know that we do not have any active read or
+	     * write transactions (they were aborted). we also know that we are
+	     * not sending or receiving a database. we drop DBHOLD here, so new
+	     * read transactions can come in while the database is being
+	     * transferred. that might seem a bit odd because we just aborted
+	     * any existing read transactions; in the future we could probably
+	     * avoid aborting read transactions (and just abort writes), but for
+	     * now we just abort everything. */
+	    DBRELE(ubik_dbase);
 
 	    code = StartDISK_GetFile(rxcall, file);
 	    if (code) {
@@ -656,6 +678,18 @@ urecovery_Interact(void *dummy)
 	    code = EndDISK_GetFile(rxcall, &tversion);
 	  FetchEndCall:
 	    code = rx_EndCall(rxcall, code);
+	    DBHOLD(ubik_dbase);
+	    ubik_clear_db_flags(ubik_dbase, DBRECEIVING);
+	    if (!code) {
+		/* at this point, it is guaranteed that we do not have a write
+		 * transaction, but new read transactions may have started while
+		 * the DBHOLD lock was dropped. we are about to install the new
+		 * database we just received, so make sure to abort any read
+		 * transactions, so those read transactions don't see new db
+		 * data suddenly appear. */
+		urecovery_AbortAll(ubik_dbase);
+	    }
+
 	    UBIK_VERSION_LOCK;
 	    if (!code) {
 		snprintf(tbuffer, sizeof(tbuffer), "%s.DB%s%d",
@@ -762,25 +796,13 @@ urecovery_Interact(void *dummy)
 	     * the write-lock above if there is a write transaction in progress,
 	     * but then, it won't hurt to check, will it?
 	     */
-	    if (ubik_dbase->dbFlags & DBWRITING) {
-		struct timeval tv;
-		int safety = 0;
-		long cur_usec = 50000;
-		while ((ubik_dbase->dbFlags & DBWRITING) && (safety < 500)) {
-		    DBRELE(ubik_dbase);
-		    /* sleep for a little while */
-		    tv.tv_sec = 0;
-		    tv.tv_usec = cur_usec;
-#ifdef AFS_PTHREAD_ENV
-		    select(0, 0, 0, 0, &tv);
-#else
-		    IOMGR_Select(0, 0, 0, 0, &tv);
-#endif
-		    cur_usec += 10000;
-		    safety++;
-		    DBHOLD(ubik_dbase);
-		}
+	    if (ubik_wait_db_flags(ubik_dbase, DBWRITING | DBSENDING)) {
+		ViceLog(0, ("Ubik: Unexpected database flags before DISK_SendFile "
+			   "(flags: 0x%x)\n", ubik_dbase->dbFlags));
+		DBRELE(ubik_dbase);
+		continue;
 	    }
+	    ubik_set_db_flags(ubik_dbase, DBSENDING);
 
 	    for (ts = ubik_servers; ts; ts = ts->next) {
 		UBIK_ADDR_LOCK;
@@ -835,7 +857,15 @@ urecovery_Interact(void *dummy)
 				ViceLog(0, ("Local disk read error=%d\n", code));
 				goto StoreEndCall;
 			    }
+
+			    /* at this point, we know that we do not have a
+			     * write transaction, and we also know that we are
+			     * not sending or receiving the database. so, we can
+			     * drop DBHOLD here to allow read transactions. */
+			    DBRELE(ubik_dbase);
 			    nbytes = rx_Write(rxcall, tbuffer, tlen);
+			    DBHOLD(ubik_dbase);
+
 			    if (nbytes != tlen) {
 				code = BULK_ERROR;
 				ViceLog(0, ("Rx-write bulk error=%d\n", code));
@@ -871,6 +901,7 @@ urecovery_Interact(void *dummy)
 		    ts->currentDB = 1;
 		}
 	    }
+	    ubik_clear_db_flags(ubik_dbase, DBSENDING);
 	    if (dbok)
 		urecovery_state |= UBIK_RECSENTDB;
 	}
@@ -956,4 +987,91 @@ DoProbe(struct ubik_server *server)
 	return 0;		/* success */
     else
 	return 1;		/* failure */
+}
+
+/**
+ * Add new flag(s) to the database.
+ *
+ * @param[in]  dbase  database
+ * @param[in]  flags  new flag(s)
+ *
+ * @pre        DBHOLD
+ */
+void
+ubik_set_db_flags(struct ubik_dbase *dbase, int flags)
+{
+    osi_Assert((dbase->dbFlags & flags) == 0);
+    dbase->dbFlags |= flags;
+#ifdef AFS_PTHREAD_ENV
+    opr_cv_broadcast(&dbase->flags_cond);
+#else
+    LWP_NoYieldSignal(&dbase->dbFlags);
+#endif
+}
+
+/**
+ * Clear flag(s) from the database.
+ *
+ * @param[in]  dbase  database
+ * @param[in]  flags  flag(s) to be cleared
+ *
+ * @pre        DBHOLD
+ */
+void
+ubik_clear_db_flags(struct ubik_dbase *dbase, int flags)
+{
+    osi_Assert((dbase->dbFlags & flags) == flags);
+    dbase->dbFlags &= ~flags;
+#ifdef AFS_PTHREAD_ENV
+    opr_cv_broadcast(&dbase->flags_cond);
+#else
+    LWP_NoYieldSignal(&dbase->dbFlags);
+#endif
+}
+
+/**
+ * Wait until flag(s) are cleared.
+ *
+ * Note that if DBSENDING is set, and it's not specified in wait_flags, then we
+ * bail out with an error. The same goes for DBRECEIVING.
+ *
+ * @param[in]  dbase      database
+ * @param[in]  wait_flags flag(s) we will wait for
+ *
+ * @pre        DBHOLD
+ *
+ * @return status
+ *   @retval  0  expected flag(s) cleared
+ *   @retval -1  unexpected flag(s) found
+ */
+int
+ubik_wait_db_flags(struct ubik_dbase *dbase, int wait_flags)
+{
+    /* For DBSENDING/DBRECEIVING, we cannot return success while those flags
+     * are set. Either the caller wants to wait for those flags to go away (by
+     * specifying them in wait_flags), or it is an error if they are specified
+     * while we are waiting. */
+    int bail_flags = DBSENDING | DBRECEIVING;
+    bail_flags &= ~wait_flags;
+
+    if (bail_flags && (dbase->dbFlags & bail_flags)) {
+	return -1;
+    }
+    while ((dbase->dbFlags & wait_flags)) {
+	if (bail_flags && (dbase->dbFlags & bail_flags)) {
+	    return -1;
+	}
+	ViceLog(125, ("ubik: waiting for the following database flags to go "
+		    "away: 0x%x\n", dbase->dbFlags));
+#ifdef AFS_PTHREAD_ENV
+	opr_cv_wait(&dbase->flags_cond, &dbase->versionLock);
+#else
+	DBRELE(dbase);
+	LWP_WaitProcess(&dbase->dbFlags);
+	DBHOLD(dbase);
+#endif
+	ViceLog(125, ("ubik: database flags changed; current flags: 0x%x\n",
+		    dbase->dbFlags));
+    }
+    return 0;
 }

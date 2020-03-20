@@ -99,6 +99,8 @@ struct ubik_trans {
 
 /*! \name ubik_dbase flags */
 #define	DBWRITING	    1	/*!< are any write trans. in progress */
+#define DBSENDING           2   /*!< sending db to someone */
+#define DBRECEIVING         4   /*!< receiving db from someone */
 /*\}*/
 
 /*!\name ubik trans flags */
@@ -327,6 +329,10 @@ extern int urecovery_CheckTid(struct ubik_tid *atid, int abortalways);
 extern int urecovery_Initialize(struct ubik_dbase *adbase);
 extern void *urecovery_Interact(void *);
 extern int DoProbe(struct ubik_server *server);
+
+extern void ubik_set_db_flags(struct ubik_dbase *dbase, int flags);
+extern void ubik_clear_db_flags(struct ubik_dbase *dbase, int flags);
+extern int ubik_wait_db_flags(struct ubik_dbase *dbase, int flags);
 /*\}*/
 
 /*! \name ubik.c */
