@@ -581,9 +581,12 @@ urecovery_Interact(void *dummy)
 	    urecovery_state |= UBIK_RECHAVEDB;
 	} else {
 	    /* we don't have the best version; we should fetch it. */
+	    int newdb_visible;
 	    urecovery_AbortAll(ubik_dbase);
 
 	    pbuffer[0] = '\0';
+	    newdb_visible = 0;
+	    memset(&tversion, 0, sizeof(tversion));
 
 	    /* Rx code to do the Bulk fetch */
 	    file = 0;
@@ -609,15 +612,6 @@ urecovery_Interact(void *dummy)
 		goto FetchEndCall;
 	    }
 
-	    /* give invalid label during file transit */
-	    UBIK_VERSION_LOCK;
-	    tversion.epoch = 0;
-	    code = (*ubik_dbase->setlabel) (ubik_dbase, file, &tversion);
-	    UBIK_VERSION_UNLOCK;
-	    if (code) {
-		ViceLog(0, ("setlabel io error=%d\n", code));
-		goto FetchEndCall;
-	    }
 	    snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP",
 		     ubik_dbase->pathName, (file<0)?"SYS":"",
 		     (file<0)?-file:file);
@@ -662,12 +656,8 @@ urecovery_Interact(void *dummy)
 	    code = EndDISK_GetFile(rxcall, &tversion);
 	  FetchEndCall:
 	    code = rx_EndCall(rxcall, code);
+	    UBIK_VERSION_LOCK;
 	    if (!code) {
-		/* we got a new file, set up its header */
-		urecovery_state |= UBIK_RECHAVEDB;
-		UBIK_VERSION_LOCK;
-		memcpy(&ubik_dbase->version, &tversion,
-		       sizeof(struct ubik_version));
 		snprintf(tbuffer, sizeof(tbuffer), "%s.DB%s%d",
 			 ubik_dbase->pathName, (file<0)?"SYS":"",
 			 (file<0)?-file:file);
@@ -685,13 +675,11 @@ urecovery_Interact(void *dummy)
 		if (!code)
 		    code = rename(pbuffer, tbuffer);
 		if (!code) {
+		    newdb_visible = 1;
 		    (*ubik_dbase->open) (ubik_dbase, file);
 		    /* after data is good, sync disk with correct label */
-		    code =
-			(*ubik_dbase->setlabel) (ubik_dbase, 0,
-						 &ubik_dbase->version);
+		    code = (*ubik_dbase->setlabel) (ubik_dbase, 0, &tversion);
 		}
-		UBIK_VERSION_UNLOCK;
 #ifdef AFS_NT40_ENV
 		snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD",
 			 ubik_dbase->pathName, (file<0)?"SYS":"",
@@ -703,18 +691,26 @@ urecovery_Interact(void *dummy)
 		if (pbuffer[0] != '\0') {
 		    unlink(pbuffer);
 		}
-		/*
-		 * We will effectively invalidate the old data forever now.
-		 * Unclear if we *should* but we do.
-		 */
-		UBIK_VERSION_LOCK;
-		ubik_dbase->version.epoch = 0;
-		ubik_dbase->version.counter = 0;
-		UBIK_VERSION_UNLOCK;
 		ViceLog(0,
 		    ("Ubik: Synchronize database: receive (via GetFile) "
-		    "from server %s failed (error = %d)\n",
-		    afs_inet_ntoa_r(bestServer->addr[0], hoststr), code));
+		    "from server %s failed (error = %d, newdb_visible = %d)\n",
+		    afs_inet_ntoa_r(bestServer->addr[0], hoststr), code,
+		    newdb_visible));
+
+		if (newdb_visible) {
+		    memset(&ubik_dbase->version, 0, sizeof(ubik_dbase->version));
+		    if ((*ubik_dbase->setlabel) (ubik_dbase, file,
+			&ubik_dbase->version)) {
+			ViceLog(0, ("Ubik: Synchronize database: Failed to "
+				    "invalidate database on disk. This is "
+				    "unusual, but should not cause problems, "
+				    "since the database should already be "
+				    "flagged as invalid.\n"));
+		    } else {
+			ViceLog(0, ("Ubik: Synchronize database: successfully "
+				    "invalidated database.\n"));
+		    }
+		}
 	    } else {
 		ViceLog(0,
 		    ("Ubik: Synchronize database: receive (via GetFile) "
@@ -723,8 +719,11 @@ urecovery_Interact(void *dummy)
 		    ubik_dbase->version.epoch, ubik_dbase->version.counter));
 
 		urecovery_state |= UBIK_RECHAVEDB;
+		memcpy(&ubik_dbase->version, &tversion, sizeof(struct ubik_version));
 	    }
-	    udisk_Invalidate(ubik_dbase, 0);	/* data has changed */
+	    UBIK_VERSION_UNLOCK;
+	    if (newdb_visible)
+		udisk_Invalidate(ubik_dbase, 0);	/* data has changed */
 	}
 	if (!(urecovery_state & UBIK_RECHAVEDB)) {
 	    DBRELE(ubik_dbase);
