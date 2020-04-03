@@ -1,0 +1,6 @@
+libraries/liblmdb/LICENSE   LICENSE
+libraries/liblmdb/COPYRIGHT COPYRIGHT
+libraries/liblmdb/lmdb.h    lmdb.h
+libraries/liblmdb/mdb.c	    mdb.c
+libraries/liblmdb/midl.c    midl.c
+libraries/liblmdb/midl.h    midl.h
