@@ -34,7 +34,6 @@ extern int restrictedQueryLevel;
 extern int extent_mod;
 extern struct afsconf_dir *vldb_confdir;
 extern struct ubik_dbase *VL_dbase;
-int maxnservers;
 #define ABORT(c) do { \
     code = (c); \
     goto abort; \
@@ -108,8 +107,9 @@ multiHomedExtentBase(struct vl_ctx *ctx, int srvidx, struct extentaddr **exp,
 {
     int base;
     int index;
-    afs_uint32 *hostaddress = ctx->hostaddress;
-    struct extentaddr **ex_addr = ctx->ex_addr;
+    struct vl_cache *cache = ctx->cache;
+    afs_uint32 *hostaddress = cache->hostaddress;
+    struct extentaddr **ex_addr = cache->ex_addr;
 
     *exp = NULL;
     *basePtr = 0;
@@ -748,6 +748,7 @@ getNewVolumeId(struct rx_call *rxcall, afs_uint32 Maxvolidbump,
     afs_int32 code;
     afs_uint32 maxvolumeid;
     struct vl_ctx ctx;
+    struct vl_cache *cache;
     struct vlheader *cheader;
     char rxstr[AFS_RXINFO_LEN];
 
@@ -762,7 +763,8 @@ getNewVolumeId(struct rx_call *rxcall, afs_uint32 Maxvolidbump,
 
     if ((code = Init_VLdbase(&ctx, LOCKWRITE, this_op)))
 	return code;
-    cheader = ctx.cheader;
+    cache = ctx.cache;
+    cheader = &cache->cheader;
 
     *newvolumeid = maxvolumeid = NextUnusedID(&ctx,
 	ntohl(cheader->vital_header.MaxVolumeId), Maxvolidbump, &code);
@@ -2365,6 +2367,7 @@ GetStats(struct rx_call *rxcall,
     int this_op = VLGETSTATS;
     afs_int32 code;
     struct vl_ctx ctx;
+    struct vl_cache *cache;
     struct vlheader *cheader;
     char rxstr[AFS_RXINFO_LEN];
 
@@ -2378,7 +2381,8 @@ GetStats(struct rx_call *rxcall,
 
     if ((code = Init_VLdbase(&ctx, LOCKREAD, this_op)))
 	return code;
-    cheader = ctx.cheader;
+    cache = ctx.cache;
+    cheader = &cache->cheader;
     VLog(5, ("GetStats %s\n", rxinfo(rxstr, rxcall)));
     memcpy(vital_header, &cheader->vital_header,
 	   sizeof(vital_vlheader));
@@ -2413,6 +2417,7 @@ SVL_GetAddrs(struct rx_call *rxcall,
     int this_op = VLGETADDRS;
     afs_int32 code;
     struct vl_ctx ctx;
+    struct vl_cache *cache;
     struct vlheader *cheader;
     int nservers, i;
     afs_uint32 *taddrp;
@@ -2426,7 +2431,8 @@ SVL_GetAddrs(struct rx_call *rxcall,
 
     if ((code = Init_VLdbase(&ctx, LOCKREAD, this_op)))
 	return code;
-    cheader = ctx.cheader;
+    cache = ctx.cache;
+    cheader = &cache->cheader;
 
     VLog(5, ("GetAddrs\n"));
     addrsp->bulkaddrs_val = taddrp =
@@ -2472,6 +2478,7 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
     int this_op = VLREGADDR;
     afs_int32 code;
     struct vl_ctx ctx;
+    struct vl_cache *cache;
     afs_uint32 *hostaddress;
     struct extentaddr **ex_addr;
     int cnt, h, i, j, k, m;
@@ -2493,8 +2500,9 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
 	return (VL_PERM);
     if ((code = Init_VLdbase(&ctx, LOCKWRITE, this_op)))
 	return code;
-    hostaddress = ctx.hostaddress;
-    ex_addr = ctx.ex_addr;
+    cache = ctx.cache;
+    hostaddress = cache->hostaddress;
+    ex_addr = cache->ex_addr;
 
     /* Eliminate duplicates from IP address list */
     for (k = 0, cnt = 0; k < addrsp->bulkaddrs_len; k++) {
@@ -2842,6 +2850,7 @@ SVL_GetAddrsU(struct rx_call *rxcall,
     int this_op = VLGETADDRSU;
     afs_int32 code, index;
     struct vl_ctx ctx;
+    struct vl_cache *cache;
     struct extentaddr **ex_addr;
     int nservers, i, j, base = 0;
     struct extentaddr *exp = 0;
@@ -2857,7 +2866,8 @@ SVL_GetAddrsU(struct rx_call *rxcall,
     VLog(5, ("GetAddrsU %s\n", rxinfo(rxstr, rxcall)));
     if ((code = Init_VLdbase(&ctx, LOCKREAD, this_op)))
 	return code;
-    ex_addr = ctx.ex_addr;
+    cache = ctx.cache;
+    ex_addr = cache->ex_addr;
 
     if (attributes->Mask & VLADDR_IPADDR) {
 	if (attributes->Mask & (VLADDR_INDEX | VLADDR_UUID)) {
@@ -3429,7 +3439,8 @@ vlentry_to_vldbentry(struct vl_ctx *ctx, struct nvlentry *VlEntry,
 {
     int i, j, code;
     struct extentaddr *exp;
-    afs_uint32 *hostaddress = ctx->hostaddress;
+    struct vl_cache *cache = ctx->cache;
+    afs_uint32 *hostaddress = cache->hostaddress;
 
     memset(VldbEntry, 0, sizeof(struct vldbentry));
     strncpy(VldbEntry->name, VlEntry->name, sizeof(VldbEntry->name));
@@ -3471,7 +3482,8 @@ vlentry_to_nvldbentry(struct vl_ctx *ctx, struct nvlentry *VlEntry,
 {
     int i, j, code;
     struct extentaddr *exp;
-    afs_uint32 *hostaddress = ctx->hostaddress;
+    struct vl_cache *cache = ctx->cache;
+    afs_uint32 *hostaddress = cache->hostaddress;
 
     memset(VldbEntry, 0, sizeof(struct nvldbentry));
     strncpy(VldbEntry->name, VlEntry->name, sizeof(VldbEntry->name));
@@ -3511,7 +3523,8 @@ vlentry_to_uvldbentry(struct vl_ctx *ctx, struct nvlentry *VlEntry,
 {
     int i, code;
     struct extentaddr *exp;
-    afs_uint32 *hostaddress = ctx->hostaddress;
+    struct vl_cache *cache = ctx->cache;
+    afs_uint32 *hostaddress = cache->hostaddress;
 
     memset(VldbEntry, 0, sizeof(struct uvldbentry));
     strncpy(VldbEntry->name, VlEntry->name, sizeof(VldbEntry->name));
@@ -3601,8 +3614,9 @@ IpAddrToRelAddr(struct vl_ctx *ctx, afs_uint32 ipaddr, int create)
     int i, j;
     afs_int32 code;
     struct extentaddr *exp;
-    struct vlheader *cheader = ctx->cheader;
-    afs_uint32 *hostaddress = ctx->hostaddress;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
+    afs_uint32 *hostaddress = cache->hostaddress;
 
     for (i = 0; i <= MAXSERVERID; i++) {
 	if (hostaddress[i] == ipaddr)
@@ -3654,9 +3668,10 @@ ChangeIPAddr(struct vl_ctx *ctx, afs_uint32 ipaddr1, afs_uint32 ipaddr2)
     int ipaddr1_id = -1, ipaddr2_id = -1;
     char addrbuf1[256];
     char addrbuf2[256];
-    struct vlheader *cheader = ctx->cheader;
-    afs_uint32 *hostaddress = ctx->hostaddress;
-    struct extentaddr **ex_addr = ctx->ex_addr;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
+    afs_uint32 *hostaddress = cache->hostaddress;
+    struct extentaddr **ex_addr = cache->ex_addr;
 
     /* Don't let addr change to 255.*.*.* : Causes internal error below */
     if ((ipaddr2 & 0xff000000) == 0xff000000)

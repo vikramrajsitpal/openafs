@@ -10,14 +10,21 @@
 #ifndef _VLSERVER_INTERNAL_H
 #define _VLSERVER_INTERNAL_H
 
+struct vl_cache {
+    int vldbversion;
+    int maxnservers;
+
+    struct vlheader cheader;
+    afs_uint32 hostaddress[MAXSERVERID+1];
+    struct extentaddr *ex_addr[VL_MAX_ADDREXTBLKS];
+};
+
 /**
  * context for a transaction of a single VL operation.
  */
 struct vl_ctx {
     struct ubik_trans *trans;
-    afs_uint32 *hostaddress;
-    struct extentaddr **ex_addr;
-    struct vlheader *cheader;
+    struct vl_cache *cache;
 };
 
 /* vlprocs.c */

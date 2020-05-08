@@ -20,22 +20,18 @@
 #include "vlserver.h"
 #include "vlserver_internal.h"
 
-struct vlheader xheader;
-extern int maxnservers;
-extern afs_uint32 rd_HostAddress[MAXSERVERID + 1];
-extern afs_uint32 wr_HostAddress[MAXSERVERID + 1];
-struct extentaddr *rd_ex_addr[VL_MAX_ADDREXTBLKS] = { 0, 0, 0, 0 };
-struct extentaddr *wr_ex_addr[VL_MAX_ADDREXTBLKS] = { 0, 0, 0, 0 };
-struct vlheader rd_cheader;	/* kept in network byte order */
-struct vlheader wr_cheader;
-int vldbversion = 0;
-
 static int index_OK(struct vl_ctx *ctx, afs_int32 blockindex);
 
 #define ERROR_EXIT(code) do { \
     error = (code); \
     goto error_exit; \
 } while (0)
+
+/* vl_cache to use for read transactions */
+static struct vl_cache rd_vlcache;
+
+/* vl_cache to use for the current active write transaction. */
+static struct vl_cache wr_vlcache;
 
 /* Hashing algorithm based on the volume id; HASHSIZE must be prime */
 afs_int32
@@ -89,6 +85,7 @@ vlread(struct ubik_trans *trans, afs_int32 offset, void *buffer,
 afs_int32
 vlentrywrite(struct vl_ctx *ctx, afs_int32 offset, struct nvlentry *nep)
 {
+    struct vl_cache *cache = ctx->cache;
     struct vlentry oentry;
     struct nvlentry nentry;
     void *bufp;
@@ -96,7 +93,7 @@ vlentrywrite(struct vl_ctx *ctx, afs_int32 offset, struct nvlentry *nep)
 
     opr_StaticAssert(sizeof(oentry) == sizeof(nentry));
 
-    if (maxnservers == 13) {
+    if (cache->maxnservers == 13) {
 	for (i = 0; i < MAXTYPES; i++)
 	    nentry.volumeId[i] = htonl(nep->volumeId[i]);
 	nentry.flags = htonl(nep->flags);
@@ -135,6 +132,7 @@ vlentrywrite(struct vl_ctx *ctx, afs_int32 offset, struct nvlentry *nep)
 static afs_int32
 vlentryread(struct vl_ctx *ctx, afs_int32 offset, struct nvlentry *nbufp)
 {
+    struct vl_cache *cache = ctx->cache;
     struct vlentry *oep, tentry;
     struct nvlentry *nep;
     void *bufp = &tentry;
@@ -145,7 +143,7 @@ vlentryread(struct vl_ctx *ctx, afs_int32 offset, struct nvlentry *nbufp)
     i = vlread(ctx->trans, offset, bufp, sizeof(tentry));
     if (i)
 	return i;
-    if (maxnservers == 13) {
+    if (cache->maxnservers == 13) {
 	nep = bufp;
 	for (i = 0; i < MAXTYPES; i++)
 	    nbufp->volumeId[i] = ntohl(nep->volumeId[i]);
@@ -190,7 +188,8 @@ vlentryread(struct vl_ctx *ctx, afs_int32 offset, struct nvlentry *nbufp)
 int
 write_vital_vlheader(struct vl_ctx *ctx)
 {
-    struct vlheader *cheader = ctx->cheader;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
     if (vlwrite
 	(ctx->trans, 0, &cheader->vital_header, sizeof(vital_vlheader)))
 	return VL_IO;
@@ -211,12 +210,13 @@ int extent_mod = 0;
 afs_int32
 readExtents(struct ubik_trans *trans)
 {
+    struct vl_cache *cache = &rd_vlcache;
     afs_uint32 extentAddr;
     afs_int32 error = 0, code;
     int i;
 
-    struct vlheader *cheader = &rd_cheader;
-    struct extentaddr **ex_addr = rd_ex_addr;
+    struct vlheader *cheader = &cache->cheader;
+    struct extentaddr **ex_addr = cache->ex_addr;
 
     extent_mod = 0;
     extentAddr = ntohl(cheader->SIT);
@@ -308,16 +308,17 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 {
     int *builddb_rock = rock;
     int builddb = *builddb_rock;
+    struct vl_cache *cache = &rd_vlcache;
     afs_int32 error = 0, i, code, ubcode;
 
-    struct vlheader *cheader = &rd_cheader;
-    afs_uint32 *hostaddress = rd_HostAddress;
+    struct vlheader *cheader = &cache->cheader;
+    afs_uint32 *hostaddress = cache->hostaddress;
 
     /* if version changed (or first call), read the header */
     ubcode = vlread(trans, 0, cheader, sizeof(*cheader));
-    vldbversion = ntohl(cheader->vital_header.vldbversion);
+    cache->vldbversion = ntohl(cheader->vital_header.vldbversion);
 
-    if (!ubcode && (vldbversion != 0)) {
+    if (!ubcode && (cache->vldbversion != 0)) {
 	memcpy(hostaddress, cheader->IpMappedAddr, sizeof(cheader->IpMappedAddr));
 	for (i = 0; i < MAXSERVERID + 1; i++) {	/* cvt HostAddress to host order */
 	    hostaddress[i] = ntohl(hostaddress[i]);
@@ -329,12 +330,13 @@ UpdateCache(struct ubik_trans *trans, void *rock)
     }
 
     /* now, if can't read, or header is wrong, write a new header */
-    if (ubcode || vldbversion == 0) {
+    if (ubcode || cache->vldbversion == 0) {
 	if (builddb) {
 	    VLog(0, ("Can't read VLDB header, re-initialising...\n"));
 
-	    cheader = &wr_cheader;
-	    hostaddress = wr_HostAddress;
+	    cache = &wr_vlcache;
+	    cheader = &cache->cheader;
+	    hostaddress = cache->hostaddress;
 
 	    /* try to write a good header */
 	    /* The read cache will be sync'ed to this new header
@@ -354,25 +356,26 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 		VLog(0, ("Can't write VLDB header (error = %d)\n", code));
 		ERROR_EXIT(VL_IO);
 	    }
-	    vldbversion = ntohl(cheader->vital_header.vldbversion);
+	    cache->vldbversion = ntohl(cheader->vital_header.vldbversion);
 	} else {
 	    VLog(1, ("Unable to read VLDB header.\n"));
 	    ERROR_EXIT(VL_EMPTY);
 	}
     }
 
-    if ((vldbversion != VLDBVERSION_3) && (vldbversion != VLDBVERSION_2)
-        && (vldbversion != VLDBVERSION_4)) {
+    if ((cache->vldbversion != VLDBVERSION_3)
+	&& (cache->vldbversion != VLDBVERSION_2)
+	&& (cache->vldbversion != VLDBVERSION_4)) {
 	VLog(0,
 	    ("VLDB version %d doesn't match this software version(%d, %d or %d), quitting!\n",
-	     vldbversion, VLDBVERSION_4, VLDBVERSION_3, VLDBVERSION_2));
+	     cache->vldbversion, VLDBVERSION_4, VLDBVERSION_3, VLDBVERSION_2));
 	ERROR_EXIT(VL_BADVERSION);
     }
 
-    if (vldbversion == VLDBVERSION_3 || vldbversion == VLDBVERSION_4) {
-	maxnservers = 13;
+    if (cache->vldbversion == VLDBVERSION_3 || cache->vldbversion == VLDBVERSION_4) {
+	cache->maxnservers = 13;
     } else {
-	maxnservers = 8;
+	cache->maxnservers = 8;
     }
 
   error_exit:
@@ -383,25 +386,7 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 afs_int32
 CheckInit(struct ubik_trans *trans, int builddb)
 {
-    afs_int32 code;
-
-    code = ubik_CheckCache(trans, UpdateCache, &builddb);
-    if (code) {
-	return code;
-    }
-
-    /* these next two cases shouldn't happen (UpdateCache should either
-     * rebuild the db or return an error if these cases occur), but just to
-     * be on the safe side... */
-    if (vldbversion == 0) {
-	return VL_EMPTY;
-    }
-    if ((vldbversion != VLDBVERSION_3) && (vldbversion != VLDBVERSION_2)
-        && (vldbversion != VLDBVERSION_4)) {
-	return VL_BADVERSION;
-    }
-
-    return 0;
+    return ubik_CheckCache(trans, UpdateCache, &builddb);
 }
 
 /**
@@ -433,9 +418,10 @@ grow_eofPtr(struct vlheader *cheader, afs_int32 bump, afs_int32 *a_blockindex)
 afs_int32
 GetExtentBlock(struct vl_ctx *ctx, afs_int32 base)
 {
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
+    struct extentaddr **ex_addr = cache->ex_addr;
     afs_int32 blockindex, code, error = 0;
-    struct vlheader *cheader = ctx->cheader;
-    struct extentaddr **ex_addr = ctx->ex_addr;
 
     /* Base 0 must exist before any other can be created */
     if ((base != 0) && !ex_addr[0])
@@ -499,9 +485,10 @@ FindExtentBlock(struct vl_ctx *ctx, afsUUID *uuidp,
     struct extentaddr *exp;
     afs_int32 i, j, code, base, index, error = 0;
 
-    struct vlheader *cheader = ctx->cheader;
-    afs_uint32 *hostaddress = ctx->hostaddress;
-    struct extentaddr **ex_addr = ctx->ex_addr;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
+    afs_uint32 *hostaddress = cache->hostaddress;
+    struct extentaddr **ex_addr = cache->ex_addr;
 
     *expp = NULL;
     *basep = 0;
@@ -569,7 +556,7 @@ FindExtentBlock(struct vl_ctx *ctx, afsUUID *uuidp,
 			0xff000000 | ((base << 16) & 0xff0000) | (j & 0xffff);
 		    *expp = exp;
 		    *basep = base;
-		    if (vldbversion != VLDBVERSION_4) {
+		    if (cache->vldbversion != VLDBVERSION_4) {
 			cheader->vital_header.vldbversion =
 			    htonl(VLDBVERSION_4);
 			code = write_vital_vlheader(ctx);
@@ -602,7 +589,8 @@ afs_int32
 AllocBlock(struct vl_ctx *ctx, struct nvlentry *tentry)
 {
     afs_int32 blockindex;
-    struct vlheader *cheader = ctx->cheader;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
 
     if (cheader->vital_header.freePtr) {
 	/* allocate this dude */
@@ -630,7 +618,8 @@ int
 FreeBlock(struct vl_ctx *ctx, afs_int32 blockindex)
 {
     struct nvlentry tentry;
-    struct vlheader *cheader = ctx->cheader;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
 
     /* check validity of blockindex just to be on the safe side */
     if (!index_OK(ctx, blockindex))
@@ -658,7 +647,8 @@ FindByID(struct vl_ctx *ctx, afs_uint32 volid, afs_int32 voltype,
 	 struct nvlentry *tentry, afs_int32 *error)
 {
     afs_int32 typeindex, hashindex, blockindex;
-    struct vlheader *cheader = ctx->cheader;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
 
     *error = 0;
     hashindex = IDHash(volid);
@@ -702,7 +692,8 @@ FindByName(struct vl_ctx *ctx, char *volname, struct nvlentry *tentry,
     afs_int32 hashindex;
     afs_int32 blockindex;
     char tname[VL_MAXNAMELEN];
-    struct vlheader *cheader = ctx->cheader;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
 
     /* remove .backup or .readonly extensions for stupid backwards
      * compatibility
@@ -827,7 +818,8 @@ HashNDump(struct vl_ctx *ctx, int hashindex)
     int i = 0;
     int blockindex;
     struct nvlentry tentry;
-    struct vlheader *cheader = ctx->cheader;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
 
     for (blockindex = ntohl(cheader->VolnameHash[hashindex]);
 	 blockindex != NULLO; blockindex = tentry.nextNameHash) {
@@ -848,7 +840,8 @@ HashIdDump(struct vl_ctx *ctx, int hashindex)
     int i = 0;
     int blockindex;
     struct nvlentry tentry;
-    struct vlheader *cheader = ctx->cheader;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
 
     for (blockindex = ntohl(cheader->VolidHash[0][hashindex]);
 	 blockindex != NULLO; blockindex = tentry.nextIdHash[0]) {
@@ -958,7 +951,8 @@ HashVolid(struct vl_ctx *ctx, afs_int32 voltype, afs_int32 blockindex,
 {
     afs_int32 hashindex, errorcode;
     struct nvlentry ventry;
-    struct vlheader *cheader = ctx->cheader;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
 
     if (FindByID
 	(ctx, tentry->volumeId[voltype], voltype, &ventry, &errorcode))
@@ -986,7 +980,8 @@ UnhashVolid(struct vl_ctx *ctx, afs_int32 voltype, afs_int32 blockindex,
     struct nvlentry tentry;
     afs_int32 code;
     afs_int32 temp;
-    struct vlheader *cheader = ctx->cheader;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
 
     if (aentry->volumeId[voltype] == NULLO)	/* Assume no volume id */
 	return 0;
@@ -1032,7 +1027,8 @@ HashVolname(struct vl_ctx *ctx, afs_int32 blockindex,
 {
     afs_int32 hashindex;
     afs_int32 code;
-    struct vlheader *cheader = ctx->cheader;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
 
     /* Insert into volname's hash linked list */
     hashindex = NameHash(aentry->name);
@@ -1054,7 +1050,8 @@ UnhashVolname(struct vl_ctx *ctx, afs_int32 blockindex,
     afs_int32 hashindex, nextblockindex, prevblockindex;
     struct nvlentry tentry;
     afs_int32 temp;
-    struct vlheader *cheader = ctx->cheader;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
 
     /* Take it out of the Volname hash list */
     hashindex = NameHash(aentry->name);
@@ -1096,7 +1093,8 @@ NextEntry(struct vl_ctx *ctx, afs_int32 blockindex,
 	  struct nvlentry *tentry, afs_int32 *remaining)
 {
     afs_int32 lastblockindex;
-    struct vlheader *cheader = ctx->cheader;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
 
     if (blockindex == 0)	/* get first one */
 	blockindex = sizeof(*cheader);
@@ -1140,7 +1138,8 @@ NextEntry(struct vl_ctx *ctx, afs_int32 blockindex,
 static int
 index_OK(struct vl_ctx *ctx, afs_int32 blockindex)
 {
-    struct vlheader *cheader = ctx->cheader;
+    struct vl_cache *cache = ctx->cache;
+    struct vlheader *cheader = &cache->cheader;
     if ((blockindex < sizeof(*cheader))
 	|| (blockindex >= ntohl(cheader->vital_header.eofPtr)))
 	return 0;
@@ -1172,30 +1171,64 @@ vlexcpy(struct extentaddr **dst_ex, struct extentaddr **src_ex)
     return 0;
 }
 
+static int
+vlcache_copy(struct vl_cache *dest, struct vl_cache *src)
+{
+    struct extentaddr *save_exaddr[4] = {
+	dest->ex_addr[0],
+	dest->ex_addr[1],
+	dest->ex_addr[2],
+	dest->ex_addr[3],
+    };
+    /*
+     * Everything in struct vl_cache can be a simple shallow copy, except for
+     * the contents of ex_addr. So save a copy of ex_addr, then do a shallow
+     * copy of everything, then restore ex_addr and do a deep copy of ex_addr
+     * by going through vlexcpy.
+     */
+    *dest = *src;
+    dest->ex_addr[0] = save_exaddr[0];
+    dest->ex_addr[1] = save_exaddr[1];
+    dest->ex_addr[2] = save_exaddr[2];
+    dest->ex_addr[3] = save_exaddr[3];
+
+
+    return vlexcpy(dest->ex_addr, src->ex_addr);
+}
+
 int
 vlsetcache(struct vl_ctx *ctx, int locktype)
 {
+    struct vl_cache *cache;
     if (locktype == LOCKREAD) {
-	ctx->hostaddress = rd_HostAddress;
-	ctx->ex_addr = rd_ex_addr;
-	ctx->cheader = &rd_cheader;
-	return 0;
+	cache = &rd_vlcache;
     } else {
-	memcpy(wr_HostAddress, rd_HostAddress, sizeof(wr_HostAddress));
-	memcpy(&wr_cheader, &rd_cheader, sizeof(wr_cheader));
-
-	ctx->hostaddress = wr_HostAddress;
-	ctx->ex_addr = wr_ex_addr;
-	ctx->cheader = &wr_cheader;
-
-	return vlexcpy(wr_ex_addr, rd_ex_addr);
+	int code;
+	cache = &wr_vlcache;
+	code = vlcache_copy(&wr_vlcache, &rd_vlcache);
+	if (code != 0) {
+	    return code;
+	}
     }
+
+    /* these next two cases shouldn't happen (UpdateCache should either
+     * rebuild the db or return an error if these cases occur), but just to
+     * be on the safe side... */
+    if (cache->vldbversion == 0) {
+	return VL_EMPTY;
+    }
+    if ((cache->vldbversion != VLDBVERSION_3)
+	&& (cache->vldbversion != VLDBVERSION_2)
+	&& (cache->vldbversion != VLDBVERSION_4)) {
+	return VL_BADVERSION;
+    }
+
+    ctx->cache = cache;
+    return 0;
 }
 
 int
 vlsynccache(void)
 {
-    memcpy(rd_HostAddress, wr_HostAddress, sizeof(rd_HostAddress));
-    memcpy(&rd_cheader, &wr_cheader, sizeof(rd_cheader));
-    return vlexcpy(rd_ex_addr, wr_ex_addr);
+    return vlcache_copy(&rd_vlcache, &wr_vlcache);
 }
