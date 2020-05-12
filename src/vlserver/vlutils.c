@@ -15,7 +15,7 @@
 #include <afs/opr.h>
 #include <lock.h>
 #include <rx/xdr.h>
-#include <ubik.h>
+#include <ubik_np.h>
 
 #include "vlserver.h"
 #include "vlserver_internal.h"
@@ -32,6 +32,147 @@ static struct vl_cache rd_vlcache;
 
 /* vl_cache to use for the current active write transaction. */
 static struct vl_cache wr_vlcache;
+
+/*
+ * This file implements two variants of the VLDB4 database format:
+ *
+ * - vldb4: the traditional flat-file db (the kind used in e.g. OpenAFS 1.8)
+ * - vldb4-kv: a newer variant using the ubik key-value store ("KV").
+ *
+ * The flat-file variant uses ubik_Read and ubik_Write to store data in a flat
+ * file, a stream of bytes. In vldb4, we store volume entries in our own hash
+ * table that is stored in the root cheader, and entries are linked together by
+ * addresses in the vlentry structs themselves. MH data is stored at the
+ * address contained in the SIT field in the root cheader.
+ *
+ * In vldb4-kv, we never use ubik_Read/ubik_Write. Instead, we store everything
+ * in the database as key/value pairs. To distinguish between different types
+ * of data, each of our keys is prefixed with a 4-byte NBO "tag":
+ *
+ * - Our root 'struct vlheader_kv' (aka cheader_kv) is stored via the key
+ * VL4KV_KEY_CHEADERKV. This contains all of the data in the normal vlheader
+ * (aka cheader), except for the hash tables.
+ *
+ * - Our vlentries are stored by the key vl4kv_volidkey with the 'tag' set to
+ * VL4KV_KEY_VOLID, and 'volid' set to the RW volid for the volume. The value
+ * of these is the 'struct nvlentry' for that volume.
+ *
+ * - Additional keys for each vlentry are also stored for each non-RW volid for
+ * the volume, in order to lookup the volume by e.g. RO id. The key for these
+ * is a vl4kv_volidkey with the 'tag' set to VL4KV_KEY_VOLID, and 'volid' set
+ * to the volume id. The value for these is the RW id for the volume (just the
+ * 4-byte int in NBO); the actual nvlentry for it can then be looked up by that
+ * RW id.
+ *
+ * - An additional key for each volume is also stored for the volume name, so
+ * the volume can be looked up by name. The key is vl4kv_volnamekey with 'tag'
+ * set to VL4KV_KEY_VOLNAME, and 'name' filled in with the volume name. The
+ * size of the key depends on the length of the given name; we don't (usually)
+ * store the entire struct vl4kv_volnamekey. That is, if the given name is only
+ * 5 bytes long, our key is only of size 'sizeof(tag) + 5' bytes (so, 9 bytes).
+ *
+ * - MH data is stored by the key vl4kv_exkey, with 'tag' set to
+ * VL4KV_KEY_EXBLOCK, and 'base' set to the MH block base number.
+ */
+
+/*
+ * Various pieces of code use a 'blockindex' (that is, an offset in our flat
+ * file) to say where to store data to or read data from. For KV, we of course
+ * don't use actual file offsets, but we need to have _some_ value to pass
+ * around to keep the code paths similar. Just pick an arbitrary number here;
+ * it just needs to be nonzero, since some functions return an offset of 0 to
+ * represent failure.
+ */
+#define VL4KV_FAKE_BLOCKINDEX (1)
+
+static_inline int
+vlctx_kv(struct vl_ctx *ctx)
+{
+    return ubik_KVTrans(ctx->trans);
+}
+
+/* Convert a traditional cheader to the "kv" cheader. */
+static_inline void
+cheader2kv(struct vlheader *cheader, struct vlheader_kv *cheader_kv)
+{
+    opr_StaticAssert(sizeof(cheader->IpMappedAddr) == sizeof(cheader_kv->IpMappedAddr));
+
+    memset(cheader_kv, 0, sizeof(*cheader_kv));
+
+    cheader_kv->vital_header = cheader->vital_header;
+    cheader_kv->vital_header.headersize = htonl(sizeof(*cheader_kv));
+    memcpy(cheader_kv->IpMappedAddr, cheader->IpMappedAddr,
+	   sizeof(cheader->IpMappedAddr));
+    cheader_kv->SIT = cheader->SIT;
+}
+
+/* Convert a "kv" cheader to a traditional cheader. */
+static_inline void
+kv2cheader(struct vlheader_kv *cheader_kv, struct vlheader *cheader)
+{
+    opr_StaticAssert(sizeof(cheader->IpMappedAddr) == sizeof(cheader_kv->IpMappedAddr));
+
+    memset(cheader, 0, sizeof(*cheader));
+
+    cheader->vital_header = cheader_kv->vital_header;
+    memcpy(cheader->IpMappedAddr, cheader_kv->IpMappedAddr,
+	   sizeof(cheader->IpMappedAddr));
+    cheader->SIT = cheader_kv->SIT;
+}
+
+/* Set 'buf' to point at 'val' with length 'len'. */
+static_inline void
+opaque_set(struct rx_opaque *buf, void *val, size_t len)
+{
+    buf->len = len;
+    buf->val = val;
+}
+
+/* Copy a fixed-size object out of 'buf' into 'dest', of size 'destsize'. */
+static_inline void
+opaque_copy(struct rx_opaque *buf, void *dest, size_t destsize)
+{
+    opr_Assert(buf->val != NULL);
+    opr_Assert(buf->len >= destsize);
+    memcpy(dest, buf->val, destsize);
+}
+
+static void
+init_exkey(struct rx_opaque *keybuf, struct vl4kv_exkey *exkey,
+	   afs_int32 base)
+{
+    memset(exkey, 0, sizeof(*exkey));
+    exkey->tag = htonl(VL4KV_KEY_EXBLOCK);
+    exkey->base = htonl(base);
+
+    opaque_set(keybuf, exkey, sizeof(*exkey));
+}
+
+static void
+init_volidkey(struct rx_opaque *keybuf, struct vl4kv_volidkey *ikey,
+	      afs_uint32 volid)
+{
+    memset(ikey, 0, sizeof(*ikey));
+    ikey->tag = htonl(VL4KV_KEY_VOLID);
+    ikey->volid = htonl(volid);
+
+    opaque_set(keybuf, ikey, sizeof(*ikey));
+}
+
+static void
+init_volnamekey(struct rx_opaque *keybuf, struct vl4kv_volnamekey *nkey,
+		char *volname)
+{
+    size_t len = strlen(volname);
+
+    opr_Assert(len <= sizeof(nkey->name));
+
+    memset(nkey, 0, sizeof(*nkey));
+    nkey->tag = htonl(VL4KV_KEY_VOLNAME);
+    memcpy(nkey->name, volname, len);
+
+    opaque_set(keybuf, nkey, sizeof(nkey->tag) + len);
+}
 
 /* Hashing algorithm based on the volume id; HASHSIZE must be prime */
 afs_int32
@@ -73,10 +214,27 @@ afs_int32
 vlwrite_cheader(struct vl_ctx *ctx, struct vlheader *cheader,
 		void *buffer, afs_int32 length)
 {
+    struct vlheader_kv cheader_kv;
+    struct rx_opaque keybuf;
+    struct rx_opaque valbuf;
+    afs_uint32 ckey;
     afs_int32 offset = DOFFSET(0, cheader, buffer);
+
     opr_Assert(offset >= 0 && offset <= sizeof(*cheader));
     opr_Assert(offset + length <= sizeof(*cheader));
-    return vlwrite(ctx, offset, buffer, length);
+
+    if (!vlctx_kv(ctx)) {
+	return vlwrite(ctx, offset, buffer, length);
+    }
+
+    /* For KV, we just replace the entire (abbreviated) cheader. */
+    cheader2kv(cheader, &cheader_kv);
+
+    ckey = htonl(VL4KV_KEY_CHEADERKV);
+    opaque_set(&keybuf, &ckey, sizeof(ckey));
+    opaque_set(&valbuf, &cheader_kv, sizeof(cheader_kv));
+
+    return ubik_KVReplace(ctx->trans, &keybuf, &valbuf);
 }
 
 /*
@@ -89,11 +247,25 @@ vlwrite_exblock(struct vl_ctx *ctx, afs_int32 base,
 		struct extentaddr *exblock, afs_int32 exblock_addr,
 		void *buffer, afs_int32 length)
 {
+    struct vl4kv_exkey exkey;
+    struct rx_opaque keybuf;
+    struct rx_opaque valbuf;
     afs_int32 offset = DOFFSET(0, exblock, buffer);
+
     opr_Assert(offset >= 0 && offset <= VL_ADDREXTBLK_SIZE);
     opr_Assert(offset + length <= VL_ADDREXTBLK_SIZE);
 
-    return vlwrite(ctx, exblock_addr + offset, buffer, length);
+    if (!vlctx_kv(ctx)) {
+	return vlwrite(ctx, exblock_addr + offset, buffer, length);
+    }
+
+    /* For KV, we store each MH block as its own item. So just write out the
+     * entire block. */
+
+    init_exkey(&keybuf, &exkey, base);
+    opaque_set(&valbuf, exblock, VL_ADDREXTBLK_SIZE);
+
+    return ubik_KVReplace(ctx->trans, &keybuf, &valbuf);
 }
 
 /* Package up seek and read into one procedure for ease of use */
@@ -112,7 +284,31 @@ vlread(struct vl_ctx *ctx, afs_int32 offset, void *buffer,
 static afs_int32
 vlread_cheader(struct vl_ctx *ctx, struct vlheader *cheader)
 {
-    return vlread(ctx, 0, cheader, sizeof(*cheader));
+    afs_uint32 ckey = htonl(VL4KV_KEY_CHEADERKV);
+    struct vlheader_kv cheader_kv;
+    struct rx_opaque keybuf;
+    afs_int32 code;
+
+    if (!vlctx_kv(ctx)) {
+	return vlread(ctx, 0, cheader, sizeof(*cheader));
+    }
+
+    /*
+     * We don't need the hash tables for KV, so in the KV store we have an
+     * abbreviated cheader; it contains everything in the normal cheader
+     * except for the hash tables. After we read in the "kv cheader", we
+     * convert to the "normal" cheader below via kv2cheader.
+     */
+
+    opaque_set(&keybuf, &ckey, sizeof(ckey));
+    code = ubik_KVGetCopy(ctx->trans, &keybuf, &cheader_kv,
+			  sizeof(cheader_kv), NULL);
+    if (code != 0) {
+	return code;
+    }
+
+    kv2cheader(&cheader_kv, cheader);
+    return 0;
 }
 
 /* Read in an extent block from disk, for base 'base' at database file offset
@@ -121,7 +317,16 @@ static afs_int32
 vlread_exblock(struct vl_ctx *ctx, afs_int32 base, afs_int32 offset,
 	       struct extentaddr *exblock)
 {
-    return vlread(ctx, offset, exblock, VL_ADDREXTBLK_SIZE);
+    struct vl4kv_exkey exkey;
+    struct rx_opaque keybuf;
+
+    if (!vlctx_kv(ctx)) {
+	return vlread(ctx, offset, exblock, VL_ADDREXTBLK_SIZE);
+    }
+
+    init_exkey(&keybuf, &exkey, base);
+
+    return ubik_KVGetCopy(ctx->trans, &keybuf, exblock, VL_ADDREXTBLK_SIZE, NULL);
 }
 
 static void
@@ -150,6 +355,139 @@ nvlentry_ntohl(struct nvlentry *src, struct nvlentry *dest)
     nvlentry_htonl(src, dest);
 }
 
+/*
+ * Make the given volid or volname key point to the given RW volid. If the key
+ * already exists, verify that it is pointing to the correct RW volid. If it's
+ * not, throw an error.
+ */
+static int
+kv_hashvolkey(struct vl_ctx *ctx, struct rx_opaque *key, afs_uint32 rwid)
+{
+    int code;
+    int noent = 0;
+    afs_uint32 volid;
+    struct rx_opaque valbuf;
+
+    if (rwid == 0) {
+	/* Sanity check. */
+	VLog(0, ("Error: tried to hash RW volid 0.\n"));
+	return VL_IO;
+    }
+
+    /*
+     * For looking up volumes by name or non-RW volid, we store a mapping where
+     * the key is the normal volid/volname key, but the value is just the RW
+     * volid (in net-order). Whoever looks up the key can then use that RW
+     * volid to find the actual volume entry.
+     */
+
+    /* First, lookup the name in the KV store, to see if an entry for it
+     * already exists. */
+    code = ubik_KVGetCopy(ctx->trans, key, &volid, sizeof(volid), &noent);
+    if (code != 0) {
+	return code;
+    }
+
+    if (noent) {
+	/* An entry for this key doesn't exist; add it now. */
+	rwid = htonl(rwid);
+	opaque_set(&valbuf, &rwid, sizeof(rwid));
+	return ubik_KVPut(ctx->trans, key, &valbuf);
+    }
+
+    /* This key already exists; see if it's pointing to the correct RW id. */
+    volid = ntohl(volid);
+    if (volid == rwid) {
+	/* The existing entry is already pointing to the correct RW id;
+	 * nothing more to do. */
+	return 0;
+    }
+
+    /* The existing entry is pointing to some other RW id. That shouldn't
+     * happen. */
+    VLog(0, ("Error: Tried to hash RW id %u, but entry already exists "
+	     "pointing to volid %u\n", rwid, volid));
+    return VL_DBBAD;
+}
+
+static int
+kv_HashVolid(struct vl_ctx *ctx, afs_int32 voltype, struct nvlentry *tentry)
+{
+    afs_uint32 volid;
+    struct vl4kv_volidkey ikey;
+    struct rx_opaque keybuf;
+
+    if (voltype == RWVOL) {
+	/* Don't separately hash the RW id; we store the entry itself under the
+	 * RW id. */
+	return 0;
+    }
+
+    volid = tentry->volumeId[voltype];
+    if (volid == 0) {
+	/* This vlentry doesn't have a volid for this type; nothing to do. */
+	return 0;
+    }
+
+    init_volidkey(&keybuf, &ikey, volid);
+    return kv_hashvolkey(ctx, &keybuf, tentry->volumeId[RWVOL]);
+}
+
+static int
+kv_HashVolname(struct vl_ctx *ctx, struct nvlentry *aentry)
+{
+    struct vl4kv_volnamekey nkey;
+    struct rx_opaque keybuf;
+
+    opr_StaticAssert(sizeof(nkey.name) == sizeof(aentry->name));
+
+    init_volnamekey(&keybuf, &nkey, aentry->name);
+    return kv_hashvolkey(ctx, &keybuf, aentry->volumeId[RWVOL]);
+}
+
+/* vldb4-kv: Store a vlentry into the db. */
+static afs_int32
+kv_vlentryput(struct vl_ctx *ctx, struct nvlentry *tentry,
+	      struct nvlentry *spare_entry)
+{
+    afs_uint32 rwid;
+    afs_int32 voltype;
+    afs_int32 code;
+    struct vl4kv_volidkey ikey;
+    struct rx_opaque keybuf;
+    struct rx_opaque valbuf;
+
+    /* When writing out the vlentry, we also need to hash it by its volids and
+     * volname, in case any of those items have changed. */
+
+    for (voltype = ROVOL; voltype <= BACKVOL; voltype++) {
+	code = kv_HashVolid(ctx, voltype, tentry);
+	if (code != 0) {
+	    return code;
+	}
+    }
+
+    code = kv_HashVolname(ctx, tentry);
+    if (code != 0) {
+	return code;
+    }
+
+    /* Now we can store the vlentry itself; store it under the volid key for
+     * the RW volid. */
+
+    rwid = tentry->volumeId[RWVOL];
+    if (rwid == 0) {
+	return VL_IO;
+    }
+
+    init_volidkey(&keybuf, &ikey, rwid);
+
+    nvlentry_htonl(tentry, spare_entry);
+    opaque_set(&valbuf, spare_entry, sizeof(*spare_entry));
+
+    return ubik_KVReplace(ctx->trans, &keybuf, &valbuf);
+}
+
 /* take entry and convert to network order and write to disk */
 afs_int32
 vlentrywrite(struct vl_ctx *ctx, afs_int32 offset, struct nvlentry *nep)
@@ -161,6 +499,10 @@ vlentrywrite(struct vl_ctx *ctx, afs_int32 offset, struct nvlentry *nep)
     afs_int32 i;
 
     opr_StaticAssert(sizeof(oentry) == sizeof(nentry));
+
+    if (vlctx_kv(ctx)) {
+	return kv_vlentryput(ctx, nep, &nentry);
+    }
 
     if (cache->maxnservers == 13) {
 	nvlentry_htonl(nep, &nentry);
@@ -245,6 +587,65 @@ write_vital_vlheader(struct vl_ctx *ctx)
     return 0;
 }
 
+/* vldb4-kv: Fetch a vlentry from the db by the given key (either a volid or
+ * volname key). */
+static afs_int32
+kv_vlentryget(struct vl_ctx *ctx, struct rx_opaque *key,
+	      struct nvlentry *aentry)
+{
+    struct vl_cache *cache = ctx->cache;
+    int noent = 0;
+    afs_int32 code;
+    afs_uint32 volid;
+    struct rx_opaque valbuf;
+
+    opr_Assert(vlctx_kv(ctx));
+    opr_Assert(cache->maxnservers == 13);
+
+    memset(&valbuf, 0, sizeof(valbuf));
+
+    code = ubik_KVGet(ctx->trans, key, &valbuf, &noent);
+    if (code != 0) {
+	return code;
+    }
+    if (noent) {
+	return VL_NOENT;
+    }
+
+    if (valbuf.len == sizeof(volid)) {
+	/*
+	 * The returned value isn't the volume entry; it's the RW volid for the
+	 * volume. We now look up the volume by this volid to get the real
+	 * entry.
+	 */
+	struct vl4kv_volidkey ikey;
+	struct rx_opaque keybuf;
+
+	opaque_copy(&valbuf, &volid, sizeof(volid));
+	volid = ntohl(volid);
+
+	init_volidkey(&keybuf, &ikey, volid);
+
+	code = ubik_KVGet(ctx->trans, &keybuf, &valbuf, NULL);
+	if (code != 0) {
+	    return code;
+	}
+    }
+    if (valbuf.len != sizeof(*aentry)) {
+	VLog(0, ("Error: Invalid vlentry size in kv store: %d != %d.\n",
+		 (int)valbuf.len, (int)sizeof(*aentry)));
+	return VL_IO;
+    }
+
+    {
+	struct nvlentry tentry;
+	memset(&tentry, 0, sizeof(tentry));
+	opaque_copy(&valbuf, &tentry, sizeof(tentry));
+	nvlentry_ntohl(&tentry, aentry);
+    }
+
+    return 0;
+}
 
 int extent_mod = 0;
 
@@ -389,6 +790,11 @@ UpdateCache(struct ubik_trans *trans, void *rock)
     /* now, if can't read, or header is wrong, write a new header */
     if (ubcode || cache->vldbversion == 0) {
 	if (builddb) {
+	    afs_uint32 version = VLDBVERSION_3;
+	    if (ubik_KVTrans(trans)) {
+		version = VLDBVERSION_4_KV;
+	    }
+
 	    VLog(0, ("Can't read VLDB header, re-initialising...\n"));
 
 	    ctx->cache = cache = &wr_vlcache;
@@ -407,7 +813,7 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 	    /* The read cache will be sync'ed to this new header
 	     * when the ubik transaction is ended by vlsynccache(). */
 	    memset(cheader, 0, sizeof(*cheader));
-	    cheader->vital_header.vldbversion = htonl(VLDBVERSION_3);
+	    cheader->vital_header.vldbversion = htonl(version);
 	    cheader->vital_header.headersize = htonl(sizeof(*cheader));
 	    /* DANGER: Must get this from a master place!! */
 	    cheader->vital_header.MaxVolumeId = htonl(0x20000000);
@@ -428,16 +834,25 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 	}
     }
 
-    if ((cache->vldbversion != VLDBVERSION_3)
-	&& (cache->vldbversion != VLDBVERSION_2)
-	&& (cache->vldbversion != VLDBVERSION_4)) {
-	VLog(0,
-	    ("VLDB version %d doesn't match this software version(%d, %d or %d), quitting!\n",
-	     cache->vldbversion, VLDBVERSION_4, VLDBVERSION_3, VLDBVERSION_2));
-	ERROR_EXIT(VL_BADVERSION);
+    if (ubik_KVTrans(trans)) {
+	if (cache->vldbversion != VLDBVERSION_4_KV) {
+	    VLog(0, ("Invalid VLDB version 0x%x (doesn't match 0x%x), quitting!\n",
+		     cache->vldbversion, VLDBVERSION_4_KV));
+	    ERROR_EXIT(VL_BADVERSION);
+	}
+    } else {
+	if ((cache->vldbversion != VLDBVERSION_3)
+	    && (cache->vldbversion != VLDBVERSION_2)
+	    && (cache->vldbversion != VLDBVERSION_4)) {
+	    VLog(0,
+		("VLDB version %d doesn't match this software version(%d, %d or %d), quitting!\n",
+		 cache->vldbversion, VLDBVERSION_4, VLDBVERSION_3, VLDBVERSION_2));
+	    ERROR_EXIT(VL_BADVERSION);
+	}
     }
 
-    if (cache->vldbversion == VLDBVERSION_3 || cache->vldbversion == VLDBVERSION_4) {
+    if (cache->vldbversion == VLDBVERSION_3 || cache->vldbversion == VLDBVERSION_4
+	 || cache->vldbversion == VLDBVERSION_4_KV) {
 	cache->maxnservers = 13;
     } else {
 	cache->maxnservers = 8;
@@ -547,10 +962,16 @@ CheckInit(struct vl_ctx *ctx, int builddb, int locktype)
     if (cache->vldbversion == 0) {
 	return VL_EMPTY;
     }
-    if ((cache->vldbversion != VLDBVERSION_3)
-	&& (cache->vldbversion != VLDBVERSION_2)
-	&& (cache->vldbversion != VLDBVERSION_4)) {
-	return VL_BADVERSION;
+    if (vlctx_kv(ctx)) {
+	if (cache->vldbversion != VLDBVERSION_4_KV) {
+	    return VL_BADVERSION;
+	}
+    } else {
+	if ((cache->vldbversion != VLDBVERSION_3)
+	    && (cache->vldbversion != VLDBVERSION_2)
+	    && (cache->vldbversion != VLDBVERSION_4)) {
+	    return VL_BADVERSION;
+	}
     }
 
     ctx->cache = cache;
@@ -719,7 +1140,7 @@ FindExtentBlock(struct vl_ctx *ctx, afsUUID *uuidp,
 			0xff000000 | ((base << 16) & 0xff0000) | (j & 0xffff);
 		    *expp = exp;
 		    *basep = base;
-		    if (cache->vldbversion != VLDBVERSION_4) {
+		    if (!vlctx_kv(ctx) && cache->vldbversion != VLDBVERSION_4) {
 			cheader->vital_header.vldbversion =
 			    htonl(VLDBVERSION_4);
 			code = write_vital_vlheader(ctx);
@@ -751,6 +1172,15 @@ AllocBlock(struct vl_ctx *ctx, struct nvlentry *tentry)
     afs_int32 blockindex;
     struct vl_cache *cache = ctx->cache;
     struct vlheader *cheader = &cache->cheader;
+
+    if (vlctx_kv(ctx)) {
+	/*
+	 * Our KV variant doesn't use allocated blocks. Just return something
+	 * nonzero to indicate non-failure. The actual value will be passed
+	 * around to various functions, but won't be used for anything.
+	 */
+	return VL4KV_FAKE_BLOCKINDEX;
+    }
 
     if (cheader->vital_header.freePtr) {
 	/* allocate this dude */
@@ -784,6 +1214,17 @@ FreeBlock(struct vl_ctx *ctx, afs_int32 blockindex)
     /* check validity of blockindex just to be on the safe side */
     if (!index_OK(ctx, blockindex))
 	return VL_BADINDEX;
+
+    if (vlctx_kv(ctx)) {
+	/*
+	 * For KV, we don't actually alloc blocks, so we don't need to free
+	 * them or maintain a freelist, etc, so just do nothing here. The
+	 * actual key/value for the vlentry should have already been deleted
+	 * when we "unhash"ed the RW id for that volume.
+	 */
+	return 0;
+    }
+
     memset(&tentry, 0, sizeof(nvlentry));
     tentry.nextIdHash[0] = cheader->vital_header.freePtr;	/* already in network order */
     tentry.flags = htonl(VLFREE);
@@ -796,6 +1237,51 @@ FreeBlock(struct vl_ctx *ctx, afs_int32 blockindex)
     return 0;
 }
 
+static afs_int32
+kv_FindByID(struct vl_ctx *ctx, afs_uint32 volid, afs_int32 voltype,
+	    struct nvlentry *tentry, afs_int32 *error)
+{
+    struct vl4kv_volidkey ikey;
+    struct rx_opaque keybuf;
+    afs_int32 code;
+
+    /*
+     * The callers of this function don't actually care what the returned
+     * blockindex is on success; they only care if the entry exists
+     * (blockindex != 0). Since we don't actually use physical file offsets for
+     * KV, just return something nonzero to indicate success.
+     */
+    afs_int32 blockindex = VL4KV_FAKE_BLOCKINDEX;
+
+    init_volidkey(&keybuf, &ikey, volid);
+
+    code = kv_vlentryget(ctx, &keybuf, tentry);
+    if (code != 0) {
+	if (code == VL_NOENT) {
+	    code = 0;
+	}
+	*error = code;
+	return 0;
+    }
+
+    if (voltype == -1) {
+	afs_int32 typeindex;
+	for (typeindex = 0; typeindex < MAXTYPES; typeindex++) {
+	    if (volid == tentry->volumeId[typeindex]) {
+		return blockindex;
+	    }
+	}
+    } else if (volid == tentry->volumeId[voltype]) {
+	return blockindex;
+    }
+
+    /* Entry "not found"; we found a tentry for the given volid, but the given
+     * volume ID doesn't appear in the tentry in the proper place. */
+    VLog(0, ("vldb4-kv: Internal error: Looking up volume id %u found "
+	     "volume entry with RW id %u\n", volid, tentry->volumeId[RWVOL]));
+    *error = VL_BADENTRY;
+    return 0;
+}
 
 /* Look for a block by volid and voltype (if not known use -1 which searches
  * all 3 volid hash lists. Note that the linked lists are read in first from
@@ -811,6 +1297,11 @@ FindByID(struct vl_ctx *ctx, afs_uint32 volid, afs_int32 voltype,
     struct vlheader *cheader = &cache->cheader;
 
     *error = 0;
+
+    if (vlctx_kv(ctx)) {
+	return kv_FindByID(ctx, volid, voltype, tentry, error);
+    }
+
     hashindex = IDHash(volid);
     if (voltype == -1) {
 /* Should we have one big hash table for volids as opposed to the three ones? */
@@ -840,6 +1331,44 @@ FindByID(struct vl_ctx *ctx, afs_uint32 volid, afs_int32 voltype,
     return 0;			/* no such entry */
 }
 
+static afs_int32
+kv_FindByName(struct vl_ctx *ctx, char *aname, struct nvlentry *tentry,
+	      afs_int32 *error)
+{
+    afs_int32 code;
+    struct rx_opaque keybuf;
+    struct vl4kv_volnamekey nkey;
+
+    /*
+     * The callers of this function don't actually care what the returned
+     * blockindex is on success; they only care if the entry exists (blockindex
+     * != 0). Since we don't actually use physical file offsets for KV, just
+     * return nonzero to indicate success.
+     */
+    afs_int32 blockindex = VL4KV_FAKE_BLOCKINDEX;
+
+    init_volnamekey(&keybuf, &nkey, aname);
+
+    code = kv_vlentryget(ctx, &keybuf, tentry);
+    if (code != 0) {
+	if (code == VL_NOENT) {
+	    code = 0;
+	}
+	*error = code;
+	return 0;
+    }
+
+    if (strcmp(aname, tentry->name) == 0) {
+	return blockindex;
+    }
+
+    /* Entry "not found"; we found a tentry for the given name, but the tentry
+     * we found doesn't seem to match the given name. */
+    VLog(0, ("vldb4-kv: Internal error: Looking up volume name '%s' found "
+	     "volume entry with name '%s'\n", aname, tentry->name));
+    *error = VL_BADENTRY;
+    return 0;
+}
 
 /* Look for a block by volume name. If found read the block's contents into
  * the area pointed to by tentry and return the block's index.  If not
@@ -882,6 +1411,11 @@ FindByName(struct vl_ctx *ctx, char *volname, struct nvlentry *tentry,
     }
 
     *error = 0;
+
+    if (vlctx_kv(ctx)) {
+	return kv_FindByName(ctx, tname, tentry, error);
+    }
+
     hashindex = NameHash(tname);
     for (blockindex = ntohl(cheader->VolnameHash[hashindex]);
 	 blockindex != NULLO; blockindex = tentry->nextNameHash) {
@@ -981,6 +1515,11 @@ HashNDump(struct vl_ctx *ctx, int hashindex)
     struct vl_cache *cache = ctx->cache;
     struct vlheader *cheader = &cache->cheader;
 
+    if (vlctx_kv(ctx)) {
+	VLog(0, ("[%d]: Using KV store: no internal hash tables\n", hashindex));
+	return 0;
+    }
+
     for (blockindex = ntohl(cheader->VolnameHash[hashindex]);
 	 blockindex != NULLO; blockindex = tentry.nextNameHash) {
 	if (vlentryread(ctx, blockindex, &tentry))
@@ -1002,6 +1541,11 @@ HashIdDump(struct vl_ctx *ctx, int hashindex)
     struct nvlentry tentry;
     struct vl_cache *cache = ctx->cache;
     struct vlheader *cheader = &cache->cheader;
+
+    if (vlctx_kv(ctx)) {
+	VLog(0, ("[%d]: Using KV store: no internal hash tables\n", hashindex));
+	return 0;
+    }
 
     for (blockindex = ntohl(cheader->VolidHash[0][hashindex]);
 	 blockindex != NULLO; blockindex = tentry.nextIdHash[0]) {
@@ -1119,6 +1663,12 @@ HashVolid(struct vl_ctx *ctx, afs_int32 voltype, afs_int32 blockindex,
 	return VL_IDALREADYHASHED;
     else if (errorcode)
 	return errorcode;
+
+    if (vlctx_kv(ctx)) {
+	/* For KV, we hash the vlentry when we write out the vlentry itself. */
+	return 0;
+    }
+
     hashindex = IDHash(tentry->volumeId[voltype]);
     tentry->nextIdHash[voltype] =
 	ntohl(cheader->VolidHash[voltype][hashindex]);
@@ -1130,6 +1680,127 @@ HashVolid(struct vl_ctx *ctx, afs_int32 voltype, afs_int32 blockindex,
     return 0;
 }
 
+/*
+ * Make the given key (a volid or volname key) no longer point to the given
+ * vlentry. Check that the key is pointing at the right vlentry before deleting
+ * it.
+ */
+static int
+kv_unhashkey(struct vl_ctx *ctx, struct rx_opaque *key,
+	     struct nvlentry *aentry)
+{
+    afs_uint32 found_rwid = 0;
+    afs_uint32 rwid = aentry->volumeId[RWVOL];
+    int code;
+    int noent = 0;
+
+    /* Make sure the given key is actually pointing to the RW volid for this
+     * vlentry. */
+    code = ubik_KVGetCopy(ctx->trans, key, &found_rwid, sizeof(found_rwid),
+			  &noent);
+    if (code != 0) {
+	return code;
+    }
+    if (noent) {
+	/*
+	 * Entry doesn't exist; our work is already done.
+	 *
+	 * There is perhaps an argument here that we should return an error if
+	 * the given key does not exist, since a caller expects the key to
+	 * exist (that's why we're deleting it), and the lack of the key
+	 * existing indicates a mistake or corruption somewhere.
+	 *
+	 * However, the current scheme of "hashing" volume entries means that
+	 * we must unhash all entries for a volume when the RW id is unhashed
+	 * (since we store volume entries by RW id), which makes it difficult
+	 * to return an error here. The existing vldb4 code for deleting a
+	 * volume entry, for example, unhashes the RW id, then the other ids,
+	 * and then the volume name. This means that we unhash everything, and
+	 * then try to unhash the other volids/name, which have already been
+	 * unhashed.
+	 *
+	 * It's possible to accommodate for this at the higher levels of the db
+	 * logic, but it seems easier to just not throw an error when we try to
+	 * delete a key that's not there. In other words, deleting the 'hash'
+	 * keys for a volume is treated as idempotent, like free(NULL).
+	 */
+	return 0;
+    }
+
+    found_rwid = ntohl(found_rwid);
+    rwid = aentry->volumeId[RWVOL];
+    if (found_rwid != rwid) {
+	/*
+	 * The entry for 'volid' seems to be pointing to 'found_rwid', not
+	 * the actual rwid in 'aentry'. That's weird; bail out with an
+	 * error.
+	 */
+	VLog(0, ("Error: Tried to unhash volume RW id %u, but existing hash "
+		 "entry was found for RW id %u.\n", rwid, found_rwid));
+	return VL_DBBAD;
+    }
+
+    return ubik_KVDelete(ctx->trans, key, NULL);
+}
+
+static int
+kv_UnhashVolname(struct vl_ctx *ctx, struct nvlentry *aentry)
+{
+    struct vl4kv_volnamekey nkey;
+    struct rx_opaque keybuf;
+
+    opr_StaticAssert(sizeof(nkey.name) == sizeof(aentry->name));
+
+    init_volnamekey(&keybuf, &nkey, aentry->name);
+    return kv_unhashkey(ctx, &keybuf, aentry);
+}
+
+static int
+kv_UnhashVolid(struct vl_ctx *ctx, afs_int32 voltype, struct nvlentry *aentry)
+{
+    int code;
+    afs_uint32 volid;
+    struct vl4kv_volidkey ikey;
+    struct rx_opaque keybuf;
+
+    volid = aentry->volumeId[voltype];
+    init_volidkey(&keybuf, &ikey, volid);
+
+    if (voltype != RWVOL) {
+	return kv_unhashkey(ctx, &keybuf, aentry);
+    }
+
+    /*
+     * For unhashing the RW volid, we must remove the KV hash entries for
+     * all the other volids and the volume name too, since those refer to
+     * this vlentry by its RW volid. If we change the RW id, those
+     * references will no longer be valid, so remove them here. (We'll add
+     * them back with the proper RW id when we write out the vlentry).
+     */
+    for (voltype = ROVOL; voltype <= BACKVOL; voltype++) {
+	code = kv_UnhashVolid(ctx, voltype, aentry);
+	if (code != 0) {
+	    return code;
+	}
+    }
+    code = kv_UnhashVolname(ctx, aentry);
+    if (code != 0) {
+	return code;
+    }
+
+    /*
+     * In kv_unhashkey, we return 0 if the given key doesn't exist. Here, we
+     * return an error if the key doesn't exist (since we give a NULL to
+     * ubik_KVDelete); why the difference in behavior?
+     *
+     * The key for the RW id for the volume really should exist at this point.
+     * The other keys may get "unhashed" during various times of
+     * unhashing/rehashing a volume, but the key for the RW id is for the
+     * volume itself, and really shouldn't go away unless we really are
+     * unhashing the RW id.
+     */
+    return ubik_KVDelete(ctx->trans, &keybuf, NULL);
+}
 
 /* cheader must have be read before this routine is called. */
 int
@@ -1145,6 +1816,11 @@ UnhashVolid(struct vl_ctx *ctx, afs_int32 voltype, afs_int32 blockindex,
 
     if (aentry->volumeId[voltype] == NULLO)	/* Assume no volume id */
 	return 0;
+
+    if (vlctx_kv(ctx)) {
+	return kv_UnhashVolid(ctx, voltype, aentry);
+    }
+
     /* Take it out of the VolId[voltype] hash list */
     hashindex = IDHash(aentry->volumeId[voltype]);
     nextblockindex = ntohl(cheader->VolidHash[voltype][hashindex]);
@@ -1187,6 +1863,11 @@ HashVolname(struct vl_ctx *ctx, afs_int32 blockindex,
     struct vl_cache *cache = ctx->cache;
     struct vlheader *cheader = &cache->cheader;
 
+    if (vlctx_kv(ctx)) {
+	/* For KV, we hash the vlentry when we write out the vlentry itself. */
+	return 0;
+    }
+
     /* Insert into volname's hash linked list */
     hashindex = NameHash(aentry->name);
     aentry->nextNameHash = ntohl(cheader->VolnameHash[hashindex]);
@@ -1209,6 +1890,10 @@ UnhashVolname(struct vl_ctx *ctx, afs_int32 blockindex,
     afs_int32 temp;
     struct vl_cache *cache = ctx->cache;
     struct vlheader *cheader = &cache->cheader;
+
+    if (vlctx_kv(ctx)) {
+	return kv_UnhashVolname(ctx, aentry);
+    }
 
     /* Take it out of the Volname hash list */
     hashindex = NameHash(aentry->name);
@@ -1239,6 +1924,91 @@ UnhashVolname(struct vl_ctx *ctx, afs_int32 blockindex,
     return 0;
 }
 
+static afs_int32
+kv_NextEntry(struct vl_ctx *ctx, afs_int32 blockindex, struct nvlentry *tentry,
+	     afs_int32 *remaining)
+{
+    afs_uint32 volid = blockindex;
+    int code;
+    struct rx_opaque keybuf;
+    struct rx_opaque valbuf;
+    struct vl4kv_volidkey id_key;
+
+    memset(&valbuf, 0, sizeof(valbuf));
+
+    /*
+     * Our strategy for traversing all possible volume entries is that we scan
+     * through all key/value pairs, looking for keys that start with
+     * VL4KV_KEY_VOLID, and whose value has the same size as an nvlentry. When
+     * we find one, we return the RW volume id for that nvlentry as the
+     * 'blockindex' to start from the next time we are called.
+     */
+
+    if (volid == 0) {
+	/* First call; get the first item in the KV store. */
+	memset(&keybuf, 0, sizeof(keybuf));
+    } else {
+	init_volidkey(&keybuf, &id_key, volid);
+    }
+
+    for (;;) {
+	int eof = 0;
+	code = ubik_KVNext(ctx->trans, &keybuf, &valbuf, &eof);
+	if (code != 0) {
+	    goto error;
+	}
+	if (eof) {
+	    goto eof;
+	}
+
+	if (keybuf.len == sizeof(id_key) && valbuf.len == sizeof(*tentry)) {
+
+	    opaque_copy(&keybuf, &id_key, sizeof(id_key));
+
+	    id_key.tag = ntohl(id_key.tag);
+	    id_key.volid = ntohl(id_key.volid);
+
+	    if (id_key.tag == VL4KV_KEY_VOLID) {
+		/* We found a key/value pair for a vlentry. Return it to the
+		 * caller. */
+		struct nvlentry spare_entry;
+		opaque_copy(&valbuf, &spare_entry, sizeof(spare_entry));
+		nvlentry_ntohl(&spare_entry, tentry);
+		volid = id_key.volid;
+
+		if (volid == 0) {
+		    /*
+		     * Skip keys that appear to be for volume id 0. These
+		     * shouldn't happen, but sometimes old crufty vldb's have
+		     * weird entries in them that get converted. And returning
+		     * 0 indicates EOF, so just make sure we don't return 0 if
+		     * there are possibly more entries remaining.
+		     */
+		    continue;
+		}
+
+		goto success;
+	    }
+	}
+    }
+
+ error:
+    *remaining = -1;
+    return 0;
+
+ eof:
+    *remaining = 0;
+    return 0;
+
+ success:
+    /*
+     * We don't actually know how many entries are left. All in-tree callers at
+     * least don't seem to care; just return 1 to at least indicate that more
+     * entries are possible.
+     */
+    *remaining = 1;
+    return volid;
+}
 
 /* Returns the vldb entry tentry at offset index; remaining is the number of
  * entries left; the routine also returns the index of the next sequential
@@ -1252,6 +2022,10 @@ NextEntry(struct vl_ctx *ctx, afs_int32 blockindex,
     afs_int32 lastblockindex;
     struct vl_cache *cache = ctx->cache;
     struct vlheader *cheader = &cache->cheader;
+
+    if (vlctx_kv(ctx)) {
+	return kv_NextEntry(ctx, blockindex, tentry, remaining);
+    }
 
     if (blockindex == 0)	/* get first one */
 	blockindex = sizeof(*cheader);
@@ -1297,6 +2071,14 @@ index_OK(struct vl_ctx *ctx, afs_int32 blockindex)
 {
     struct vl_cache *cache = ctx->cache;
     struct vlheader *cheader = &cache->cheader;
+    if (vlctx_kv(ctx)) {
+	/* We don't use file offsets in KV, so just check if the given
+	 * blockindex matches the "fake" one we give everyone. */
+	if (blockindex == VL4KV_FAKE_BLOCKINDEX) {
+	    return 1;
+	}
+	return 0;
+    }
     if ((blockindex < sizeof(*cheader))
 	|| (blockindex >= ntohl(cheader->vital_header.eofPtr)))
 	return 0;

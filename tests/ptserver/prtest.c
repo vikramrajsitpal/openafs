@@ -332,6 +332,7 @@ struct ubiktest_dataset prtiny = {
 
     .dbtest_func = prtest_dbtest,
     .tests = prtiny_tests,
+    .n_dbtests = 25,
     .create_func = prtiny_create,
     .existing_dbs = {
 	{

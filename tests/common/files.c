@@ -196,7 +196,7 @@ afstest_cp(char *src_path, char *dest_path)
 
     /* Instead of needing to reimplement the logic for copying a file, just run
      * 'cp'. */
-    code = afstest_systemlp("cp", src_path, dest_path, (char*)NULL);
+    code = afstest_systemlp("cp", "-r", src_path, dest_path, (char*)NULL);
     if (code != 0) {
 	return EIO;
     }

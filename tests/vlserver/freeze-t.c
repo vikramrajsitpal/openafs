@@ -40,6 +40,18 @@ static struct frztest_ops vldb4_ops = {
     .baddb = { .flat_path = "tests/vlserver/db.invalid/flat.DB0", },
 };
 
+static char *kv_argv[] = { "-default-db", "vldb4-kv", NULL };
+
+static struct frztest_ops vldb4kv_ops = {
+    .suite = "vl",
+    .freeze_envname = "VL",
+
+    .use_db = "vldb4-kv",
+    .blankdb = { .kv_path = "tests/vlserver/db.blank/vldb4kv.lmdb" },
+    .baddb = { .kv_path = "tests/vlserver/db.invalid/kv.lmdb" },
+    .server_argv = kv_argv,
+};
+
 int
 main(int argc, char **argv)
 {
@@ -48,7 +60,7 @@ main(int argc, char **argv)
     afstest_SkipTestsIfNoCtl();
     vltest_init(argv);
 
-    plan(269);
+    plan(982);
 
     vos = afstest_obj_path("src/volser/vos");
 
@@ -58,7 +70,13 @@ main(int argc, char **argv)
     vldb4_ops.blank_cmd_stdout =
 	"VLDB entries for all servers \n\nTotal entries: 0\n";
 
+    vldb4kv_ops.blank_cmd = vldb4_ops.blank_cmd;
+    vldb4kv_ops.blank_cmd_stdout = vldb4_ops.blank_cmd_stdout;
+
     frztest_runtests(&vlsmall, &vldb4_ops);
+    frztest_runtests(&vlsmall, &vldb4kv_ops);
+    frztest_runtests_convert(&vlsmall, &vldb4_ops, &vldb4kv_ops);
+    frztest_runtests_convert(&vlsmall, &vldb4kv_ops, &vldb4_ops);
 
     return 0;
 }

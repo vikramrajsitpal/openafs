@@ -25,6 +25,7 @@ vlserver [B<-noauth>] [B<-smallmem>]
     S<<< [B<-restricted_query> (anyuser | admin)] >>>
     S<< [B<-s2scrypt> (rxgk-crypt | never)] >>
     S<<< [B<-ctl-socket> <I<path>>] >>>
+    S<<< [B<-default-db> <I<format>>] >>>
     [B<-help>]
 
 =for html
@@ -43,10 +44,12 @@ file with the B<bos create> command. If it is ever issued at the command
 shell prompt, the issuer must be logged onto a database server machine as
 the local superuser C<root>.
 
-As it initializes, the VL Server process creates the two files that
-constitute the Volume Location Database (VLDB), F<vldb.DB0> and
-F<vldb.DBSYS1>, in the F</usr/afs/db> directory if they do not already
-exist. Use the commands in the B<vos> suite to administer the database.
+As it initializes, the VL Server processes the Volume Location Database (VLDB),
+creating an empty VLDB is one does not already exist. The contents of the VLDB
+are kept in F</usr/afs/db/vldb.DB0> by default, and depending on the database
+format, may also be kept in a file F<vldb.DBSYS1> (for traditional flat-file
+formats), or a directory F<vldb.DB.d> (for newer key-value formats). Use the
+commands in the B<vos> suite to administer the database.
 
 The VL Server maintains the record of volume locations in the Volume
 Location Database (VLDB). When the Cache Manager fills a file request from
@@ -222,6 +225,27 @@ The default is currently C<never>.
 
 Specifies the path to use for the ctl unix socket, for use with B<openafs-ctl>
 commands. By default, B<vlserver> uses F</usr/afs/local/vl.ctl.sock>.
+
+=item B<-default-db> <I<format>>
+
+Specifies the format of the Volume Location Database (VLDB) that is created
+when no existing VLDB is found. The I<format> can be one of:
+
+=over 4
+
+=item vldb4
+
+VLDB version 4. This is the default.
+
+=item vldb4-kv
+
+An variant of VLDB version 4 that uses the ubik key-value ("kv") store. This
+format offers the same features as vldb4, but may have better performance and
+on-disk consistency. This format is currently considered experimental, and
+cannot be used if the other dbservers in the cell do not also support this
+format.
+
+=back
 
 =item B<-help>
 

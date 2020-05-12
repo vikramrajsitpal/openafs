@@ -33,6 +33,7 @@ vlserver/check4
 vlserver/freeze
 vlserver/recovery
 vlserver/vldb4
+vlserver/vldb4-kv
 volser/vos-man
 volser/vos
 bucoord/backup-man

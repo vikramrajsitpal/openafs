@@ -143,6 +143,7 @@ vldb_IsLocalRealmMatch(void *rock, char *name, char *inst, char *cell)
 enum optionsList {
     OPT_noauth,
     OPT_smallmem,
+    OPT_default_db,
     OPT_auditlog,
     OPT_auditiface,
     OPT_config,
@@ -188,6 +189,7 @@ main(int argc, char **argv)
     struct logOptions logopts;
     int s2s_rxgk = 0;
     struct afsconf_bsso_info bsso;
+    int default_kv = 0;
     struct ubik_serverinit_opts u_opts;
 
     char *vl_dbaseName;
@@ -255,6 +257,8 @@ main(int argc, char **argv)
 		        CMD_OPTIONAL, "disable authentication");
     cmd_AddParmAtOffset(opts, OPT_smallmem, "-smallmem", CMD_FLAG,
 		        CMD_OPTIONAL, "optimise for small memory systems");
+    cmd_AddParmAtOffset(opts, OPT_default_db, "-default-db", CMD_SINGLE,
+			CMD_OPTIONAL, "default database format");
 
     /* general server options */
     cmd_AddParmAtOffset(opts, OPT_auditlog, "-auditlog", CMD_LIST,
@@ -330,6 +334,18 @@ main(int argc, char **argv)
     /* vlserver options */
     cmd_OptionAsFlag(opts, OPT_noauth, &noAuth);
     cmd_OptionAsFlag(opts, OPT_smallmem, &smallMem);
+    if (cmd_OptionAsString(opts, OPT_default_db, &optstring) == 0) {
+	if (strcmp(optstring, "vldb4") == 0) {
+	    /* Default behavior; nothing to do. */
+	} else if (strcmp(optstring, "vldb4-kv") == 0) {
+	    default_kv = 1;
+	} else {
+	    printf("Invalid -default-db format '%s'\n", optstring);
+	    return -1;
+	}
+	free(optstring);
+	optstring = NULL;
+    }
     if (cmd_OptionAsString(opts, OPT_trace, &optstring) == 0) {
 	extern char rxi_tracename[80];
 	strcpy(rxi_tracename, optstring);
@@ -555,6 +571,7 @@ main(int argc, char **argv)
     u_opts.pathName = vl_dbaseName;
     u_opts.configDir = configDirExplicit;
     u_opts.dbcheck_func = vl_checkdb;
+    u_opts.default_kv = default_kv;
 
     code = ubik_ServerInitByOpts(&u_opts, &VL_dbase);
     if (code) {

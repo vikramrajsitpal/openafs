@@ -33,6 +33,52 @@ extern int Init_VLdbase(struct vl_ctx *ctx, int locktype, int this_op);
 extern int vl_EndTrans(struct vl_ctx *ctx);
 
 /* vlutils.c */
+
+/* vldb4-kv key for the cheader */
+#define VL4KV_KEY_CHEADERKV 0x04686472 /* 04 + "hdr" */
+
+/* vldb4-kv key tag for ex blocks */
+#define VL4KV_KEY_EXBLOCK   0x04455862 /* 04 + "EXb" */
+
+/* vldb4-kv key tag for volume ids */
+#define VL4KV_KEY_VOLID	    0x04564944 /* 04 + "VID" */
+
+/* vldb4-kv key tab for volume names */
+#define VL4KV_KEY_VOLNAME   0x046E616D /* 04 + "nam" */
+
+/* vldb4-kv key for an ex block with the given 'base' */
+struct vl4kv_exkey {
+    afs_uint32 tag;
+    afs_int32 base;
+};
+
+/* vldb4-kv key for volume id 'volid' */
+struct vl4kv_volidkey {
+    afs_uint32 tag;
+    afs_uint32 volid;
+};
+
+/*
+ * vldb4-kv key for volume name 'name'. Note that we don't store the entire
+ * struct in the db; if 'name' is only 5 bytes long, we set our key to only be
+ * 'sizeof(tag) + 5' bytes.
+ */
+struct vl4kv_volnamekey {
+    afs_uint32 tag;
+    char name[VL_MAXNAMELEN];
+};
+
+/*
+ * The cheader equivalent for vldb4-kv. This is the same as struct vlheader,
+ * but it doesn't have the VolnameHash/VolidHash fields (since those aren't
+ * used in vldb4-kv).
+ */
+struct vlheader_kv {
+    struct vital_vlheader vital_header;
+    afs_uint32 IpMappedAddr[MAXSERVERID + 1];
+    afs_int32 SIT;
+};
+
 extern afs_int32 vlwrite_cheader(struct vl_ctx *ctx,
 				 struct vlheader *cheader, void *buffer,
 				 afs_int32 length);

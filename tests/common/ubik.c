@@ -29,6 +29,7 @@
 #include <sys/mman.h>
 
 #include <afs/cellconfig.h>
+#include <afs/okv.h>
 #include <ubik_internal.h>
 
 #include "common.h"
@@ -100,7 +101,7 @@ ubiktest_init(char *service, char **argv)
  * Is the given path a valid .DB0 file? Return 1 if so, 0 if not.
  */
 static int
-valid_db(char *path)
+valid_flatfile_db(char *path)
 {
     FILE *fh = fopen(path, "r");
     struct ubik_hdr hdr;
@@ -185,8 +186,11 @@ run_testlist(struct ubiktest_dataset *ds, struct ubiktest_dbtest *testlist,
 /* Return the path to the database specified in 'dbdef'. Caller must free the
  * returned string. */
 static char *
-get_dbpath_optional(struct ubiktest_dbdef *dbdef, int *a_present)
+get_dbpath_optional(struct ubiktest_dbdef *dbdef, int *a_present,
+		    char **a_skipreason)
 {
+    const char *progname = getprogname();
+    int code;
     char *path;
 
     *a_present = 1;
@@ -195,19 +199,33 @@ get_dbpath_optional(struct ubiktest_dbdef *dbdef, int *a_present)
 	path = afstest_src_path(dbdef->flat_path);
 	opr_Assert(path != NULL);
 
+    } else if (dbdef->kv_path != NULL) {
+	if (*a_skipreason == NULL) {
+	    code = afstest_okv_dbpath(&path, dbdef->kv_path);
+	    if (code != 0) {
+		afs_com_err(progname, code,
+			    "while opening okv dbase %s", dbdef->kv_path);
+		return NULL;
+	    }
+	    if (path == NULL) {
+		*a_skipreason = afstest_asprintf("okv dbase %s does not exist "
+						 "on this platform",
+						 dbdef->kv_path);
+	    }
+	}
+
     } else {
 	path = NULL;
 	*a_present = 0;
     }
-
     return path;
 }
 
 static char *
-get_dbpath(struct ubiktest_dbdef *dbdef)
+get_dbpath(struct ubiktest_dbdef *dbdef, char **a_skipreason)
 {
     int present;
-    return get_dbpath_optional(dbdef, &present);
+    return get_dbpath_optional(dbdef, &present, a_skipreason);
 }
 
 /*
@@ -316,6 +334,26 @@ init_serverinfo(struct ubiktest_serverinfo **a_serverinfo, int n_servers,
     free(ips);
 }
 
+static int
+calc_ntests(struct ubiktest_dataset *ds, struct ubiktest_ops *ops,
+	    int n_servers)
+{
+    int ntests = 0;
+    int dbtests_nonsync = ds->n_dbtests - ds->n_dbtests_sync;
+    opr_Assert(dbtests_nonsync >= 0);
+
+    /* For all non-syncsite-only tests, we run the test against each server. */
+    ntests += dbtests_nonsync * n_servers;
+
+    /* For syncsite-only tests, of course we just run them once. */
+    ntests += ds->n_dbtests_sync;
+
+    /* The scenario ops may also have its own tests, which are run just once. */
+    ntests += ops->n_tests;
+
+    return ntests;
+}
+
 /**
  * Run db tests for the given dataset, for the given scenario ops.
  *
@@ -332,6 +370,7 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
     int secIndex = 0;
     char *src_db = NULL;
     char *db_copy = NULL;
+    char *skip_reason = NULL;
     char *use_db = ops->use_db;
     struct ubiktest_dbdef *dbdef;
     struct ubiktest_dbtest *testlist;
@@ -342,6 +381,8 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
     int server_i;
     int n_servers;
     struct afstest_server_opts *srv_opts = NULL;
+    unsigned long testnum_start = testnum;
+    int n_tests;
 
     memset(&cbinfo, 0, sizeof(cbinfo));
 
@@ -353,7 +394,16 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 	n_servers = 1;
     }
 
-    diag("ubiktest dataset: %s, ops: %s", ds->descr, ops->descr);
+    n_tests = 4 + calc_ntests(ds, ops, n_servers);
+
+    diag("ubiktest dataset: %s, ops: %s, tests: %d", ds->descr, ops->descr,
+	 n_tests);
+
+    if (ops->skip_reason != NULL) {
+	skip_block(n_tests, "%s", ops->skip_reason);
+	code = 0;
+	goto done;
+    }
 
     /* Get the path to the sample db we're using. */
 
@@ -364,9 +414,15 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
     opr_Assert(use_db != NULL);
     dbdef = find_dbdef(ds, use_db);
     if (dbdef != NULL) {
-	src_db = get_dbpath(dbdef);
+	src_db = get_dbpath(dbdef, &skip_reason);
     }
     cbinfo.src_dbdef = dbdef;
+
+    if (skip_reason != NULL) {
+	skip_block(n_tests, "%s", skip_reason);
+	code = 0;
+	goto done;
+    }
 
     /* Setup config and other data for server procs. */
 
@@ -493,6 +549,9 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 	goto error;
     }
 
+    /* After everything is done, make sure the db is the proper type
+     * (flatfile vs KV). */
+
     code = lstat(syncsite->db_path, &st);
     if (code != 0) {
 	sysdiag("lstat(%s)", syncsite->db_path);
@@ -502,12 +561,25 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 	goto error;
     }
 
-    ok(S_ISREG(st.st_mode),
-       "db %s is a regular file (mode 0x%x)", syncsite->db_path,
-       (unsigned)st.st_mode);
+    if (ops->result_kv) {
+	struct okv_dbhandle *dbh = NULL;
 
-    ok(valid_db(syncsite->db_path),
-       "db %s is a valid ubik db", syncsite->db_path);
+	ok(S_ISLNK(st.st_mode),
+	   "db %s is a symlink (mode 0x%x)", syncsite->db_path,
+	   (unsigned)st.st_mode);
+
+	code = okv_open(syncsite->db_path, &dbh);
+	is_int(0, code, "db %s is a valid okv dbase", syncsite->db_path);
+	okv_close(&dbh);
+
+    } else {
+	ok(S_ISREG(st.st_mode),
+	   "db %s is a regular file (mode 0x%x)", syncsite->db_path,
+	   (unsigned)st.st_mode);
+
+	ok(valid_flatfile_db(syncsite->db_path),
+	   "db %s is a valid flatfile db", syncsite->db_path);
+    }
 
     if (ops->post_stop != NULL) {
 	(*ops->post_stop)(&cbinfo, ops);
@@ -555,9 +627,16 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
     if (code != 0) {
 	bail("encountered unexpected error");
     }
+    if (ops->n_tests != 0 && testnum - testnum_start != n_tests) {
+	/* If ops->n_tests is set, make sure it's set correctly, in case we
+	 * ever need to skip the tests inside. */
+	bail("bad n_tests: %lu - %lu == %ld != %d",
+	     testnum, testnum_start, testnum - testnum_start, n_tests);
+    }
 
     free(src_db);
     free(db_copy);
+    free(skip_reason);
     if (secClass != NULL) {
 	rxs_Release(secClass);
     }
@@ -700,18 +779,21 @@ urectest_runtests(struct ubiktest_dataset *ds, char *use_db)
     struct ubiktest_ops utest;
     struct ubiktest_dbdef *dbdef;
     char *db_path = NULL;
+    char *skip_reason = NULL;
 
     dbdef = find_dbdef(ds, use_db);
     opr_Assert(dbdef != NULL);
-    db_path = get_dbpath(dbdef);
+    db_path = get_dbpath(dbdef, &skip_reason);
 
     memset(&utest, 0, sizeof(utest));
 
     {
 	utest.rock = db_path;
 	utest.descr = afstest_asprintf("run DISK_GetFile for %s", use_db);
+	utest.skip_reason = skip_reason;
 	utest.use_db = use_db;
 	utest.post_start = run_getfile;
+	utest.n_tests = 2;
 
 	ubiktest_runtest(ds, &utest);
 
@@ -721,8 +803,10 @@ urectest_runtests(struct ubiktest_dataset *ds, char *use_db)
     {
 	utest.rock = db_path;
 	utest.descr = afstest_asprintf("run DISK_SendFile for %s", use_db);
+	utest.skip_reason = skip_reason;
 	utest.use_db = "none";
 	utest.post_start = run_sendfile;
+	utest.n_tests = 1;
 
 	ubiktest_runtest(ds, &utest);
 
@@ -812,15 +896,161 @@ ctl_run(char *confdir, char *suite, char *subcmd, char *fmt, ...)
 }
 
 static int
+opaque_cmp(struct rx_opaque *buf_a, struct rx_opaque *buf_b)
+{
+    if (buf_a->len < buf_b->len) {
+	return -1;
+    } else if (buf_a->len > buf_b->len) {
+	return 1;
+    }
+    return memcmp(buf_a->val, buf_b->val, buf_a->len);
+}
+
+static int
+db_equal_kv(char *path_a, char *path_b)
+{
+    int code;
+    struct okv_dbhandle *dbh_a = NULL;
+    struct okv_dbhandle *dbh_b = NULL;
+    struct okv_trans *tx_a = NULL;
+    struct okv_trans *tx_b = NULL;
+    struct rx_opaque key_a;
+    struct rx_opaque key_b;
+    struct rx_opaque val_a;
+    struct rx_opaque val_b;
+    struct rx_opaque_stringbuf sbuf_a;
+    struct rx_opaque_stringbuf sbuf_b;
+    int equal = 0;
+
+    memset(&key_a, 0, sizeof(key_a));
+    memset(&key_b, 0, sizeof(key_b));
+    memset(&val_a, 0, sizeof(val_a));
+    memset(&val_b, 0, sizeof(val_b));
+    memset(&sbuf_a, 0, sizeof(sbuf_a));
+    memset(&sbuf_b, 0, sizeof(sbuf_b));
+
+    code = ukv_open(path_a, &dbh_a, NULL);
+    if (code != 0) {
+	diag("failed to open %s, code %d", path_a, code);
+	goto done;
+    }
+
+    code = ukv_open(path_b, &dbh_b, NULL);
+    if (code != 0) {
+	diag("failed to open %s, code %d", path_b, code);
+	goto done;
+    }
+
+    code = okv_begin(dbh_a, OKV_BEGIN_RO, &tx_a);
+    if (code != 0) {
+	diag("okv_begin failed for %s, code %d", path_a, code);
+	goto done;
+    }
+
+    code = okv_begin(dbh_b, OKV_BEGIN_RO, &tx_b);
+    if (code != 0) {
+	diag("okv_begin failed for %s, code %d", path_b, code);
+	goto done;
+    }
+
+    for (;;) {
+	int eof_a = 0;
+	int eof_b = 0;
+
+	/*
+	 * Note that we use ukv_next() here, instead of okv_next(). This means
+	 * we skip ubik-private keys, so if the given databases just differ in
+	 * the ubik version, we'll still report that the databases are equal.
+	 */
+
+	code = ukv_next(tx_a, &key_a, &val_a, &eof_a);
+	if (code != 0) {
+	    diag("okv_next failed for %s, code %d", path_a, code);
+	    goto done;
+	}
+
+	code = ukv_next(tx_b, &key_b, &val_b, &eof_b);
+	if (code != 0) {
+	    diag("okv_next failed for %s, code %d", path_b, code);
+	    goto done;
+	}
+
+	if (eof_a && eof_b) {
+	    break;
+	}
+
+	if (eof_a) {
+	    diag("hit eof for %s, while %s has key %s", path_a, path_b,
+		 rx_opaque_stringify(&key_b, &sbuf_b));
+	    goto done;
+	}
+	if (eof_b) {
+	    diag("hit eof for %s, while %s has key %s", path_b, path_a,
+		 rx_opaque_stringify(&key_a, &sbuf_a));
+	    goto done;
+	}
+
+	if (opaque_cmp(&key_a, &key_b) != 0) {
+	    diag("%s key %s != %s key %s",
+		 path_a, rx_opaque_stringify(&key_a, &sbuf_a),
+		 path_b, rx_opaque_stringify(&key_b, &sbuf_b));
+	    goto done;
+	}
+
+	if (opaque_cmp(&val_a, &val_b) != 0) {
+	    diag("%s key %s val != %s key %s val",
+		 path_a, rx_opaque_stringify(&key_a, &sbuf_a),
+		 path_b, rx_opaque_stringify(&key_b, &sbuf_b));
+	    goto done;
+	}
+    }
+
+    equal = 1;
+
+ done:
+    okv_abort(&tx_a);
+    okv_abort(&tx_b);
+    okv_close(&dbh_a);
+    okv_close(&dbh_b);
+    return equal;
+}
+
+static int
 db_equal(char *path_a, char *path_b)
 {
-    /*
-     * Compare the contents of two ubik databases. Skip the ubik
-     * header (HDRSIZE), and just do a byte-for-byte comparison of all of the
-     * remaining bytes in the file. We skip the ubik header, so the dbases
-     * still appear "equal" if just the ubik version differs.
-     */
-    return afstest_file_equal(path_a, path_b, HDRSIZE);
+    int isdir_a = 0;
+    int isdir_b = 0;
+    int exists_a = 0;
+    int exists_b = 0;
+
+    opr_Verify(udb_dbinfo(path_a, &exists_a, &isdir_a, NULL) == 0);
+    opr_Verify(udb_dbinfo(path_b, &exists_b, &isdir_b, NULL) == 0);
+
+    if (!exists_a) {
+	diag("%s doesn't exist", path_a);
+	return 0;
+    }
+    if (!exists_b) {
+	diag("%s doesn't exist", path_b);
+	return 0;
+    }
+
+    if (isdir_a != isdir_b) {
+	diag("%d != %d, isdir(%s) != isdir(%s)", isdir_a, isdir_b, path_a, path_b);
+	return 0;
+    }
+
+    if (isdir_a) {
+	return db_equal_kv(path_a, path_b);
+    } else {
+	/*
+	 * For flat-file ubik dbases, skip the ubik header (HDRSIZE), and just
+	 * do a byte-for-byte comparison of all of the remaining bytes in the
+	 * file. We skip the ubik header, so the dbases still appear "equal" if
+	 * just the ubik version differs.
+	 */
+	return afstest_file_equal(path_a, path_b, HDRSIZE);
+    }
 }
 
 static void
@@ -1166,9 +1396,11 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
     char *blankdb_path = NULL;
     char *baddb_path = NULL;
     struct ubiktest_dbdef *dbdef;
+    char *skip_reason = NULL;
     struct ubiktest_ops utest;
     struct freeze_test frztest;
     int have_baddb = 0;
+    int db_kv = 0;
     int pass;
 
     memset(&utest, 0, sizeof(utest));
@@ -1181,10 +1413,13 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 
     dbdef = find_dbdef(ds, ops->use_db);
     if (dbdef != NULL) {
-	src_db = get_dbpath(dbdef);
+	src_db = get_dbpath(dbdef, &skip_reason);
+	if (dbdef->kv_path != NULL) {
+	    db_kv = 1;
+	}
     }
-    blankdb_path = get_dbpath(&ops->blankdb);
-    baddb_path = get_dbpath_optional(&ops->baddb, &have_baddb);
+    blankdb_path = get_dbpath(&ops->blankdb, &skip_reason);
+    baddb_path = get_dbpath_optional(&ops->baddb, &have_baddb, &skip_reason);
 
     frztest.ops = ops;
     frztest.db_path = src_db;
@@ -1194,9 +1429,12 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
     {
 	utest.rock = &frztest;
 	utest.descr = afstest_asprintf("dump %s", ops->use_db);
+	utest.skip_reason = skip_reason;
 	utest.use_db = ops->use_db;
 	utest.post_start = frztest_dump;
 	utest.server_argv = ops->server_argv;
+	utest.result_kv = db_kv;
+	utest.n_tests = 2;
 
 	ubiktest_runtest(ds, &utest);
 
@@ -1205,14 +1443,18 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
     }
     for (pass = 1; pass <= 2; pass++) {
 	utest.rock = &frztest;
+	utest.skip_reason = skip_reason;
 	utest.use_db = "none";
 	utest.post_start = frztest_restore;
 	utest.server_argv = ops->server_argv;
+	utest.result_kv = db_kv;
 
 	if (pass == 1) {
+	    utest.n_tests = 2;
 	    utest.descr = afstest_asprintf("restore %s", ops->use_db);
 	} else {
 	    frztest.backup_db = 1;
+	    utest.n_tests = 4;
 	    utest.descr = afstest_asprintf("restore %s with backup", ops->use_db);
 	}
 	ubiktest_runtest(ds, &utest);
@@ -1226,6 +1468,9 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 	utest.descr = afstest_asprintf("restore invalid db over %s", ops->use_db);
 	utest.use_db = ops->use_db;
 	utest.post_start = frztest_restore_invalid;
+	utest.server_argv = ops->server_argv;
+	utest.result_kv = db_kv;
+	utest.n_tests = 1;
 
 	ubiktest_runtest(ds, &utest);
 
@@ -1235,9 +1480,12 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
     {
 	utest.rock = &frztest;
 	utest.descr = afstest_asprintf("install %s", ops->use_db);
+	utest.skip_reason = skip_reason;
 	utest.use_db = "none";
 	utest.post_start = frztest_install;
 	utest.server_argv = ops->server_argv;
+	utest.result_kv = db_kv;
+	utest.n_tests = 4;
 
 	ubiktest_runtest(ds, &utest);
 
@@ -1249,30 +1497,37 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 	if (pass == 1) {
 	    utest.descr = afstest_asprintf("db-freeze-run revert-exit %s",
 					   ops->use_db);
+	    utest.n_tests = 2;
 	    frztest.revert_exit = 1;
 	} else if (pass == 2) {
 	    utest.descr = afstest_asprintf("db-freeze-run revert-abort %s",
 					   ops->use_db);
+	    utest.n_tests = 2;
 	    frztest.revert_abort = 1;
 	} else if (pass == 3) {
 	    utest.descr = afstest_asprintf("db-freeze-run revert-abort-force %s",
 					   ops->use_db);
+	    utest.n_tests = 3;
 	    frztest.revert_abort_force = 1;
 	} else if (pass == 4) {
 	    utest.descr = afstest_asprintf("db-freeze-run revert-abort-id %s",
 					   ops->use_db);
+	    utest.n_tests = 3;
 	    frztest.revert_abort_id = 1;
 	} else if (pass == 5) {
 	    utest.descr = afstest_asprintf("db-freeze-run revert-timeout %s",
 					   ops->use_db);
+	    utest.n_tests = 2;
 	    frztest.revert_timeout = 1;
 	} else {
 	    opr_Assert(0);
 	}
 
+	utest.skip_reason = skip_reason;
 	utest.use_db = ops->use_db;
 	utest.post_start = frztest_revert;
 	utest.server_argv = ops->server_argv;
+	utest.result_kv = db_kv;
 
 	ubiktest_runtest(ds, &utest);
 
@@ -1287,9 +1542,12 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
     {
 	utest.rock = &frztest;
 	utest.descr = afstest_asprintf("db-freeze-dist %s", ops->use_db);
+	utest.skip_reason = skip_reason;
 	utest.use_db = "none",
 	utest.post_start = frztest_dist;
 	utest.server_argv = ops->server_argv;
+	utest.result_kv = db_kv;
+	utest.n_tests = 2;
 
 	ubiktest_runtest(ds, &utest);
 
@@ -1300,8 +1558,190 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
     free(src_db);
     free(blankdb_path);
     free(baddb_path);
+    free(skip_reason);
 
     free(ctl_path);
     ctl_path = NULL;
     ctl_sockname = NULL;
+}
+
+/*
+ * Run our 'freeze tests' for the given scenario. This is different from
+ * frztest_runtests() because here, we do things like run with an existing
+ * flatfile database, and restore a KV database over it. We're not actually
+ * "converting" a database between different formats; we're just testing going
+ * from one format to another (which is why we need two 'frztest_ops'
+ * arguments).
+ */
+void
+frztest_runtests_convert(struct ubiktest_dataset *ds, struct frztest_ops *ops_a,
+			 struct frztest_ops *ops_b)
+{
+    char *db_path_a = NULL;
+    char *db_path_b = NULL;
+    char *blank_b = NULL;
+    char *skip_reason = NULL;
+    int iskv_a = 0;
+    int iskv_b = 0;
+    struct ubiktest_dbdef *dbdef;
+    struct ubiktest_ops utest;
+    struct freeze_test frztest;
+    int pass;
+
+    memset(&utest, 0, sizeof(utest));
+    memset(&frztest, 0, sizeof(frztest));
+
+    ctl_path = afstest_obj_path("src/ctl/openafs-ctl");
+    ctl_sockname = ds->server_type->ctl_sock;
+
+    opr_Assert(ctl_sockname != NULL);
+
+    dbdef = find_dbdef(ds, ops_a->use_db);
+    if (dbdef != NULL) {
+	db_path_a = get_dbpath(dbdef, &skip_reason);
+	if (dbdef->kv_path != NULL) {
+	    iskv_a = 1;
+	}
+    }
+
+    dbdef = find_dbdef(ds, ops_b->use_db);
+    if (dbdef != NULL) {
+	db_path_b = get_dbpath(dbdef, &skip_reason);
+	if (dbdef->kv_path != NULL) {
+	    iskv_b = 1;
+	}
+    }
+
+    blank_b = get_dbpath(&ops_b->blankdb, &skip_reason);
+
+    frztest.ops = ops_a;
+
+    /* restore ops_a -> ops_b, with and without backup */
+    for (pass = 1; pass <= 2; pass++) {
+	utest.rock = &frztest;
+	utest.skip_reason = skip_reason;
+	utest.use_db = "none";
+	utest.post_start = frztest_restore;
+	utest.server_argv = ops_a->server_argv;
+	utest.result_kv = iskv_b;
+
+	frztest.db_path = db_path_b;
+
+	if (pass == 1) {
+	    utest.n_tests = 2;
+	    utest.descr = afstest_asprintf("restore %s -> %s",
+					   ops_a->use_db, ops_b->use_db);
+	} else {
+	    frztest.backup_db = 1;
+	    utest.n_tests = 4;
+	    utest.descr = afstest_asprintf("restore %s -> %s with backup",
+					   ops_a->use_db, ops_b->use_db);
+	}
+	ubiktest_runtest(ds, &utest);
+
+	frztest.backup_db = 0;
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
+    }
+
+    /* install ops_a -> ops_b */
+    {
+	utest.rock = &frztest;
+	utest.descr = afstest_asprintf("install %s -> %s",
+				       ops_a->use_db, ops_b->use_db);
+	utest.skip_reason = skip_reason;
+	utest.use_db = "none";
+	utest.post_start = frztest_install;
+	utest.server_argv = ops_a->server_argv;
+	utest.result_kv = iskv_b;
+	utest.n_tests = 4;
+
+	frztest.db_path = db_path_b;
+
+	ubiktest_runtest(ds, &utest);
+
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
+    }
+
+    /* revert an install from ops_a -> ops_b, via
+     * exit/abort/abort-force/abort-id/timeout */
+    for (pass = 1; pass <= 5; pass++) {
+	utest.rock = &frztest;
+	if (pass == 1) {
+	    utest.descr = afstest_asprintf("db-freeze-run revert-exit %s -> %s",
+					   ops_a->use_db, ops_b->use_db);
+	    utest.n_tests = 2;
+	    frztest.revert_exit = 1;
+	} else if (pass == 2) {
+	    utest.descr = afstest_asprintf("db-freeze-run revert-abort %s -> %s",
+					   ops_a->use_db, ops_b->use_db);
+	    utest.n_tests = 2;
+	    frztest.revert_abort = 1;
+	} else if (pass == 3) {
+	    utest.descr = afstest_asprintf("db-freeze-run revert-abort-force %s -> %s",
+					   ops_a->use_db, ops_b->use_db);
+	    utest.n_tests = 3;
+	    frztest.revert_abort_force = 1;
+	} else if (pass == 4) {
+	    utest.descr = afstest_asprintf("db-freeze-run revert-abort-id %s -> %s",
+					   ops_a->use_db, ops_b->use_db);
+	    utest.n_tests = 3;
+	    frztest.revert_abort_id = 1;
+	} else if (pass == 5) {
+	    utest.descr = afstest_asprintf("db-freeze-run revert-timeout %s -> %s",
+					   ops_a->use_db, ops_b->use_db);
+	    utest.n_tests = 2;
+	    frztest.revert_timeout = 1;
+	} else {
+	    opr_Assert(0);
+	}
+
+	utest.skip_reason = skip_reason;
+	utest.use_db = ops_a->use_db;
+	utest.post_start = frztest_revert;
+	utest.result_kv = iskv_a;
+
+	frztest.db_path = db_path_a;
+	frztest.blankdb_path = blank_b;
+
+	ubiktest_runtest(ds, &utest);
+
+	frztest.revert_exit = 0;
+	frztest.revert_abort = 0;
+	frztest.revert_abort_force = 0;
+	frztest.revert_abort_id = 0;
+	frztest.revert_timeout = 0;
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
+    }
+
+    /* dist a restore from ops_a -> ops_b */
+    {
+	utest.rock = &frztest;
+	utest.descr = afstest_asprintf("db-freeze-dist %s -> %s",
+				       ops_a->use_db, ops_b->use_db);
+	utest.skip_reason = skip_reason;
+	utest.use_db = "none",
+	utest.post_start = frztest_dist;
+	utest.server_argv = ops_a->server_argv;
+	utest.result_kv = iskv_b;
+	utest.n_tests = 2;
+
+	frztest.db_path = db_path_b;
+	frztest.blankdb_path = NULL;
+
+	ubiktest_runtest(ds, &utest);
+
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
+    }
+
+    free(db_path_a);
+    free(db_path_b);
+    free(blank_b);
+    free(skip_reason);
+
+    free(ctl_path);
+    ctl_path = NULL;
 }
