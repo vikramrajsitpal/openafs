@@ -32,8 +32,13 @@ extern int Init_VLdbase(struct vl_ctx *ctx, int locktype, int this_op);
 extern int vl_EndTrans(struct vl_ctx *ctx);
 
 /* vlutils.c */
-extern afs_int32 vlwrite(struct ubik_trans *trans, afs_int32 offset,
-		         void *buffer, afs_int32 length);
+extern afs_int32 vlwrite_cheader(struct ubik_trans *trans,
+				 struct vlheader *cheader, void *buffer,
+				 afs_int32 length);
+extern afs_int32 vlwrite_exblock(struct ubik_trans *trans, afs_int32 base,
+				 struct extentaddr *exblock,
+				 afs_int32 exblock_addr, void *buffer,
+				 afs_int32 length);
 extern afs_int32 vlentrywrite(struct vl_ctx *ctx, afs_int32 offset,
 			      struct nvlentry *nep);
 extern int write_vital_vlheader(struct vl_ctx *ctx);

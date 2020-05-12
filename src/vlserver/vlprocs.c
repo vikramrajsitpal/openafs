@@ -2770,11 +2770,9 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
     }
 
     /* Write the new mh entry out */
-    if (vlwrite
-	(ctx.trans,
-	 DOFFSET(ntohl(ex_addr[0]->ex_contaddrs[base]),
-		 ex_addr[base], exp), exp,
-	 sizeof(*exp))) {
+    if (vlwrite_exblock(ctx.trans, base, ex_addr[base],
+			ntohl(ex_addr[0]->ex_contaddrs[base]),
+			exp, sizeof(*exp))) {
 	code = VL_IO;
 	goto abort;
     }
@@ -2784,8 +2782,6 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
      */
     m = 0;
     for (i = 0; i < count; i++) {
-	afs_int32 doff;
-
 	/* Skip the entry we replaced */
 	if (willReplaceCnt && (WillChange[i] == ReplaceEntry))
 	    continue;
@@ -2822,10 +2818,9 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
 
 	/* Write out the modified mh entry */
 	tex->ex_uniquifier = htonl(ntohl(tex->ex_uniquifier) + 1);
-	doff =
-	    DOFFSET(ntohl(ex_addr[0]->ex_contaddrs[base]),
-		    ex_addr[base], tex);
-	if (vlwrite(ctx.trans, doff, tex, sizeof(*tex))) {
+	if (vlwrite_exblock(ctx.trans, base, ex_addr[base],
+			    ntohl(ex_addr[0]->ex_contaddrs[base]),
+			    tex, sizeof(*tex))) {
 	    code = VL_IO;
 	    goto abort;
 	}
@@ -3638,11 +3633,9 @@ IpAddrToRelAddr(struct vl_ctx *ctx, afs_uint32 ipaddr, int create)
 	for (i = 0; i <= MAXSERVERID; i++) {
 	    if (cheader->IpMappedAddr[i] == 0) {
 		cheader->IpMappedAddr[i] = htonl(ipaddr);
-		code =
-		    vlwrite(ctx->trans,
-			    DOFFSET(0, cheader, &cheader->IpMappedAddr[i]),
-			    &cheader->IpMappedAddr[i],
-			    sizeof(afs_int32));
+		code = vlwrite_cheader(ctx->trans, cheader,
+				       &cheader->IpMappedAddr[i],
+				       sizeof(afs_int32));
 		hostaddress[i] = ipaddr;
 		if (code)
 		    return -1;
@@ -3799,20 +3792,18 @@ ChangeIPAddr(struct vl_ctx *ctx, afs_uint32 ipaddr1, afs_uint32 ipaddr2)
 	memset(&tuuid, 0, sizeof(afsUUID));
 	afs_htonuuid(&tuuid);
 	exp->ex_hostuuid = tuuid;
-	code =
-	    vlwrite(ctx->trans,
-		    DOFFSET(ntohl(ex_addr[0]->ex_contaddrs[base]),
-			    ex_addr[base], exp),
-		    &tuuid, sizeof(tuuid));
+	code = vlwrite_exblock(ctx->trans, base, ex_addr[base],
+			       ntohl(ex_addr[0]->ex_contaddrs[base]),
+			       exp, sizeof(tuuid));
 	if (code)
 	    return VL_IO;
     }
 
     /* Now change the host address entry */
     cheader->IpMappedAddr[ipaddr1_id] = htonl(ipaddr2);
-    code =
-	vlwrite(ctx->trans, DOFFSET(0, cheader, &cheader->IpMappedAddr[ipaddr1_id]),
-		&cheader->IpMappedAddr[ipaddr1_id], sizeof(afs_int32));
+    code = vlwrite_cheader(ctx->trans, cheader,
+			   &cheader->IpMappedAddr[ipaddr1_id],
+			   sizeof(afs_int32));
     hostaddress[ipaddr1_id] = ipaddr2;
     if (code)
 	return VL_IO;
