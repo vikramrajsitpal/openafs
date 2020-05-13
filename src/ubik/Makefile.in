@@ -15,7 +15,7 @@ LT_authent_objs = uinit.lo ubikclient.lo uerrors.lo ubik_int.cs.lo \
 
 LT_objs =   $(LT_authent_objs) \
 	    disk.lo remote.lo beacon.lo recovery.lo ubik.lo vote.lo lock.lo \
-	    phys.lo ubik_int.ss.lo ubikcmd.lo
+	    phys.lo ubik_int.ss.lo ubikcmd.lo udb.lo
 
 LT_deps =   $(top_builddir)/src/auth/liboafs_auth.la \
 	    $(top_builddir)/src/opr/liboafs_opr.la \

@@ -378,6 +378,517 @@ done:
     return code;
 }
 
+static int
+do_StartDISK_GetFile(struct rx_call *rxcall,
+		     afs_int32 *a_length)
+{
+    afs_int32 length;
+    afs_int32 nbytes;
+    int code;
+
+    code = StartDISK_GetFile(rxcall, 0);
+    if (code != 0) {
+	code = UIOERROR;
+	goto done;
+    }
+
+    nbytes = rx_Read(rxcall, (char *)&length, sizeof(length));
+    if (nbytes != sizeof(length)) {
+	code = UIOERROR;
+	goto done;
+    }
+
+    *a_length = ntohl(length);
+
+    code = 0;
+
+ done:
+    return code;
+}
+
+static int
+recvdb_v1(struct urecovery_recvdb_type *rtype,
+	  struct urecovery_recvdb_info *rinfo, struct rx_call *rxcall,
+	  char *path, struct ubik_version *a_version)
+{
+    int code;
+    int client = rtype->client;
+    struct ubik_version version;
+
+    memset(&version, 0, sizeof(version));
+
+    if (client) {
+	afs_int32 length = 0;
+
+	code = do_StartDISK_GetFile(rxcall, &length);
+	if (code != 0) {
+	    goto done;
+	}
+
+	code = uphys_recvdb(rxcall, path, NULL, length);
+	if (code != 0) {
+	    goto done;
+	}
+
+	code = EndDISK_GetFile(rxcall, &version);
+	if (code != 0) {
+	    goto done;
+	}
+
+	code = uphys_setlabel_path(path, &version);
+	if (code != 0) {
+	    goto done;
+	}
+
+    } else {
+	opr_Assert(rinfo->flat_version != NULL);
+	version = *rinfo->flat_version;
+
+	code = uphys_recvdb(rxcall, path, &version, rinfo->flat_length);
+	if (code != 0) {
+	    goto done;
+	}
+    }
+
+    *a_version = version;
+
+ done:
+    return code;
+}
+
+struct urecovery_recvdb_type urecovery_recvdb_getfile_v1 = {
+    .descr = "DISK_GetFile",
+    .client = 1,
+};
+struct urecovery_recvdb_type urecovery_recvdb_ssendfile_v1 = {
+    .descr = "SDISK_SendFile",
+    .client = 0,
+};
+
+/**
+ * Receive a ubik database from another server.
+ *
+ * @pre DBHOLD held
+ *
+ * @param[in] dbase Database to receive (ubik_dbase).
+ * @param[in] rtype The type of receive to perform (client vs server, which rpc
+ *		    variant, etc).
+ * @param[in] rinfo Various info about receiving the db.
+ * @param[out] a_version    Optional. If non-NULL, set to the version of the
+ *			    database we received, on success.
+ *
+ * @returns ubik error codes
+ */
+afs_int32
+urecovery_receive_db(struct ubik_dbase *dbase,
+		     struct urecovery_recvdb_type *rtype,
+		     struct urecovery_recvdb_info *rinfo,
+		     struct ubik_version *a_version)
+{
+    afs_int32 code;
+    char hoststr[16];
+    struct ubik_version version;
+    int client = rtype->client;
+    char *descr = rtype->descr;
+    struct rx_call *rxcall = NULL;
+    char *path_tmp = NULL;
+
+    memset(&version, 0, sizeof(version));
+
+    /*
+     * Wait until we're not sending the database to someone. Since every
+     * transaction will be aborted (via urecovery_AbortAll below), we do not
+     * have to wait for DBWRITING to go away.
+     */
+    if (ubik_wait_db_flags(ubik_dbase, DBSENDING)) {
+	ViceLog(0, ("ubik: Error, saw unexpected database flags 0x%x before "
+		    "receiving db from %s (via %s)\n",
+		    dbase->dbFlags,
+		    afs_inet_ntoa_r(rinfo->otherHost, hoststr),
+		    descr));
+	return UINTERNAL;
+    }
+    ubik_set_db_flags(dbase, DBRECEIVING);
+
+    ViceLog(0, ("ubik: Receiving db from %s (via %s)\n",
+	       afs_inet_ntoa_r(rinfo->otherHost, hoststr),
+	       descr));
+
+    /* Abort any active trans that may scribble over the database. */
+    urecovery_AbortAll(dbase);
+
+    /*
+     * At this point, we know that we do not have any active read or write
+     * transactions (they were just aborted), and we know that we are not
+     * sending or receiving a database. We drop DBHOLD here, so new read
+     * transactions can come in while the database is being transferred. That
+     * might seem a bit odd because we just aborted any existing read
+     * transactions; in the future we could probably avoid aborting read
+     * transactions (and just abort writes), but for now we just abort
+     * everything.
+     */
+    DBRELE(dbase);
+
+    /* Remove any .TMP/.OLD databases that might be leftover from a previous
+     * interrupted receive or whatever. */
+    code = udb_del_suffixes(dbase, ".TMP", ".OLD");
+    if (code != 0) {
+	goto done;
+    }
+
+    if (client) {
+	opr_Assert(rinfo->rxcall == NULL);
+	opr_Assert(rinfo->rxconn != NULL);
+	rxcall = rx_NewCall(rinfo->rxconn);
+
+    } else {
+	rxcall = rinfo->rxcall;
+    }
+    opr_Assert(rxcall != NULL);
+
+    code = udb_path(dbase, ".TMP", &path_tmp);
+    if (code != 0) {
+	goto done;
+    }
+
+    /* Receive the database data from the wire into a .TMP database, and label
+     * it with the received version. */
+
+    code = recvdb_v1(rtype, rinfo, rxcall, path_tmp, &version);
+    if (code != 0) {
+	goto done;
+    }
+
+    if (client) {
+	code = rx_EndCall(rxcall, code);
+	rxcall = NULL;
+	if (code != 0) {
+	    goto done;
+	}
+    }
+
+    /* Pivot our .TMP database (already labelled with 'version') into place, to
+     * start using it. */
+    code = udb_install(dbase, ".TMP", &version);
+    if (code != 0) {
+	goto done;
+    }
+
+    if (a_version != NULL) {
+	*a_version = version;
+    }
+
+ done:
+    free(path_tmp);
+    if (client && rxcall != NULL) {
+	code = rx_EndCall(rxcall, code);
+    }
+    if (code != 0) {
+	ViceLog(0, ("ubik: Failed to receive db from %s (via %s), "
+		    "error=%d\n",
+		    afs_inet_ntoa_r(rinfo->otherHost, hoststr),
+		    descr,
+		    code));
+
+    } else {
+	ViceLog(0, ("ubik: Finished receiving db from %s (via %s), "
+		    "version=%d.%d\n",
+		    afs_inet_ntoa_r(rinfo->otherHost, hoststr),
+		    descr,
+		    version.epoch, version.counter));
+    }
+
+    DBHOLD(dbase);
+
+    ubik_clear_db_flags(ubik_dbase, DBRECEIVING);
+
+    return code;
+}
+
+static afs_int32
+fetch_db(struct ubik_dbase *dbase, struct ubik_server *ts)
+{
+    struct urecovery_recvdb_info rinfo;
+    afs_int32 code;
+
+    memset(&rinfo, 0, sizeof(rinfo));
+
+    UBIK_ADDR_LOCK;
+    rinfo.otherHost = ts->addr[0];
+    rinfo.rxconn = ts->disk_rxcid;
+    rx_GetConnection(rinfo.rxconn);
+    UBIK_ADDR_UNLOCK;
+
+    code = urecovery_receive_db(dbase, &urecovery_recvdb_getfile_v1,
+				&rinfo, NULL);
+
+    rx_PutConnection(rinfo.rxconn);
+
+    return code;
+}
+
+static int
+senddb_v1(struct urecovery_senddb_type *stype, char *path,
+	  struct rx_call *rxcall, struct ubik_version *version)
+{
+    int code;
+    int client = stype->client;
+    struct ubik_stat ustat;
+    afs_int32 length;
+
+    memset(&ustat, 0, sizeof(ustat));
+
+    code = uphys_stat_path(path, &ustat);
+    if (code != 0) {
+	goto done;
+    }
+
+    length = ustat.size;
+
+    if (client) {
+	code = StartDISK_SendFile(rxcall, 0, length, version);
+	if (code != 0) {
+	    goto done;
+	}
+
+    } else {
+	afs_int32 nbytes;
+	afs_int32 tlen = htonl(length);
+
+	nbytes = rx_Write(rxcall, (char*)&tlen, sizeof(tlen));
+	if (nbytes != sizeof(tlen)) {
+	    ViceLog(0, ("Rx-write length error, nbytes=%d/%d, call error=%d\n",
+		    nbytes, (int)sizeof(tlen), rx_Error(rxcall)));
+	    code = UIOERROR;
+	    goto done;
+	}
+    }
+
+    code = uphys_senddb(path, rxcall, version, length);
+    if (code != 0) {
+	goto done;
+    }
+
+    if (client) {
+	code = EndDISK_SendFile(rxcall);
+	if (code != 0) {
+	    goto done;
+	}
+    }
+
+ done:
+    return code;
+}
+
+struct urecovery_senddb_type urecovery_senddb_sendfile_v1 = {
+    .descr = "DISK_SendFile",
+    .client = 1,
+};
+struct urecovery_senddb_type urecovery_senddb_sgetfile_v1 = {
+    .descr = "SDISK_GetFile",
+    .client = 0,
+};
+
+/**
+ * Send the ubik database to another server.
+ *
+ * @pre DBHOLD held
+ * @pre DBSENDING must be set, if 'nosetflags' is nonzero
+ *
+ * @param[in] dbase Database to send (ubik_dbase).
+ * @param[in] stype The type of send to perform (client vs server, which rpc
+ *		    variant, etc).
+ * @param[in] sinfo Various info needed for sending the db.
+ * @param[out] version	Optional. If non-NULL, set to the version of the
+ *			database that was sent, on success.
+ *
+ * @returns ubik error codes
+ */
+afs_int32
+urecovery_send_db(struct ubik_dbase *dbase,
+		  struct urecovery_senddb_type *stype,
+		  struct urecovery_senddb_info *sinfo,
+		  struct ubik_version *a_version)
+{
+    afs_int32 code;
+    char hoststr[16];
+    struct ubik_version version;
+    char *descr = stype->descr;
+    int client = stype->client;
+    int nosetflags = sinfo->nosetflags;
+    struct rx_call *rxcall = NULL;
+    int start_logged = 0;
+    char *path = NULL;
+
+    memset(&version, 0, sizeof(version));
+
+    if (nosetflags) {
+	/* Our caller must have already set DBSENDING. */
+	opr_Assert((dbase->dbFlags & DBSENDING) != 0);
+    } else {
+	/* wait until we're not sending, receiving, or changing the database */
+	code = ubik_wait_db_flags(dbase, DBWRITING | DBSENDING | DBRECEIVING);
+	osi_Assert(code == 0);
+	ubik_set_db_flags(dbase, DBSENDING);
+    }
+
+    code = uphys_getlabel(dbase, 0, &version);
+    if (code != 0) {
+	goto done_locked;
+    }
+
+    /*
+     * At this point, we know that nobody is writing to the database, and we're
+     * not sending or receiving the db. So, we can drop DBHOLD here to allow
+     * read transactions.
+     */
+    DBRELE(dbase);
+
+    code = udb_path(dbase, NULL, &path);
+    if (code != 0) {
+	goto done;
+    }
+
+    ViceLog(0, ("ubik: Sending db to %s (via %s), version=%d.%d\n",
+		afs_inet_ntoa_r(sinfo->otherHost, hoststr), descr,
+		version.epoch, version.counter));
+    start_logged = 1;
+
+    if (client) {
+	opr_Assert(sinfo->rxcall == NULL);
+	opr_Assert(sinfo->rxconn != NULL);
+	rxcall = rx_NewCall(sinfo->rxconn);
+    } else {
+	rxcall = sinfo->rxcall;
+    }
+    opr_Assert(rxcall != NULL);
+
+    code = senddb_v1(stype, path, rxcall, &version);
+    if (code != 0) {
+	goto done;
+    }
+
+    if (a_version != NULL) {
+	*a_version = version;
+    }
+
+ done:
+    if (client && rxcall != NULL) {
+	code = rx_EndCall(rxcall, code);
+    }
+
+    if (start_logged) {
+	if (code != 0) {
+	    ViceLog(0, ("ubik: Failed to send db to %s (via %s), "
+			"error=%d\n",
+			afs_inet_ntoa_r(sinfo->otherHost, hoststr),
+			descr, code));
+
+	} else {
+	    ViceLog(0, ("ubik: Finished sending db to %s (via %s), "
+			"version=%d.%d\n",
+			afs_inet_ntoa_r(sinfo->otherHost, hoststr),
+			descr,
+			version.epoch, version.counter));
+	}
+    }
+
+    free(path);
+
+    DBHOLD(dbase);
+
+ done_locked:
+    if (!nosetflags) {
+	ubik_clear_db_flags(dbase, DBSENDING);
+    }
+
+    return code;
+}
+
+static afs_int32
+dist_dbase_to(struct ubik_dbase *dbase, struct ubik_server *ts,
+	      afs_uint32 otherHost)
+{
+    struct urecovery_senddb_info sinfo;
+    struct ubik_version version;
+    int code;
+
+    memset(&version, 0, sizeof(version));
+    memset(&sinfo, 0, sizeof(sinfo));
+
+    sinfo.otherHost = otherHost;
+    sinfo.nosetflags = 1;
+
+    UBIK_ADDR_LOCK;
+    sinfo.rxconn = ts->disk_rxcid;
+    rx_GetConnection(sinfo.rxconn);
+    UBIK_ADDR_UNLOCK;
+
+    code = urecovery_send_db(dbase, &urecovery_senddb_sendfile_v1, &sinfo,
+			     &version);
+    if (code == 0) {
+	/* we set a new file */
+	ts->version = version;
+	ts->currentDB = 1;
+    }
+
+    rx_PutConnection(sinfo.rxconn);
+
+    return code;
+}
+
+int
+urecovery_distribute_db(struct ubik_dbase *dbase)
+{
+    struct ubik_server *ts;
+    struct in_addr inAddr;
+    char hoststr[16];
+    afs_int32 code;
+    int dbok;
+
+    memset(&inAddr, 0, sizeof(inAddr));
+
+    dbok = 1;		/* start off assuming they all worked */
+
+    for (ts = ubik_servers; ts; ts = ts->next) {
+	UBIK_ADDR_LOCK;
+	inAddr.s_addr = ts->addr[0];
+	UBIK_ADDR_UNLOCK;
+	UBIK_BEACON_LOCK;
+	if (!ts->up) {
+	    UBIK_BEACON_UNLOCK;
+	    /* It would be nice to have this message at loglevel
+	     * 0 as well, but it will log once every 4s for each
+	     * down server while in this recovery state.  This
+	     * should only be changed to loglevel 0 if it is
+	     * also rate-limited.
+	     */
+	    ViceLog(5, ("recovery cannot send version to %s\n",
+			afs_inet_ntoa_r(inAddr.s_addr, hoststr)));
+	    dbok = 0;
+	    continue;
+	}
+	UBIK_BEACON_UNLOCK;
+
+	if (vcmp(ts->version, dbase->version) != 0) {
+	    /* This guy has an old version of the db; send our db to
+	     * them. */
+	    code = dist_dbase_to(dbase, ts, inAddr.s_addr);
+	    if (code != 0) {
+		dbok = 0;
+	    }
+	} else {
+	    /* mark file up to date */
+	    ts->currentDB = 1;
+	}
+    }
+
+    if (!dbok) {
+	return -1;
+    }
+    return 0;
+}
+
 /*!
  * \brief Main interaction loop for the recovery manager
  *
@@ -415,24 +926,12 @@ urecovery_Interact(void *dummy)
     afs_int32 code;
     struct ubik_server *bestServer = NULL;
     struct ubik_server *ts;
-    int dbok, doingRPC, now;
+    int doingRPC, now;
     afs_int32 lastProbeTime;
     /* if we're the sync site, the best db version we've found yet */
     static struct ubik_version bestDBVersion;
-    struct ubik_version tversion;
     struct timeval tv;
-    int length, tlen, offset, file, nbytes;
-    struct rx_call *rxcall;
-    char tbuffer[1024];
-    struct ubik_stat ubikstat;
-    struct in_addr inAddr;
-    char hoststr[16];
-    char pbuffer[1028];
-    int fd = -1;
-    afs_int32 pass;
     int first;
-
-    memset(pbuffer, 0, sizeof(pbuffer));
 
     opr_threadname_set("recovery");
 
@@ -571,182 +1070,10 @@ urecovery_Interact(void *dummy)
 	    urecovery_state |= UBIK_RECHAVEDB;
 	} else {
 	    /* we don't have the best version; we should fetch it. */
-	    int newdb_visible;
-
-	    /* wait until we're not sending the database to someone. since every
-	     * transaction will be aborted (via urecovery_AbortAll below), we do
-	     * not have to wait for DBWRITING to go away. */
-	    if (ubik_wait_db_flags(ubik_dbase, DBSENDING)) {
-		ViceLog(0, ("Ubik: Unexpected database flags before DISK_GetFile "
-			   "(flags: 0x%x)\n", ubik_dbase->dbFlags));
-		DBRELE(ubik_dbase);
-		continue;
-	    }
-	    ubik_set_db_flags(ubik_dbase, DBRECEIVING);
-
-	    urecovery_AbortAll(ubik_dbase);
-
-	    pbuffer[0] = '\0';
-	    newdb_visible = 0;
-	    memset(&tversion, 0, sizeof(tversion));
-
-	    /* Rx code to do the Bulk fetch */
-	    file = 0;
-	    offset = 0;
-	    UBIK_ADDR_LOCK;
-	    rxcall = rx_NewCall(bestServer->disk_rxcid);
-
-	    ViceLog(0, ("Ubik: Synchronize database: receive (via GetFile) "
-			"from server %s begin\n",
-		       afs_inet_ntoa_r(bestServer->addr[0], hoststr)));
-	    UBIK_ADDR_UNLOCK;
-
-	    /* at this point, we know that we do not have any active read or
-	     * write transactions (they were aborted). we also know that we are
-	     * not sending or receiving a database. we drop DBHOLD here, so new
-	     * read transactions can come in while the database is being
-	     * transferred. that might seem a bit odd because we just aborted
-	     * any existing read transactions; in the future we could probably
-	     * avoid aborting read transactions (and just abort writes), but for
-	     * now we just abort everything. */
-	    DBRELE(ubik_dbase);
-
-	    code = StartDISK_GetFile(rxcall, file);
-	    if (code) {
-		ViceLog(0, ("StartDiskGetFile failed=%d\n", code));
-		goto FetchEndCall;
-	    }
-	    nbytes = rx_Read(rxcall, (char *)&length, sizeof(afs_int32));
-	    length = ntohl(length);
-	    if (nbytes != sizeof(afs_int32)) {
-		ViceLog(0, ("Rx-read length error=%d\n", BULK_ERROR));
-		code = EIO;
-		goto FetchEndCall;
-	    }
-
-	    snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP",
-		     ubik_dbase->pathName, (file<0)?"SYS":"",
-		     (file<0)?-file:file);
-	    fd = open(pbuffer, O_CREAT | O_RDWR | O_TRUNC, 0600);
-	    if (fd < 0) {
-		code = errno;
-		goto FetchEndCall;
-	    }
-	    code = lseek(fd, HDRSIZE, 0);
-	    if (code != HDRSIZE) {
-		close(fd);
-		goto FetchEndCall;
-	    }
-
-	    pass = 0;
-	    while (length > 0) {
-		tlen = (length > sizeof(tbuffer) ? sizeof(tbuffer) : length);
-#ifndef AFS_PTHREAD_ENV
-		if (pass % 4 == 0)
-		    IOMGR_Poll();
-#endif
-		nbytes = rx_Read(rxcall, tbuffer, tlen);
-		if (nbytes != tlen) {
-		    ViceLog(0, ("Rx-read bulk error=%d\n", BULK_ERROR));
-		    code = EIO;
-		    close(fd);
-		    goto FetchEndCall;
-		}
-		nbytes = write(fd, tbuffer, tlen);
-		pass++;
-		if (nbytes != tlen) {
-		    code = UIOERROR;
-		    close(fd);
-		    goto FetchEndCall;
-		}
-		offset += tlen;
-		length -= tlen;
-	    }
-	    code = close(fd);
-	    if (code)
-		goto FetchEndCall;
-	    code = EndDISK_GetFile(rxcall, &tversion);
-	  FetchEndCall:
-	    code = rx_EndCall(rxcall, code);
-	    DBHOLD(ubik_dbase);
-	    ubik_clear_db_flags(ubik_dbase, DBRECEIVING);
-	    if (!code) {
-		/* at this point, it is guaranteed that we do not have a write
-		 * transaction, but new read transactions may have started while
-		 * the DBHOLD lock was dropped. we are about to install the new
-		 * database we just received, so make sure to abort any read
-		 * transactions, so those read transactions don't see new db
-		 * data suddenly appear. */
-		urecovery_AbortAll(ubik_dbase);
-	    }
-
-	    UBIK_VERSION_LOCK;
-	    if (!code) {
-		snprintf(tbuffer, sizeof(tbuffer), "%s.DB%s%d",
-			 ubik_dbase->pathName, (file<0)?"SYS":"",
-			 (file<0)?-file:file);
-#ifdef AFS_NT40_ENV
-		snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD",
-			 ubik_dbase->pathName, (file<0)?"SYS":"",
-			 (file<0)?-file:file);
-		code = unlink(pbuffer);
-		if (!code)
-		    code = rename(tbuffer, pbuffer);
-		snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP",
-			 ubik_dbase->pathName, (file<0)?"SYS":"",
-			 (file<0)?-file:file);
-#endif
-		if (!code)
-		    code = rename(pbuffer, tbuffer);
-		if (!code) {
-		    newdb_visible = 1;
-		    uphys_invalidate(ubik_dbase, file);
-		    /* after data is good, sync disk with correct label */
-		    code = uphys_setlabel(ubik_dbase, 0, &tversion);
-		}
-#ifdef AFS_NT40_ENV
-		snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD",
-			 ubik_dbase->pathName, (file<0)?"SYS":"",
-			 (file<0)?-file:file);
-		unlink(pbuffer);
-#endif
-	    }
-	    if (code) {
-		if (pbuffer[0] != '\0') {
-		    unlink(pbuffer);
-		}
-		ViceLog(0,
-		    ("Ubik: Synchronize database: receive (via GetFile) "
-		    "from server %s failed (error = %d, newdb_visible = %d)\n",
-		    afs_inet_ntoa_r(bestServer->addr[0], hoststr), code,
-		    newdb_visible));
-
-		if (newdb_visible) {
-		    memset(&ubik_dbase->version, 0, sizeof(ubik_dbase->version));
-		    if (uphys_setlabel(ubik_dbase, file, &ubik_dbase->version)) {
-			ViceLog(0, ("Ubik: Synchronize database: Failed to "
-				    "invalidate database on disk. This is "
-				    "unusual, but should not cause problems, "
-				    "since the database should already be "
-				    "flagged as invalid.\n"));
-		    } else {
-			ViceLog(0, ("Ubik: Synchronize database: successfully "
-				    "invalidated database.\n"));
-		    }
-		}
-	    } else {
-		ViceLog(0,
-		    ("Ubik: Synchronize database: receive (via GetFile) "
-		    "from server %s complete, version: %d.%d\n",
-		    afs_inet_ntoa_r(bestServer->addr[0], hoststr),
-		    ubik_dbase->version.epoch, ubik_dbase->version.counter));
-
+	    code = fetch_db(ubik_dbase, bestServer);
+	    if (code == 0) {
 		urecovery_state |= UBIK_RECHAVEDB;
-		memcpy(&ubik_dbase->version, &tversion, sizeof(struct ubik_version));
 	    }
-	    UBIK_VERSION_UNLOCK;
-	    if (newdb_visible)
-		udisk_Invalidate(ubik_dbase, 0);	/* data has changed */
 	}
 	if (!(urecovery_state & UBIK_RECHAVEDB)) {
 	    DBRELE(ubik_dbase);
@@ -773,7 +1100,6 @@ urecovery_Interact(void *dummy)
 	 */
 	if (!(urecovery_state & UBIK_RECSENTDB)) {
 	    /* now propagate out new version to everyone else */
-	    dbok = 1;		/* start off assuming they all worked */
 
 	    /*
 	     * Check if a write transaction is in progress. We can't send the
@@ -792,104 +1118,11 @@ urecovery_Interact(void *dummy)
 	    }
 	    ubik_set_db_flags(ubik_dbase, DBSENDING);
 
-	    for (ts = ubik_servers; ts; ts = ts->next) {
-		UBIK_ADDR_LOCK;
-		inAddr.s_addr = ts->addr[0];
-		UBIK_ADDR_UNLOCK;
-		UBIK_BEACON_LOCK;
-		if (!ts->up) {
-		    UBIK_BEACON_UNLOCK;
-		    /* It would be nice to have this message at loglevel
-		     * 0 as well, but it will log once every 4s for each
-		     * down server while in this recovery state.  This
-		     * should only be changed to loglevel 0 if it is
-		     * also rate-limited.
-		     */
-		    ViceLog(5, ("recovery cannot send version to %s\n",
-				afs_inet_ntoa_r(inAddr.s_addr, hoststr)));
-		    dbok = 0;
-		    continue;
-		}
-		UBIK_BEACON_UNLOCK;
+	    code = urecovery_distribute_db(ubik_dbase);
 
-		if (vcmp(ts->version, ubik_dbase->version) != 0) {
-		    ViceLog(0, ("Synchronize database: send (via SendFile) "
-				"to server %s begin\n",
-			    afs_inet_ntoa_r(inAddr.s_addr, hoststr)));
-
-		    /* Rx code to do the Bulk Store */
-		    code = uphys_stat(ubik_dbase, 0, &ubikstat);
-		    if (!code) {
-			length = ubikstat.size;
-			file = offset = 0;
-			UBIK_ADDR_LOCK;
-			rxcall = rx_NewCall(ts->disk_rxcid);
-			UBIK_ADDR_UNLOCK;
-			code =
-			    StartDISK_SendFile(rxcall, file, length,
-					       &ubik_dbase->version);
-			if (code) {
-			    ViceLog(0, ("StartDiskSendFile failed=%d\n",
-					code));
-			    goto StoreEndCall;
-			}
-			while (length > 0) {
-			    tlen =
-				(length >
-				 sizeof(tbuffer) ? sizeof(tbuffer) : length);
-			    nbytes = uphys_read(ubik_dbase, file, tbuffer,
-						offset, tlen);
-			    if (nbytes != tlen) {
-				code = UIOERROR;
-				ViceLog(0, ("Local disk read error=%d\n", code));
-				goto StoreEndCall;
-			    }
-
-			    /* at this point, we know that we do not have a
-			     * write transaction, and we also know that we are
-			     * not sending or receiving the database. so, we can
-			     * drop DBHOLD here to allow read transactions. */
-			    DBRELE(ubik_dbase);
-			    nbytes = rx_Write(rxcall, tbuffer, tlen);
-			    DBHOLD(ubik_dbase);
-
-			    if (nbytes != tlen) {
-				code = BULK_ERROR;
-				ViceLog(0, ("Rx-write bulk error=%d\n", code));
-				goto StoreEndCall;
-			    }
-			    offset += tlen;
-			    length -= tlen;
-			}
-			code = EndDISK_SendFile(rxcall);
-		      StoreEndCall:
-			code = rx_EndCall(rxcall, code);
-		    }
-
-		    if (code == 0) {
-			/* we set a new file, process its header */
-			ts->version = ubik_dbase->version;
-			ts->currentDB = 1;
-			ViceLog(0,
-			    ("Ubik: Synchronize database: send (via SendFile) "
-			    "to server %s complete, version: %d.%d\n",
-			    afs_inet_ntoa_r(inAddr.s_addr, hoststr),
-			    ts->version.epoch, ts->version.counter));
-
-		    } else {
-			dbok = 0;
-			ViceLog(0,
-			    ("Ubik: Synchronize database: send (via SendFile) "
-			     "to server %s failed (error = %d)\n",
-			    afs_inet_ntoa_r(inAddr.s_addr, hoststr), code));
-		    }
-		} else {
-		    /* mark file up to date */
-		    ts->currentDB = 1;
-		}
-	    }
 	    ubik_clear_db_flags(ubik_dbase, DBSENDING);
-	    if (dbok)
+
+	    if (code == 0)
 		urecovery_state |= UBIK_RECSENTDB;
 	}
 	DBRELE(ubik_dbase);

@@ -648,41 +648,25 @@ static void
 run_sendfile(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
 {
     char *db_path = ops->rock;
-    struct stat st;
-    struct ubik_hdr uhdr;
-    afs_uint32 length;
-    FILE *fh;
+    struct ubik_stat ustat;
+    struct ubik_version version;
     int code;
     struct rx_call *rxcall = rx_NewCall(info->disk_conn);
 
-    memset(&uhdr, 0, sizeof(uhdr));
-    memset(&st, 0, sizeof(st));
+    memset(&version, 0, sizeof(version));
+    memset(&ustat, 0, sizeof(ustat));
 
-    code = stat(db_path, &st);
-    if (code < 0) {
-	sysbail("fstat(%s)", db_path);
-    }
+    code = uphys_stat_path(db_path, &ustat);
+    opr_Assert(code == 0);
+    opr_Assert(ustat.size > 0);
 
-    fh = fopen(db_path, "r");
-    if (fh == NULL) {
-	sysbail("fopen(%s)", db_path);
-    }
-
-    opr_Assert(st.st_size >= HDRSIZE);
-    length = st.st_size - HDRSIZE;
-
-    code = fread(&uhdr, sizeof(uhdr), 1, fh);
-    opr_Assert(code == 1);
-
-    fclose(fh);
-
-    uhdr.version.epoch = ntohl(uhdr.version.epoch);
-    uhdr.version.counter = ntohl(uhdr.version.epoch);
-
-    code = StartDISK_SendFile(rxcall, 0, length, &uhdr.version);
+    code = uphys_getlabel_path(db_path, &version);
     opr_Assert(code == 0);
 
-    code = rx_send_file(rxcall, db_path, HDRSIZE, length);
+    code = StartDISK_SendFile(rxcall, 0, ustat.size, &version);
+    opr_Assert(code == 0);
+
+    code = rx_send_file(rxcall, db_path, HDRSIZE, ustat.size);
 
     code = rx_EndCall(rxcall, code);
     is_int(0, code, "DISK_SendFile call succeeded");

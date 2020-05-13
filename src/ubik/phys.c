@@ -195,25 +195,28 @@ uphys_close(int afd)
 }
 
 int
-uphys_stat(struct ubik_dbase *adbase, afs_int32 afid, struct ubik_stat *astat)
+uphys_stat_path(char *path, struct ubik_stat *astat)
 {
-    int fd;
-    struct stat tstat;
-    afs_int32 code;
+    int code;
+    struct stat st;
 
-    fd = uphys_open(adbase, afid);
-    if (fd < 0)
-	return fd;
-    code = fstat(fd, &tstat);
-    uphys_close(fd);
-    if (code < 0) {
-	return code;
+    memset(&st, 0, sizeof(st));
+
+    code = stat(path, &st);
+    if (code != 0) {
+	ViceLog(0, ("ubik: Cannot stat %s, errno=%d\n", path, errno));
+	return UIOERROR;
     }
-    code = tstat.st_size - HDRSIZE;
-    if (code < 0)
-	astat->size = 0;
-    else
-	astat->size = code;
+
+    if (!S_ISREG(st.st_mode)) {
+	ViceLog(0, ("ubik: Cannot stat non-file %s (mode 0x%x)\n", path,
+		(unsigned)st.st_mode));
+	return UIOERROR;
+    }
+
+    if (st.st_size >= HDRSIZE) {
+	astat->size = st.st_size - HDRSIZE;
+    }
     return 0;
 }
 
@@ -275,6 +278,24 @@ uphys_truncate(struct ubik_dbase *adbase, afs_int32 afile,
     return code;
 }
 
+static int
+uphys_getlabel_fd(int fd, struct ubik_version *aversion)
+{
+    int code;
+    struct ubik_hdr thdr;
+
+    memset(&thdr, 0, sizeof(thdr));
+
+    code = uphys_pread(fd, &thdr, sizeof(thdr), 0);
+    if (code != sizeof(thdr)) {
+	return UIOERROR;
+    }
+
+    aversion->epoch = ntohl(thdr.version.epoch);
+    aversion->counter = ntohl(thdr.version.counter);
+    return 0;
+}
+
 /*!
  * \brief Get database label, with \p aversion in host order.
  */
@@ -282,20 +303,47 @@ int
 uphys_getlabel(struct ubik_dbase *adbase, afs_int32 afile,
 	       struct ubik_version *aversion)
 {
-    struct ubik_hdr thdr;
     afs_int32 code, fd;
 
     fd = uphys_open(adbase, afile);
     if (fd < 0)
 	return UNOENT;
-    code = uphys_pread(fd, &thdr, sizeof(thdr), 0);
-    if (code != sizeof(thdr)) {
-	uphys_close(fd);
-	return EIO;
-    }
-    aversion->epoch = ntohl(thdr.version.epoch);
-    aversion->counter = ntohl(thdr.version.counter);
+    code = uphys_getlabel_fd(fd, aversion);
     uphys_close(fd);
+    return code;
+}
+
+int
+uphys_getlabel_path(char *path, struct ubik_version *version)
+{
+    int code;
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+	return UIOERROR;
+    }
+    code = uphys_getlabel_fd(fd, version);
+    close(fd);
+    return code;
+}
+
+static int
+uphys_setlabel_fd(int fd, struct ubik_version *aversion)
+{
+    ssize_t nbytes;
+    struct ubik_hdr thdr;
+
+    memset(&thdr, 0, sizeof(thdr));
+
+    thdr.version.epoch = htonl(aversion->epoch);
+    thdr.version.counter = htonl(aversion->counter);
+    thdr.magic = htonl(UBIK_MAGIC);
+    thdr.size = htons(HDRSIZE);
+
+    nbytes = uphys_pwrite(fd, &thdr, sizeof(thdr), 0);
+    fsync(fd);			/* preserve over crash */
+    if (nbytes != sizeof(thdr)) {
+	return UIOERROR;
+    }
     return 0;
 }
 
@@ -306,26 +354,28 @@ int
 uphys_setlabel(struct ubik_dbase *adbase, afs_int32 afile,
 	       struct ubik_version *aversion)
 {
-    struct ubik_hdr thdr;
     afs_int32 code, fd;
 
     fd = uphys_open(adbase, afile);
     if (fd < 0)
 	return UNOENT;
 
-    memset(&thdr, 0, sizeof(thdr));
-
-    thdr.version.epoch = htonl(aversion->epoch);
-    thdr.version.counter = htonl(aversion->counter);
-    thdr.magic = htonl(UBIK_MAGIC);
-    thdr.size = htons(HDRSIZE);
-    code = uphys_pwrite(fd, &thdr, sizeof(thdr), 0);
-    fsync(fd);			/* preserve over crash */
+    code = uphys_setlabel_fd(fd, aversion);
     uphys_close(fd);
-    if (code != sizeof(thdr)) {
-	return EIO;
+    return code;
+}
+
+int
+uphys_setlabel_path(char *path, struct ubik_version *version)
+{
+    int code;
+    int fd = open(path, O_RDWR);
+    if (fd < 0) {
+	return UIOERROR;
     }
-    return 0;
+    code = uphys_setlabel_fd(fd, version);
+    close(fd);
+    return code;
 }
 
 int
@@ -420,4 +470,182 @@ uphys_buf_append(struct ubik_dbase *adbase, afs_int32 afid, void *adata,
         return -1;
     }
     return alength;
+}
+
+/**
+ * Receive a ubik database from an Rx call.
+ *
+ * @param[in] rxcall	The rx call to receive from.
+ * @param[in] path	The path to store the database into.
+ * @param[in] version	The version of the database. If NULL, we will not set a
+ *			label on the dbase; the caller must do so afterwards.
+ * @param[in] length	The logical size of the database.
+ * @return ubik error codes
+ */
+int
+uphys_recvdb(struct rx_call *rxcall, char *path,
+	     struct ubik_version *version, afs_int64 length)
+{
+    int code;
+    afs_int32 pass;
+    afs_int32 offset;
+    int fd = -1;
+    int tlen;
+    int nbytes;
+    char tbuffer[1024];
+
+    memset(tbuffer, 0, sizeof(tbuffer));
+
+    if (length > MAX_AFS_INT32) {
+	ViceLog(0, ("ubik: Error, database too big to receive, length=%lld.\n",
+		    length));
+	code = UIOERROR;
+	goto done;
+    }
+
+    fd = open(path, O_CREAT | O_RDWR | O_EXCL, 0600);
+    if (fd < 0) {
+	ViceLog(0, ("ubik: Cannot open %s, errno=%d\n", path, errno));
+	code = UIOERROR;
+	goto done;
+    }
+
+    nbytes = lseek(fd, HDRSIZE, 0);
+    if (nbytes != HDRSIZE) {
+	ViceLog(0, ("ubik: lseek error, nbytes=%d, errno=%d\n", nbytes, errno));
+	code = UIOERROR;
+	goto done;
+    }
+
+    pass = 0;
+    offset = 0;
+    while (length > 0) {
+	tlen = (length > sizeof(tbuffer) ? sizeof(tbuffer) : length);
+#ifndef AFS_PTHREAD_ENV
+	if (pass % 4 == 0)
+	    IOMGR_Poll();
+#endif
+	nbytes = rx_Read(rxcall, tbuffer, tlen);
+	if (nbytes != tlen) {
+	    ViceLog(0, ("ubik: Rx-read bulk error, nbytes=%d/%d, call error=%d\n",
+			nbytes, tlen, rx_Error(rxcall)));
+	    code = UIOERROR;
+	    goto done;
+	}
+	nbytes = write(fd, tbuffer, tlen);
+	pass++;
+	if (nbytes != tlen) {
+	    ViceLog(0, ("ubik: local write failed, nbytes=%d/%d, errno=%d\n",
+			nbytes, tlen, errno));
+	    code = UIOERROR;
+	    goto done;
+	}
+	offset += tlen;
+	length -= tlen;
+    }
+
+    if (version != NULL) {
+	code = uphys_setlabel_fd(fd, version);
+	if (code != 0) {
+	    ViceLog(0, ("ubik: setlabel failed, code=%d\n", code));
+	    goto done;
+	}
+    }
+
+    code = close(fd);
+    fd = -1;
+    if (code != 0) {
+	ViceLog(0, ("ubik: close failed, errno=%d\n", errno));
+	code = UIOERROR;
+	goto done;
+    }
+
+ done:
+    if (fd >= 0) {
+	close(fd);
+    }
+    return code;
+}
+
+/**
+ * Send a ubik database to an Rx call.
+ *
+ * @param[in] path	The path containing the dbase to send.
+ * @param[in] rxcall	The rx call to send the dbase to.
+ * @param[in] version	The version of the database. If this doesn't match
+ *			what's inside 'path', UINTERNAL will be returned.
+ * @param[in] length	The logical size of the database.
+ * @return ubik error codes
+ */
+int
+uphys_senddb(char *path, struct rx_call *rxcall, struct ubik_version *version,
+	     afs_int64 length)
+{
+    int code;
+    int fd = -1;
+    char tbuffer[256];
+    struct ubik_version disk_vers;
+    int nbytes;
+
+    memset(tbuffer, 0, sizeof(tbuffer));
+    memset(&disk_vers, 0, sizeof(disk_vers));
+
+    fd = open(path, O_RDONLY);
+    if (fd < 0) {
+	ViceLog(0, ("ubik: Cannot open %s, errno=%d\n", path, errno));
+	code = UIOERROR;
+	goto done;
+    }
+
+    code = uphys_getlabel_fd(fd, &disk_vers);
+    if (code != 0) {
+	ViceLog(0, ("ubik: Cannot read header from %s, code %d\n",
+		path, code));
+	goto done;
+    }
+
+    if (vcmp(disk_vers, *version) != 0) {
+	ViceLog(0, ("ubik: Local db version mismatch: %d.%d != %d.%d\n",
+		disk_vers.epoch, disk_vers.counter,
+		version->epoch, version->counter));
+	code = UINTERNAL;
+	goto done;
+    }
+
+    nbytes = lseek(fd, HDRSIZE, 0);
+    if (nbytes != HDRSIZE) {
+	ViceLog(0, ("ubik: lseek failed, errno=%d\n", errno));
+	code = UIOERROR;
+	goto done;
+    }
+
+    while (length > 0) {
+	int tlen = (length > sizeof(tbuffer) ? sizeof(tbuffer) : length);
+
+	nbytes = read(fd, tbuffer, tlen);
+	if (nbytes != tlen) {
+	    ViceLog(0, ("ubik: Local disk read failed, nbytes=%d/%d\n",
+		    nbytes, tlen));
+	    code = UIOERROR;
+	    goto done;
+	}
+
+	nbytes = rx_Write(rxcall, tbuffer, tlen);
+	if (nbytes != tlen) {
+	    ViceLog(0, ("ubik: Rx-write bulk error, nbytes=%d/%d, "
+			"call error=%d\n", nbytes, tlen,
+			rx_Error(rxcall)));
+	    code = UIOERROR;
+	    goto done;
+	}
+	length -= tlen;
+    }
+
+    code = 0;
+
+ done:
+    if (fd >= 0) {
+	close(fd);
+    }
+    return code;
 }

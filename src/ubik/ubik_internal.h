@@ -284,8 +284,6 @@ extern struct version_data version_globals;
 #define UBIK_VERSION_UNLOCK opr_mutex_exit(&version_globals.version_lock)
 
 /* phys.c */
-extern int uphys_stat(struct ubik_dbase *adbase, afs_int32 afid,
-		      struct ubik_stat *astat);
 extern int uphys_read(struct ubik_dbase *adbase, afs_int32 afile,
 		      void *abuffer, afs_int32 apos,
 		      afs_int32 alength);
@@ -305,6 +303,14 @@ extern void uphys_invalidate(struct ubik_dbase *adbase,
 extern int uphys_buf_append(struct ubik_dbase *adbase, afs_int32 afid,
 			    void *buf, afs_int32 alength);
 
+int uphys_stat_path(char *path, struct ubik_stat *astat);
+int uphys_getlabel_path(char *path, struct ubik_version *aversion);
+int uphys_setlabel_path(char *path, struct ubik_version *aversion);
+int uphys_recvdb(struct rx_call *rxcall, char *path,
+		 struct ubik_version *version, afs_int64 length);
+int uphys_senddb(char *path, struct rx_call *rxcall,
+		 struct ubik_version *version, afs_int64 length);
+
 /*! \name recovery.c */
 extern int urecovery_ResetState(void);
 extern int urecovery_LostServer(struct ubik_server *server);
@@ -319,6 +325,68 @@ extern int DoProbe(struct ubik_server *server);
 extern void ubik_set_db_flags(struct ubik_dbase *dbase, int flags);
 extern void ubik_clear_db_flags(struct ubik_dbase *dbase, int flags);
 extern int ubik_wait_db_flags(struct ubik_dbase *dbase, int flags);
+
+struct urecovery_recvdb_type {
+    char *descr;
+    int client;
+};
+extern struct urecovery_recvdb_type urecovery_recvdb_getfile_v1;
+extern struct urecovery_recvdb_type urecovery_recvdb_ssendfile_v1;
+
+struct urecovery_recvdb_info {
+    /* remote server IP */
+    afs_uint32 otherHost;
+
+    /* For client-side receives only, the rxconn to issue the RPC on. */
+    struct rx_connection *rxconn;
+
+    /* For server-side receives only, the rxcall for the RPC. */
+    struct rx_call *rxcall;
+
+    /* For SDISK_SendFile only, the length and version arguments from the
+     * SDISK_SendFile RPC must be supplied here. */
+    afs_int64 flat_length;
+    struct ubik_version *flat_version;
+};
+
+int urecovery_receive_db(struct ubik_dbase *dbase,
+			 struct urecovery_recvdb_type *rtype,
+			 struct urecovery_recvdb_info *rinfo,
+			 struct ubik_version *version)
+			 AFS_NONNULL((1,2,3));
+
+struct urecovery_senddb_type {
+    char *descr;
+    int client;
+};
+extern struct urecovery_senddb_type urecovery_senddb_sendfile_v1;
+extern struct urecovery_senddb_type urecovery_senddb_sgetfile_v1;
+
+struct urecovery_senddb_info {
+    /* remote server IP */
+    afs_uint32 otherHost;
+
+    /* For client-side sends only, the rxconn to issue the RPC on. */
+    struct rx_connection *rxconn;
+
+    /* For server-side sends only, the rxcall for the RPC. */
+    struct rx_call *rxcall;
+
+    /*
+     * If this is set, the caller must have already set the DBSENDING flag on
+     * the database. Otherwise, urecovery_send_db sets DBSENDING on entry, and
+     * clears it before returning.
+     */
+    int nosetflags;
+};
+
+int urecovery_send_db(struct ubik_dbase *dbase,
+		      struct urecovery_senddb_type *stype,
+		      struct urecovery_senddb_info *sinfo,
+		      struct ubik_version *version)
+		      AFS_NONNULL((1,2,3));
+
+int urecovery_distribute_db(struct ubik_dbase *dbase);
 /*\}*/
 
 /*! \name ubik.c */
@@ -386,5 +454,13 @@ extern void uvote_set_dbVersion(struct ubik_version);
 extern int uvote_eq_dbVersion(struct ubik_version);
 extern int uvote_HaveSyncAndVersion(struct ubik_version);
 /*\}*/
+
+/* udb.c */
+
+int udb_path(struct ubik_dbase *dbase, char *suffix, char **apath);
+int udb_del_suffixes(struct ubik_dbase *dbase, char *suffix_new,
+		     char *suffix_spare);
+int udb_install(struct ubik_dbase *dbase, char *suffix_new,
+		struct ubik_version *new_vers);
 
 #endif /* OPENAFS_UBIK_INTERNAL_H */

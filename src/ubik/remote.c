@@ -354,129 +354,63 @@ SDISK_GetVersion(struct rx_call *rxcall,
     return 0;
 }
 
+static int
+uremote_sgetfile(struct rx_call *rxcall, struct urecovery_senddb_type *stype,
+		 struct ubik_version *version)
+{
+    struct urecovery_senddb_info sinfo;
+    afs_uint32 host;
+    int code;
+
+    memset(&sinfo, 0, sizeof(sinfo));
+    sinfo.rxcall = rxcall;
+
+    host = rx_HostOf(rx_PeerOf(rx_ConnectionOf(rxcall)));
+    sinfo.otherHost = ubikGetPrimaryInterfaceAddr(host);
+    if (sinfo.otherHost == 0) {
+	sinfo.otherHost = host;
+    }
+
+    DBHOLD(ubik_dbase);
+    code = urecovery_send_db(ubik_dbase, stype, &sinfo, version);
+    DBRELE(ubik_dbase);
+
+    return code;
+}
+
 afs_int32
 SDISK_GetFile(struct rx_call *rxcall, afs_int32 file,
 	      struct ubik_version *version)
 {
     afs_int32 code;
-    struct ubik_dbase *dbase;
-    afs_int32 offset;
-    struct ubik_stat ubikstat;
-    char tbuffer[256];
-    afs_int32 tlen;
-    afs_int32 length;
-    struct rx_peer *tpeer;
-    struct rx_connection *tconn;
-    afs_uint32 otherHost = 0;
-    char hoststr[16];
-
     if ((code = ubik_CheckAuth(rxcall))) {
 	return code;
     }
 
-    tconn = rx_ConnectionOf(rxcall);
-    tpeer = rx_PeerOf(tconn);
-    otherHost = ubikGetPrimaryInterfaceAddr(rx_HostOf(tpeer));
-    ViceLog(0, ("Ubik: Synchronize database: send (via GetFile) "
-		"to server %s begin\n",
-	       afs_inet_ntoa_r(otherHost, hoststr)));
-
-    dbase = ubik_dbase;
-    DBHOLD(dbase);
-
-    /* wait until we're not sending, receiving, or changing the database */
-    code = ubik_wait_db_flags(dbase, DBWRITING | DBSENDING | DBRECEIVING);
-    osi_Assert(code == 0);
-    ubik_set_db_flags(dbase, DBSENDING);
-
-    code = uphys_stat(dbase, file, &ubikstat);
-    if (code < 0) {
-	ViceLog(0, ("database stat() error:%d\n", code));
-	goto failed;
+    if (file != 0) {
+	return UNOENT;
     }
-    length = ubikstat.size;
-    tlen = htonl(length);
-    code = rx_Write(rxcall, (char *)&tlen, sizeof(afs_int32));
-    if (code != sizeof(afs_int32)) {
-	ViceLog(0, ("Rx-write length error=%d\n", code));
-	code = BULK_ERROR;
-	goto failed;
-    }
-    offset = 0;
-    while (length > 0) {
-	tlen = (length > sizeof(tbuffer) ? sizeof(tbuffer) : length);
-	code = uphys_read(dbase, file, tbuffer, offset, tlen);
-	if (code != tlen) {
-	    ViceLog(0, ("read failed error=%d\n", code));
-	    code = UIOERROR;
-	    goto failed;
-	}
 
-	/* at this point, we know that we do not have a write transaction, and
-	 * we also know that we are not sending or receiving the database. so,
-	 * we can drop DBHOLD here to allow read transactions. */
-	DBRELE(dbase);
-	code = rx_Write(rxcall, tbuffer, tlen);
-	DBHOLD(dbase);
-
-	if (code != tlen) {
-	    ViceLog(0, ("Rx-write data error=%d\n", code));
-	    code = BULK_ERROR;
-	    goto failed;
-	}
-	length -= tlen;
-	offset += tlen;
-    }
-    code = uphys_getlabel(dbase, file, version);	/* return the dbase, too */
-    if (code)
-	ViceLog(0, ("getlabel error=%d\n", code));
-
- failed:
-    ubik_clear_db_flags(dbase, DBSENDING);
-    DBRELE(dbase);
-    if (code) {
-	ViceLog(0,
-	    ("Ubik: Synchronize database: send (via GetFile) to "
-	     "server %s failed (error = %d)\n",
-	     afs_inet_ntoa_r(otherHost, hoststr), code));
-    } else {
-	ViceLog(0,
-	    ("Ubik: Synchronize database: send (via GetFile) to "
-	     "server %s complete, version: %d.%d\n",
-	    afs_inet_ntoa_r(otherHost, hoststr), version->epoch, version->counter));
-    }
-    return code;
+    return uremote_sgetfile(rxcall, &urecovery_senddb_sgetfile_v1, version);
 }
 
-afs_int32
-SDISK_SendFile(struct rx_call *rxcall, afs_int32 file,
-	       afs_int32 length, struct ubik_version *avers)
+static int
+uremote_ssendfile(struct rx_call *rxcall, struct urecovery_recvdb_type *rtype,
+		  afs_int32 flat_length, struct ubik_version *flat_vers)
 {
-    afs_int32 code;
-    struct ubik_dbase *dbase = NULL;
-    char tbuffer[1024];
-    int tlen;
+    int code;
     struct rx_peer *tpeer;
     struct rx_connection *tconn;
     afs_uint32 syncHost = 0;
     afs_uint32 otherHost = 0;
+    struct urecovery_recvdb_info rinfo;
+    struct ubik_version version;
     char hoststr[16];
-    char pbuffer[1028];
-    int fd = -1;
-    afs_int32 pass;
-    int newdb_visible = 0;
-    int db_locked = 0;
 
-    /* send the file back to the requester */
+    memset(&version, 0, sizeof(version));
 
-    dbase = ubik_dbase;
-    pbuffer[0] = '\0';
-
-    if ((code = ubik_CheckAuth(rxcall))) {
-	return code;
-    }
-
-    /* next, we do a sanity check to see if the guy sending us the database is
+    /*
+     * first, we do a sanity check to see if the guy sending us the database is
      * the guy we think is the sync site.  It turns out that we might not have
      * decided yet that someone's the sync site, but they could have enough
      * votes from others to be sync site anyway, and could send us the database
@@ -500,160 +434,38 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file,
 	return USYNC;
     }
 
-    DBHOLD(dbase);
-
-    /* wait until we're not sending the database to someone. since every
-     * transaction will be aborted (via urecovery_AbortAll below), we do not
-     * have to wait for DBWRITING. */
-    if (ubik_wait_db_flags(dbase, DBSENDING)) {
-	ViceLog(0, ("Ubik: Unexpected database flags in SDISK_SendFile (flags: 0x%x)",
-		   ubik_dbase->dbFlags));
-	DBRELE(ubik_dbase);
-	return USYNC;
-    }
-    ubik_set_db_flags(ubik_dbase, DBRECEIVING);
-
-    /* abort any active trans that may scribble over the database */
-    urecovery_AbortAll(dbase);
-
-    ViceLog(0, ("Ubik: Synchronize database: receive (via SendFile) from server %s begin\n",
-	       afs_inet_ntoa_r(otherHost, hoststr)));
-
-    /* at this point, we know that we do not have any active read or write
-     * transactions (they were aborted). we also know that we are not sending or
-     * receiving a database. we drop DBHOLD here, so new read transactions can
-     * come in while the database is being transferred. that might seem a bit
-     * odd because we just aborted any existing read transactions; in the future
-     * we could probably avoid aborting read transactions (and just abort
-     * writes), but for now we just abort everything. */
-    DBRELE(ubik_dbase);
-
-    snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP",
-	     ubik_dbase->pathName, (file<0)?"SYS":"",
-	     (file<0)?-file:file);
-    fd = open(pbuffer, O_CREAT | O_RDWR | O_TRUNC, 0600);
-    if (fd < 0) {
-	code = errno;
-	ViceLog(0, ("Open error=%d\n", code));
-	goto failed;
-    }
-    code = lseek(fd, HDRSIZE, 0);
-    if (code != HDRSIZE) {
-	ViceLog(0, ("lseek error=%d\n", code));
-	close(fd);
-	goto failed;
-    }
-    pass = 0;
-    while (length > 0) {
-	tlen = (length > sizeof(tbuffer) ? sizeof(tbuffer) : length);
-#if !defined(AFS_PTHREAD_ENV)
-	if (pass % 4 == 0)
-	    IOMGR_Poll();
-#endif
-	code = rx_Read(rxcall, tbuffer, tlen);
-	if (code != tlen) {
-	    ViceLog(0, ("Rx-read length error=%d\n", code));
-	    code = BULK_ERROR;
-	    close(fd);
-	    goto failed;
-	}
-	code = write(fd, tbuffer, tlen);
-	pass++;
-	if (code != tlen) {
-	    ViceLog(0, ("write failed tlen=%d, error=%d\n", tlen, code));
-	    code = UIOERROR;
-	    close(fd);
-	    goto failed;
-	}
-	length -= tlen;
-    }
-    code = close(fd);
-    if (code) {
-	ViceLog(0, ("close failed error=%d\n", code));
-	goto failed;
-    }
+    memset(&rinfo, 0, sizeof(rinfo));
+    rinfo.rxcall = rxcall;
+    rinfo.otherHost = otherHost;
+    rinfo.flat_version = flat_vers;
+    rinfo.flat_length = flat_length;
 
     DBHOLD(ubik_dbase);
-    ubik_clear_db_flags(ubik_dbase, DBRECEIVING);
-    db_locked = 1;
-
-    /* at this point, it is guaranteed that we do not have a write transaction,
-     * but new read transactions may have started while the DBHOLD lock was
-     * dropped. we are about to install the new database we just received, so
-     * make sure to abort any read transactions, so those read transactions
-     * don't see new db data suddenly appear. */
-    urecovery_AbortAll(ubik_dbase);
-
-    /* sync data first, then write label and resync (resync done by setlabel call).
-     * This way, good label is only on good database. */
-    snprintf(tbuffer, sizeof(tbuffer), "%s.DB%s%d",
-	     ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
-#ifdef AFS_NT40_ENV
-    snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD",
-	     ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
-    code = unlink(pbuffer);
-    if (!code)
-	code = rename(tbuffer, pbuffer);
-    snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.TMP",
-	     ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
-#endif
-    UBIK_VERSION_LOCK;
-    if (!code)
-	code = rename(pbuffer, tbuffer);
-    if (!code) {
-	newdb_visible = 1;
-	uphys_invalidate(ubik_dbase, file);
-	code = uphys_setlabel(dbase, file, avers);
+    code = urecovery_receive_db(ubik_dbase, rtype, &rinfo, &version);
+    if (code == 0) {
+	uvote_set_dbVersion(version);
     }
-#ifdef AFS_NT40_ENV
-    snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD",
-	     ubik_dbase->pathName, (file<0)?"SYS":"", (file<0)?-file:file);
-    unlink(pbuffer);
-#endif
-    if (code == 0)
-	memcpy(&ubik_dbase->version, avers, sizeof(struct ubik_version));
-    UBIK_VERSION_UNLOCK;
-failed:
-    if (!db_locked) {
-	DBHOLD(ubik_dbase);
-	ubik_clear_db_flags(ubik_dbase, DBRECEIVING);
-    }
-    if (newdb_visible)
-	udisk_Invalidate(dbase, file);	/* new dbase, flush disk buffers */
-    if (code) {
-	if (pbuffer[0] != '\0')
-	    unlink(pbuffer);
-
-	ViceLog(0,
-	    ("Ubik: Synchronize database: receive (via SendFile) from "
-	     "server %s failed (error = %d, newdb_visible = %d)\n",
-	    afs_inet_ntoa_r(otherHost, hoststr), code, newdb_visible));
-
-	if (newdb_visible) {
-	    UBIK_VERSION_LOCK;
-	    memset(&dbase->version, 0, sizeof(dbase->version));
-	    if (uphys_setlabel(dbase, file, &dbase->version)) {
-		ViceLog(0, ("Ubik: Synchronize database: Failed to invalidate "
-			    "database on disk. This is unusual, but should not "
-			    "cause problems, since the database should already "
-			    "be flagged as invalid.\n"));
-	    } else {
-		ViceLog(0, ("Ubik: Synchronize database: successfully "
-			    "invalidated database.\n"));
-	    }
-	    UBIK_VERSION_UNLOCK;
-	}
-    } else {
-	uvote_set_dbVersion(*avers);
-	ViceLog(0,
-	    ("Ubik: Synchronize database: receive (via SendFile) from "
-	     "server %s complete, version: %d.%d\n",
-	    afs_inet_ntoa_r(otherHost, hoststr), avers->epoch, avers->counter));
-    }
-    DBRELE(dbase);
+    DBRELE(ubik_dbase);
     return code;
 }
 
+afs_int32
+SDISK_SendFile(struct rx_call *rxcall, afs_int32 file,
+	       afs_int32 length, struct ubik_version *avers)
+{
+    afs_int32 code;
+
+    if ((code = ubik_CheckAuth(rxcall))) {
+	return code;
+    }
+
+    if (file != 0) {
+	return UNOENT;
+    }
+
+    return uremote_ssendfile(rxcall, &urecovery_recvdb_ssendfile_v1, length,
+			     avers);
+}
 
 afs_int32
 SDISK_Probe(struct rx_call *rxcall)
