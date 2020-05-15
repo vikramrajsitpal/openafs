@@ -255,6 +255,10 @@ Init_VLdbase(struct vl_ctx *ctx,
     }
     if (code == 0) {
 	code = vlsetcache(ctx, locktype);
+	if (code != 0) {
+	    countAbort(opcode);
+	    ubik_AbortTrans(ctx->trans);
+	}
     }
     return code;
 }
