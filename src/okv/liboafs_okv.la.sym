@@ -1,0 +1,17 @@
+okv_abort
+okv_begin
+okv_close
+okv_commit
+okv_create
+okv_dbhandle_descr
+okv_dbhandle_engine
+okv_dbhandle_ref
+okv_dbhandle_rele
+okv_del
+okv_get
+okv_get_copy
+okv_next
+okv_open
+okv_put
+okv_stat
+okv_unlink

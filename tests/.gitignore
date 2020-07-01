@@ -4,3 +4,9 @@
 
 /runtests
 /core
+
+# We have some embedded lmdb database files in our tests. Accessing those
+# databases causes these lock.mdb files to get created; just ignore all of them
+# here.
+*/*lmdb*/lock.mdb
+*/*/*lmdb*/lock.mdb

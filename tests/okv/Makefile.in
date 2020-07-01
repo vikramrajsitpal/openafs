@@ -1,0 +1,22 @@
+srcdir=@srcdir@
+abs_top_builddir=@abs_top_builddir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+include @TOP_OBJDIR@/src/config/Makefile.pthread
+
+MODULE_CFLAGS = -I$(TOP_OBJDIR) -I$(srcdir)/../common
+
+LIBS=	$(abs_top_builddir)/tests/common/libafstest_common.la \
+	$(abs_top_builddir)/src/okv/liboafs_okv.la \
+	$(XLIBS)
+
+tests = okv-t
+
+all check test tests: $(tests)
+
+CFLAGS_okv-t.o = -I$(TOP_SRCDIR)/okv
+okv-t: okv-t.o
+	$(LT_LDRULE_static) okv-t.o $(LIBS)
+
+clean distclean:
+	$(LT_CLEAN)
+	$(RM) -f $(tests) *.o core

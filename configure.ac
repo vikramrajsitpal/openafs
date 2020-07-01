@@ -128,6 +128,7 @@ AC_CONFIG_FILES([
     src/log/test/Makefile
     src/lwp/Makefile
     src/lwp/test/Makefile
+    src/okv/Makefile
     src/opr/Makefile
     src/packaging/MacOS/OpenAFS-debug.Description.plist
     src/packaging/MacOS/OpenAFS-debug.Info.plist
@@ -193,6 +194,7 @@ AC_CONFIG_FILES([
     tests/cmd/Makefile
     tests/common/Makefile
     tests/ctl/Makefile
+    tests/okv/Makefile
     tests/opr/Makefile
     tests/ptserver/Makefile
     tests/rx/Makefile

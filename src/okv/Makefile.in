@@ -1,0 +1,54 @@
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+include @TOP_OBJDIR@/src/config/Makefile.pthread
+include @TOP_OBJDIR@/src/config/Makefile.libtool
+
+AFSLMDB_objs = lmdb_mdb.lo lmdb_midl.lo
+AFSLMDB_UPSTREAM = $(TOP_SRCDIR)/external/lmdb
+AFSLMDB_CFLAGS = -I$(AFSLMDB_UPSTREAM)
+
+# Only include AFSLMDB_objs if we're using our embedded copy of lmdb
+@AFSLMDB_ONLY@LT_objs_embed = $(AFSLMDB_objs)
+@AFSLMDB_ONLY@LMDB_LIBS =
+@AFSLMDB_ONLY@LMDB_CFLAGS = $(AFSLMDB_CFLAGS)
+
+LT_libs = $(LMDB_LIBS)
+LT_objs = okv.lo okv_lmdb.lo $(LT_objs_embed)
+
+LT_deps =	$(top_builddir)/src/opr/liboafs_opr.la \
+		$(top_builddir)/src/util/liboafs_util.la \
+		$(top_builddir)/src/cmd/liboafs_cmd.la \
+		$(top_builddir)/src/rx/liboafs_rx.la
+
+HEADERS = $(TOP_INCDIR)/afs/okv.h
+
+all: liboafs_okv.la lmdb_linktest $(HEADERS)
+
+liboafs_okv.la: liboafs_okv.la.sym $(LT_objs) $(LT_deps)
+	$(LT_LDLIB_shlib) $(LT_objs) $(LT_libs) $(LT_deps)
+
+CFLAGS_okv_lmdb.lo = $(LMDB_CFLAGS)
+
+$(TOP_INCDIR)/afs/okv.h: okv.h
+	$(INSTALL_DATA) $? $@
+
+# Stuff for our embedded copy of lmdb. To avoid bitrot, we always build this,
+# even if we're linking against the system liblmdb.
+CFLAGS_lmdb_mdb.lo = $(AFSLMDB_CFLAGS) @CFLAGS_NOIMPLICIT_FALLTHROUGH@
+lmdb_mdb.lo: $(AFSLMDB_UPSTREAM)/mdb.c
+	$(LT_CCRULE) $(AFSLMDB_UPSTREAM)/mdb.c
+
+CFLAGS_lmdb_midl.lo = $(AFSLMDB_CFLAGS)
+lmdb_midl.lo: $(AFSLMDB_UPSTREAM)/midl.c
+	$(LT_CCRULE) $(AFSLMDB_UPSTREAM)/midl.c
+
+CFLAGS_lmdb_linktest.o = $(AFSLMDB_CFLAGS)
+lmdb_linktest: lmdb_linktest.o $(AFSLMDB_objs)
+	$(LT_LDRULE_static) lmdb_linktest.o $(AFSLMDB_objs)
+
+install:
+dest:
+
+clean:
+	$(LT_CLEAN)
+	$(RM) -f *.o lmdb_linktest

@@ -90,6 +90,9 @@ extern int afstest_file_contains(char *path, char *target);
 extern int afstest_cp(char *src_path, char *dest_path);
 extern int afstest_file_equal(char *path_a, char *path_b, off_t start_off);
 
+/* okv.c */
+extern int afstest_okv_dbpath(char **a_path, char *filename);
+
 /* rxkad.c */
 
 extern struct rx_securityClass

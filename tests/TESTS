@@ -8,6 +8,7 @@ auth/realms
 auth/writeoldkey
 cmd/command
 ctl/ctl
+okv/okv
 opr/cache
 opr/dict
 opr/fmt

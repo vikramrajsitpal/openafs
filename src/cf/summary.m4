@@ -54,6 +54,9 @@ AC_DEFUN([OPENAFS_SUMMARY],[
   AS_IF([test "x$CTFCONVERT" != "x" -a "x$CTFMERGE" != "x"],
     [summary_ctf_tools="yes"],
     [summary_ctf_tools="no"])
+  AS_IF([test x"$AFSLMDB_ONLY" = x],
+    [summary_lmdb="internal copy"],
+    [summary_lmdb="${LMDB_LIBS}"])
 
   cat <<EOF
 ***************************************************************
@@ -90,6 +93,7 @@ libraries:
   crypt   : ${LIB_crypt}
   hcrypto : ${LIB_hcrypto}
   intl    : ${LIB_libintl}
+  lmdb    : ${summary_lmdb}
 ***************************************************************
 EOF
 ])

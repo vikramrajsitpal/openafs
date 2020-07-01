@@ -179,6 +179,9 @@ hcrypto: config $(DIR_roken)
 rfc3961: config hcrypto
 	+${COMPILE_PART1} crypto/rfc3961 ${COMPILE_PART2}
 
+okv: opr rx cmd util
+	+${COMPILE_PART1} okv ${COMPILE_PART2}
+
 lwp: opr $(DIR_roken) lwp_depinstall
 	+${COMPILE_PART1} lwp ${COMPILE_PART2}
 
@@ -645,7 +648,7 @@ finale_notest: project cmd comerr afsd butc tbutc tbudb @ENABLE_KERNEL_MODULE@ \
 	bozo @VFSCK@ volser tvolser tsalvaged dviced dvolser libafscp \
 	venus venustests update xstat afsmonitor rxdebug libafsrpc rfc3961 \
 	hcrypto libafsauthent libadmin man-pages tools platform kopenafs \
-	authtools $(DIR_roken) rxgk ctl
+	authtools $(DIR_roken) rxgk ctl okv
 	+${COMPILE_PART1} finale ${COMPILE_PART2}
 
 finale_nolibafs_notest: project cmd comerr afsd butc tbutc tbudb libuafs audit kauth \
@@ -653,7 +656,7 @@ finale_nolibafs_notest: project cmd comerr afsd butc tbutc tbudb libuafs audit k
 	volser tvolser tsalvaged dviced dvolser libafscp venus venustests \
 	update xstat afsmonitor rxdebug libafsrpc rfc3961 hcrypto \
 	libafsauthent libadmin man-pages tools platform kopenafs \
-	authtools $(DIR_roken) rxgk ctl
+	authtools $(DIR_roken) rxgk ctl okv
 	+${COMPILE_PART1} finale ${COMPILE_PART2}
 
 finale: finale_notest test_build
@@ -696,6 +699,7 @@ clean2:
 	-${COMPILE_PART1} config ${COMPILE_CLEAN}
 	-${COMPILE_PART1} procmgmt ${COMPILE_CLEAN}
 	-${COMPILE_PART1} util ${COMPILE_CLEAN}
+	-${COMPILE_PART1} okv ${COMPILE_CLEAN}
 	-${COMPILE_PART1} opr ${COMPILE_CLEAN}
 	-${COMPILE_PART1} libafscp ${COMPILE_CLEAN}
 	-${COMPILE_PART1} audit ${COMPILE_CLEAN}
@@ -883,6 +887,7 @@ distclean: clean
 	src/log/test/Makefile \
 	src/lwp/Makefile \
 	src/lwp/test/Makefile \
+	src/okv/Makefile \
 	src/opr/Makefile \
 	src/packaging/MacOS/OpenAFS-debug.Description.plist \
 	src/packaging/MacOS/OpenAFS-debug.Info.plist \
@@ -951,6 +956,7 @@ distclean: clean
 	tests/ctl/Makefile \
 	tests/rx/Makefile \
 	tests/rxgk/Makefile \
+	tests/okv/Makefile \
 	tests/opr/Makefile \
 	tests/ptserver/Makefile \
 	tests/util/Makefile \
