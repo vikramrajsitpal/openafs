@@ -805,10 +805,10 @@ udisk_end(struct ubik_trans *atrans)
     } else {
 	dbase->readers--;
     }
-    if (atrans->iovec_info.iovec_wrt_val)
-	free(atrans->iovec_info.iovec_wrt_val);
-    if (atrans->iovec_data.iovec_buf_val)
-	free(atrans->iovec_data.iovec_buf_val);
+    if (atrans->iovec_info.val)
+	free(atrans->iovec_info.val);
+    if (atrans->iovec_data.val)
+	free(atrans->iovec_data.val);
     free(atrans);
 
     /* Wakeup any writers waiting in BeginTrans() */

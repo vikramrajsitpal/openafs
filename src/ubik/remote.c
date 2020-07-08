@@ -264,11 +264,11 @@ SDISK_WriteV(struct rx_call *rxcall, struct ubik_tid *atid,
 	goto done;
     }
 
-    iovec = (struct ubik_iovec *)io_vector->iovec_wrt_val;
-    iobuf = (char *)io_buffer->iovec_buf_val;
-    for (i = 0, offset = 0; i < io_vector->iovec_wrt_len; i++) {
+    iovec = (struct ubik_iovec *)io_vector->val;
+    iobuf = (char *)io_buffer->val;
+    for (i = 0, offset = 0; i < io_vector->len; i++) {
 	/* Sanity check for going off end of buffer */
-	if ((offset + iovec[i].length) > io_buffer->iovec_buf_len) {
+	if ((offset + iovec[i].length) > io_buffer->len) {
 	    code = UINTERNAL;
 	} else {
 	    code =
@@ -310,9 +310,7 @@ SDISK_Write(struct rx_call *rxcall, struct ubik_tid *atid,
 	code = USYNC;
 	goto done;
     }
-    code =
-	udisk_write(ubik_currentTrans, afile, adata->bulkdata_val, apos,
-		    adata->bulkdata_len);
+    code = udisk_write(ubik_currentTrans, afile, adata->val, apos, adata->len);
 done:
     DBRELE(ubik_dbase);
     return code;

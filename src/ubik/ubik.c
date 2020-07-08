@@ -275,21 +275,20 @@ ContactQuorum_DISK_WriteV(struct ubik_trans *atrans, int aflags,
 		 * Un-bulk the entries and do individual DISK_Write calls
 		 * instead of DISK_WriteV.
 		 */
-		struct ubik_iovec *iovec =
-			(struct ubik_iovec *)io_vector->iovec_wrt_val;
-		char *iobuf = (char *)io_buffer->iovec_buf_val;
+		struct ubik_iovec *iovec = io_vector->val;
+		char *iobuf = io_buffer->val;
 		bulkdata tcbs;
 		afs_int32 i, offset;
 
 		procname = "DISK_Write";	/* for accurate error msg, if any */
-		for (i = 0, offset = 0; i < io_vector->iovec_wrt_len; i++) {
+		for (i = 0, offset = 0; i < io_vector->len; i++) {
 		    /* Sanity check for going off end of buffer */
-		    if ((offset + iovec[i].length) > io_buffer->iovec_buf_len) {
+		    if ((offset + iovec[i].length) > io_buffer->len) {
 			code = UINTERNAL;
 			break;
 		    }
-		    tcbs.bulkdata_len = iovec[i].length;
-		    tcbs.bulkdata_val = &iobuf[offset];
+		    tcbs.len = iovec[i].length;
+		    tcbs.val = &iobuf[offset];
 		    code = DISK_Write(conn, &atrans->tid, iovec[i].file,
 			   iovec[i].position, &tcbs);
 		    if (code)
@@ -1099,8 +1098,7 @@ ubik_Flush(struct ubik_trans *transPtr)
     }
 
     DBHOLD(transPtr->dbase);
-    if (!transPtr->iovec_info.iovec_wrt_len
-	|| !transPtr->iovec_info.iovec_wrt_val) {
+    if (!transPtr->iovec_info.len || !transPtr->iovec_info.val) {
 	DBRELE(transPtr->dbase);
 	return 0;
     }
@@ -1118,14 +1116,14 @@ ubik_Flush(struct ubik_trans *transPtr)
 	udisk_abort(transPtr);
 	/* force aborts to the others */
 	ContactQuorum_NoArguments(DISK_Abort, transPtr, 0, "DISK_Abort");
-	transPtr->iovec_info.iovec_wrt_len = 0;
-	transPtr->iovec_data.iovec_buf_len = 0;
+	transPtr->iovec_info.len = 0;
+	transPtr->iovec_data.len = 0;
 	ERROR_EXIT(code);
     }
 
     /* Wrote the buffers out, so start at scratch again */
-    transPtr->iovec_info.iovec_wrt_len = 0;
-    transPtr->iovec_data.iovec_buf_len = 0;
+    transPtr->iovec_info.len = 0;
+    transPtr->iovec_data.len = 0;
 
   error_exit:
     DBRELE(transPtr->dbase);
@@ -1161,28 +1159,27 @@ ubik_Write(struct ubik_trans *transPtr, void *vbuffer,
     }
 
     DBHOLD(transPtr->dbase);
-    if (!transPtr->iovec_info.iovec_wrt_val) {
-	transPtr->iovec_info.iovec_wrt_len = 0;
-	transPtr->iovec_info.iovec_wrt_val =
+    if (!transPtr->iovec_info.val) {
+	transPtr->iovec_info.len = 0;
+	transPtr->iovec_info.val =
 	    malloc(IOVEC_MAXWRT * sizeof(struct ubik_iovec));
-	transPtr->iovec_data.iovec_buf_len = 0;
-	transPtr->iovec_data.iovec_buf_val = malloc(IOVEC_MAXBUF);
-	if (!transPtr->iovec_info.iovec_wrt_val
-	    || !transPtr->iovec_data.iovec_buf_val) {
-	    if (transPtr->iovec_info.iovec_wrt_val)
-		free(transPtr->iovec_info.iovec_wrt_val);
-	    transPtr->iovec_info.iovec_wrt_val = 0;
-	    if (transPtr->iovec_data.iovec_buf_val)
-		free(transPtr->iovec_data.iovec_buf_val);
-	    transPtr->iovec_data.iovec_buf_val = 0;
+	transPtr->iovec_data.len = 0;
+	transPtr->iovec_data.val = malloc(IOVEC_MAXBUF);
+	if (!transPtr->iovec_info.val || !transPtr->iovec_data.val) {
+	    if (transPtr->iovec_info.val)
+		free(transPtr->iovec_info.val);
+	    transPtr->iovec_info.val = 0;
+	    if (transPtr->iovec_data.val)
+		free(transPtr->iovec_data.val);
+	    transPtr->iovec_data.val = 0;
 	    DBRELE(transPtr->dbase);
 	    return UNOMEM;
 	}
     }
 
     /* If this write won't fit in the structure, then flush it out and start anew */
-    if ((transPtr->iovec_info.iovec_wrt_len >= IOVEC_MAXWRT)
-	|| ((length + transPtr->iovec_data.iovec_buf_len) > IOVEC_MAXBUF)) {
+    if ((transPtr->iovec_info.len >= IOVEC_MAXWRT)
+	|| ((length + transPtr->iovec_data.len) > IOVEC_MAXBUF)) {
 	/* Can't hold the DB lock over ubik_Flush */
 	DBRELE(transPtr->dbase);
 	code = ubik_Flush(transPtr);
@@ -1202,23 +1199,23 @@ ubik_Write(struct ubik_trans *transPtr, void *vbuffer,
 		    length);
     if (code) {
 	udisk_abort(transPtr);
-	transPtr->iovec_info.iovec_wrt_len = 0;
-	transPtr->iovec_data.iovec_buf_len = 0;
+	transPtr->iovec_info.len = 0;
+	transPtr->iovec_data.len = 0;
 	DBRELE(transPtr->dbase);
 	return (code);
     }
 
     /* Collect writes for the other ubik servers (to be done in bulk) */
-    iovec = (struct ubik_iovec *)transPtr->iovec_info.iovec_wrt_val;
-    iovec[transPtr->iovec_info.iovec_wrt_len].file = transPtr->seekFile;
-    iovec[transPtr->iovec_info.iovec_wrt_len].position = transPtr->seekPos;
-    iovec[transPtr->iovec_info.iovec_wrt_len].length = length;
+    iovec = transPtr->iovec_info.val;
+    iovec[transPtr->iovec_info.len].file = transPtr->seekFile;
+    iovec[transPtr->iovec_info.len].position = transPtr->seekPos;
+    iovec[transPtr->iovec_info.len].length = length;
 
-    memcpy(&transPtr->iovec_data.
-	   iovec_buf_val[transPtr->iovec_data.iovec_buf_len], buffer, length);
+    memcpy((char*)transPtr->iovec_data.val + transPtr->iovec_data.len,
+	   buffer, length);
 
-    transPtr->iovec_info.iovec_wrt_len++;
-    transPtr->iovec_data.iovec_buf_len += length;
+    transPtr->iovec_info.len++;
+    transPtr->iovec_data.len += length;
     transPtr->seekPos += length;
 
   error_exit:

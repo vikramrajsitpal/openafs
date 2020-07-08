@@ -74,16 +74,16 @@ udebug: udebug.o libubik.a
 	$(AFS_LDRULE) udebug.o libubik.a $(LIBS) $(LIB_roken)
 
 ubik_int.cs.c: ubik_int.xg
-	${RXGEN} -A -x -C -o $@ ${srcdir}/ubik_int.xg
+	${RXGEN} -b -A -x -C -o $@ ${srcdir}/ubik_int.xg
 
 ubik_int.ss.c: ubik_int.xg
-	${RXGEN} -A -x -S -o $@ ${srcdir}/ubik_int.xg
+	${RXGEN} -b -A -x -S -o $@ ${srcdir}/ubik_int.xg
 
 ubik_int.xdr.c: ubik_int.xg
-	${RXGEN} -A -x -c -o $@ ${srcdir}/ubik_int.xg
+	${RXGEN} -b -A -x -c -o $@ ${srcdir}/ubik_int.xg
 
 ubik_int.h: ubik_int.xg
-	${RXGEN} -A -x -h -o $@ ${srcdir}/ubik_int.xg
+	${RXGEN} -b -A -x -h -o $@ ${srcdir}/ubik_int.xg
 
 ubik_int.cs.c: ubik_int.h
 ubik_int.ss.c: ubik_int.h
