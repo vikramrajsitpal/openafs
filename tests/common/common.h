@@ -177,6 +177,7 @@ struct ubiktest_cbinfo {
     struct rx_connection *disk_conn;	/**< Conn to the DISK_ service for the
 					 *   running server. */
     struct ubiktest_dbdef *src_dbdef;	/**< dbdef struct for the installed db. */
+    char *src_dbpath;	/**< path to the source db we installed (if any) */
     char *ctl_sock; /**< Path to the ctl socket for the running server. */
 };
 
@@ -305,6 +306,7 @@ extern void ubiktest_runtest(struct ubiktest_dataset *ds,
 extern void ubiktest_runtest_list(struct ubiktest_dataset *ds,
 				  struct ubiktest_ops *ops);
 extern void urectest_runtests(struct ubiktest_dataset *ds, char *use_db);
+extern int ubiktest_db_equal(char *path_a, char *path_b);
 
 struct frztest_ops {
     char *suite;    /**< e.g. 'vl' for the 'openafs-ctl vldb-dump' command */

@@ -220,6 +220,10 @@ vlwrite_cheader(struct vl_ctx *ctx, struct vlheader *cheader,
     afs_uint32 ckey;
     afs_int32 offset = DOFFSET(0, cheader, buffer);
 
+    if (ctx->cheader_nowrite) {
+	return 0;
+    }
+
     opr_Assert(offset >= 0 && offset <= sizeof(*cheader));
     opr_Assert(offset + length <= sizeof(*cheader));
 
@@ -281,7 +285,7 @@ vlread(struct vl_ctx *ctx, afs_int32 offset, void *buffer,
 }
 
 /* Read in the cheader from disk. */
-static afs_int32
+afs_int32
 vlread_cheader(struct vl_ctx *ctx, struct vlheader *cheader)
 {
     afs_uint32 ckey = htonl(VL4KV_KEY_CHEADERKV);
@@ -313,7 +317,7 @@ vlread_cheader(struct vl_ctx *ctx, struct vlheader *cheader)
 
 /* Read in an extent block from disk, for base 'base' at database file offset
  * 'offset'. */
-static afs_int32
+afs_int32
 vlread_exblock(struct vl_ctx *ctx, afs_int32 base, afs_int32 offset,
 	       struct extentaddr *exblock)
 {
@@ -869,7 +873,7 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 }
 
 /* makes a deep copy of src_ex into dst_ex */
-static int
+int
 vlexcpy(struct extentaddr **dst_ex, struct extentaddr **src_ex)
 {
     int i;
@@ -987,8 +991,8 @@ CheckInit(struct vl_ctx *ctx, int builddb, int locktype)
  *			    bumped it
  * @return VL error codes
  */
-static afs_int32
-grow_eofPtr(struct vlheader *cheader, afs_int32 bump, afs_int32 *a_blockindex)
+afs_int32
+vlgrow_eofPtr(struct vlheader *cheader, afs_int32 bump, afs_int32 *a_blockindex)
 {
     afs_int32 blockindex = ntohl(cheader->vital_header.eofPtr);
 
@@ -1027,7 +1031,7 @@ GetExtentBlock(struct vl_ctx *ctx, afs_int32 base)
 
 	/* Write the full extension block at end of vldb */
 	ex_addr[base]->ex_hdrflags = htonl(VLCONTBLOCK);
-	code = grow_eofPtr(cheader, VL_ADDREXTBLK_SIZE, &blockindex);
+	code = vlgrow_eofPtr(cheader, VL_ADDREXTBLK_SIZE, &blockindex);
 	if (code)
 	    ERROR_EXIT(VL_IO);
 
@@ -1191,7 +1195,7 @@ AllocBlock(struct vl_ctx *ctx, struct nvlentry *tentry)
     } else {
 	afs_int32 code;
 	/* hosed, nothing on free list, grow file */
-	code = grow_eofPtr(cheader, sizeof(vlentry), &blockindex);
+	code = vlgrow_eofPtr(cheader, sizeof(vlentry), &blockindex);
 	if (code)
 	    return 0;
     }
@@ -1658,11 +1662,13 @@ HashVolid(struct vl_ctx *ctx, afs_int32 voltype, afs_int32 blockindex,
     struct vl_cache *cache = ctx->cache;
     struct vlheader *cheader = &cache->cheader;
 
-    if (FindByID
-	(ctx, tentry->volumeId[voltype], voltype, &ventry, &errorcode))
-	return VL_IDALREADYHASHED;
-    else if (errorcode)
-	return errorcode;
+    if (!ctx->hash_nocollide) {
+	if (FindByID
+	    (ctx, tentry->volumeId[voltype], voltype, &ventry, &errorcode))
+	    return VL_IDALREADYHASHED;
+	else if (errorcode)
+	    return errorcode;
+    }
 
     if (vlctx_kv(ctx)) {
 	/* For KV, we hash the vlentry when we write out the vlentry itself. */

@@ -33,6 +33,7 @@ vlserver/check4
 vlserver/check4-kv
 vlserver/freeze
 vlserver/recovery
+vlserver/upgrade
 vlserver/vldb4
 vlserver/vldb4-kv
 volser/vos-man

@@ -6,6 +6,7 @@
 /vl_errors.c
 /vlclient
 /vldb_check
+/vldb_upgrade
 /vldbint.h
 /vlserver
 /vlserver.h

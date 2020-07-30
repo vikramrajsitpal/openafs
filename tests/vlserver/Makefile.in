@@ -9,6 +9,7 @@ BINS = badversion-t \
        check4-kv-t \
        freeze-t \
        recovery-t \
+       upgrade-t \
        vldb4-t \
        vldb4-kv-t \
        vldb4-multi-t
@@ -42,6 +43,9 @@ freeze-t: freeze-t.o $(vltest_deps)
 
 recovery-t: recovery-t.o $(vltest_deps)
 	$(LT_LDRULE_static) recovery-t.o $(vltest_libs)
+
+upgrade-t: upgrade-t.o $(vltest_deps)
+	$(LT_LDRULE_static) upgrade-t.o $(vltest_libs)
 
 vldb4-t: vldb4-t.o $(vltest_deps)
 	$(LT_LDRULE_static) vldb4-t.o $(vltest_libs)

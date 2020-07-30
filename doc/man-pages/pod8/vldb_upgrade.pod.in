@@ -1,0 +1,226 @@
+=head1 NAME
+
+vldb_upgrade - Convert the VLDB between database formats
+
+=head1 SYNOPSIS
+
+=for html
+<div class="synopsis">
+
+B<vldb_upgrade> S<<< [B<-input> <I<input VLDB>>] >>>
+    S<<< [B<-output> <I<output VLDB>>] >>> S<<< [B<-to> <I<output format>>] >>>
+    [B<-ignore-epoch>] [B<-force-type>] [B<-online>]
+    S<<< [B<-backup-suffix> <I<suffix>> >>> [B<-no-backup>]
+    S<<< [B<-dist> (try | skip | required)] >>>
+    S<<< [B<-ctl-socket> <I<path>>] >>> [B<-quiet>] [B<-progress>]
+    [B<-no-progress>] [B<-help>]
+
+=for html
+</div>
+
+=head1 DESCRIPTION
+
+The B<vldb_upgrade> command is used to upgrade (or downgrade) VLDB database
+files between different OpenAFS VLDB formats. This is NOT used to convert
+legacy Transarc 3.1-3.4 VLDB database files; for such pre-OpenAFS formats, see
+L<vldb_convert_old(8)>.
+
+There are two modes of operation for upgrading a VLDB database:
+
+=over 4
+
+=item offline
+
+In an offline upgrade (the default mode), B<vldb_upgrade> reads in the
+B<-input> VLDB, and writes out the B<-output> VLDB in the format specified by
+B<-to>. There is no coordination with the Volume Location Server (or any other
+server), and the paths specified by B<-input> and B<-output> must not be used
+by an active running vlserver. In this mode, B<vldb_upgrade> is just acting as
+a simple file type converter.
+
+To upgrade a VLDB using this mode, you must first stop all Volume Location
+Server processes, then run B<vldb_upgrade>, then move the new database into
+place, and restart the Volume Location Server processes.
+
+=item online
+
+In an online upgrade (when B<-online> is specified), B<vldb_upgrade> contacts
+the local Volume Location Server to freeze the VLDB, so the database cannot be
+changed while the VLDB is upgraded. The B<-input> and B<-output> options are
+not specified in this mode; instead, B<vldb_upgrade> coordinates with the local
+vlserver for the locations of the relevant VLDB files.
+
+In this mode, B<vldb_upgrade> must be run on the sync-site dbserver; otherwise,
+B<vldb_upgrade> will exit with an error. After the database has been upgraded
+successfully, the new database will be distributed to the other non-sync
+dbserver sites automatically; you do not need to distribute any files manually,
+or stop or restart any vlserver processes.
+
+When performing an online upgrade/downgrade, it is also recommended to make a
+backup of the existing VLDB, in case there are problems with the upgraded VLDB
+and you need to rollback to the original version. The B<-backup-suffix> option
+is used to specify the suffix for the filename for this backup copy. To upgrade
+without a backup, specify B<-no-backup> instead.
+
+=back
+
+=head1 CAUTIONS
+
+All vlserver processes in the cell must be able to understand the VLDB format
+you are upgrading to, or else they will not be able to service requests from
+clients. It is recommended that all vlserver processes are running the same
+version of OpenAFS before using a new VLDB format, but this is not strictly
+required, as long as they all understand the new VLDB format.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-input> <I<input VLDB>>
+
+Specifies the path to the input VLDB database. For offline mode, this option is
+required. For online mode, this cannot be specified.
+
+B<vldb_upgrade> automatically detects the format of the input VLDB, and can
+understand any of the formats allowed by the B<-to> option.
+
+=item B<-output> <I<output VlDB>>
+
+Specifies the path to store the upgraded VLDB database. For offline mode, this
+option is required. For online mode, this cannot be specified.
+
+=item B<-to> <I<output format>>
+
+The database format to convert the VLDB to. The following formats are
+understood:
+
+=over 4
+
+=item vldb4
+
+VLDB version 4 (flat-file variant). This is the default VLDB format used by
+OpenAFS 1.8 and earlier. When reading VLDB files, B<vldb_upgrade> also can
+interpret VLDB version 3 files as vldb4 databases.
+
+=item vldb4-kv
+
+VLDB version 4 (KV variant). This is an experimental format that adapts vldb4
+structures into a key-value (KV) database.
+
+=back
+
+The default output format is C<vldb4-kv>.
+
+=item B<-ignore-epoch>
+
+By default, B<vldb_upgrade> checks that the VLDB given to B<-input> appears
+older than the current time (according to the ubik version epoch), and refuses
+to perform the upgrade if that check fails. Specify B<-ignore-epoch> to do the
+upgrade in this situation anyway.
+
+The use of this option is not recommended for normal upgrades, since the ubik
+epoch is important for maintaining the consistency of the database in a
+distributed ubik system. The upgraded database that B<vldb_upgrade> creates
+will have an epoch based on the current time, and so it may appear older than
+the original database if B<-ignore-epoch> is given, and then ubik will prefer
+the original database.
+
+But if the input VLDB has an incorrect/corrupt epoch time, you may need to
+specify this option.
+
+=item B<-force-type>
+
+By default, B<vldb_upgrade> will refuse to upgrade a VLDB if the given database
+is already of the same format as the B<-to> option. Specify B<-force-type> to
+do the "upgrade" anyway, which will effectively recreate the database in the
+same format.
+
+=item B<-online>
+
+Run B<vldb_upgrade> in online mode, coordinating with the local vlserver process
+to read in the current VLDB, and install and distribute the new upgraded VLDB.
+
+While B<vldb_upgrade> is upgrading the VLDB, the B<vlserver> can still read
+from the database and service read requests from clients, but the B<vlserver>
+cannot modify the database.
+
+=item B<-backup-suffix> <I<backup VLDB suffix>>
+
+For online mode, save a backup copy of the existing (old) VLDB to the given
+suffix. That is, if the VLDB is located at F</usr/afs/db/vldb.DB0>, and you
+provide the suffix C<.orig>, the backup copy will be saved in
+F</usr/afs/db/vldb.DB0.orig>.
+
+You must specify either this or B<-no-backup> for online mode.
+
+=item B<-no-backup>
+
+For online mode, do not save a backup copy of the existing VLDB.
+
+=item B<-backup-suffix> <I<suffix>>
+
+If this option is given, the B<vlserver> will make a backup copy of the
+existing database before it is converted into the new VLDB format. If the
+original database is located at F</usr/afs/db/vldb.DB0>, then the backup copy
+will be available at F</usr/afs/db/vldb.DB0.E<lt>I<suffix>E<gt>>.
+
+For online mode, you must specify either B<-backup-suffix> or B<-no-backup>.
+
+=item B<-no-backup>
+
+If this option is specified, the B<vlserver> will not make a backup copy of the
+existing database. After the VLDB has been successfully upgraded into the new
+format, the original database will no longer be accessible.
+
+For online mode, you must specify either B<-backup-suffix> or B<-no-backup>.
+
+=item B<-dist> (try | skip | required)
+
+For details about this option, see L<openafs-ctl_vldb-restore(8)>.
+
+=item B<-ctl-socket> <I<path>>
+
+Specifies the path to the unix domain socket to use to communicate with the
+B<vlserver>. The default is F</usr/afs/local/vl.ctl.sock>.
+
+=include fragments/common-options-progress.pod
+
+=item B<-help>
+
+Prints the online help for this command. All other valid options are
+ignored.
+
+=back
+
+=head1 EXAMPLES
+
+To update a VLDB to vldb4-kv, in offline mode:
+
+    % vldb_upgrade -i old.vldb.DB0 -o new.vldb.DB0 -to vldb4-kv
+
+To update a VLDB to vldb4-kv, in online mode on a running vlserver:
+
+    % vldb_upgrade -to vldb4-kv -online -backup-suffix .old
+
+=head1 PRIVILEGE REQUIRED
+
+For offline mode, the issuer must have read access to the VLDB specified in
+B<-input>, and must be able to write to the path given in B<-output>.
+
+For online mode, the issuer must have read and write access to the database
+directory used by the local vlserver process (by default, F</usr/afs/db>). The
+issuer must also be able to open the unix socket given by B<-ctl-socket>. This
+usually means that the issuer must have root access.
+
+=head1 SEE ALSO
+
+L<vlserver(8)>,
+L<vldb_convert_old(8)>,
+L<openafs-ctl_vldb-restore(8)>
+
+=head1 COPYRIGHT
+
+Copyright 2020 Sine Nomine Associates
+
+This documentation is covered by the BSD License as written in the doc/LICENSE
+file. This man page was written by Andrew Deason for OpenAFS.

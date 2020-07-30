@@ -28,6 +28,13 @@ struct vl_ctx {
     struct ubik_trans *trans;
     struct vl_cache *cache;
     int builddb;
+
+    /* Skip writing the cheader on disk. */
+    int cheader_nowrite;
+
+    /* When hashing a vlentry, assume it doesn't already exist (skip checking
+     * for collisions). */
+    int hash_nocollide;
 };
 
 /* vlprocs.c */
@@ -81,6 +88,9 @@ struct vlheader_kv {
     afs_int32 SIT;
 };
 
+extern afs_int32 vlread_cheader(struct vl_ctx *ctx, struct vlheader *cheader);
+extern afs_int32 vlread_exblock(struct vl_ctx *ctx, afs_int32 base,
+				afs_int32 offset, struct extentaddr *exblock);
 extern afs_int32 vlwrite_cheader(struct vl_ctx *ctx,
 				 struct vlheader *cheader, void *buffer,
 				 afs_int32 length);
@@ -91,7 +101,10 @@ extern afs_int32 vlwrite_exblock(struct vl_ctx *ctx, afs_int32 base,
 extern afs_int32 vlentrywrite(struct vl_ctx *ctx, afs_int32 offset,
 			      struct nvlentry *nep);
 extern int write_vital_vlheader(struct vl_ctx *ctx);
+extern afs_int32 vlgrow_eofPtr(struct vlheader *cheader, afs_int32 bump,
+			       afs_int32 *a_blockindex);
 extern afs_int32 readExtents(struct vl_ctx *ctx);
+extern int vlexcpy(struct extentaddr **dst_ex, struct extentaddr **src_ex);
 extern afs_int32 CheckInit(struct vl_ctx *ctx, int builddb, int locktype);
 extern afs_int32 AllocBlock(struct vl_ctx *ctx,
 			    struct nvlentry *tentry);

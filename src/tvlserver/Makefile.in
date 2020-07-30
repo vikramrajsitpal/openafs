@@ -44,7 +44,7 @@ LIBS_client= \
 	$(LIBS_common)
 
 all: \
-	vlserver vlclient vlserver cnvldb vldb_check vldbint.h
+	vlserver vlclient vlserver vldb_upgrade cnvldb vldb_check vldbint.h
 
 depinstall:
 
@@ -59,6 +59,14 @@ vldb_check: vldb_check.o AFS_component_version_number.o $(LIBS_client)
 CFLAGS_vldb_check.o = -I$(TOP_SRCDIR)/ubik
 vldb_check.o: ${VLSERVER}/vldb_check.c
 	$(AFS_CCRULE) $(VLSERVER)/vldb_check.c
+
+CFLAGS_vldb_upgrade.o=-I$(srcdir)/../ubik $(JANSSON_CFLAGS)
+vldb_upgrade.o: ${VLSERVER}/vldb_upgrade.c $(INCLS)
+	$(AFS_CCRULE) $(VLSERVER)/vldb_upgrade.c
+
+vldb_upgrade: vldb_upgrade.o vlutils.o $(LIBS_client)
+	$(LT_LDRULE_static) vldb_upgrade.o vlutils.o $(LIBS_client) \
+		$(LIB_hcrypto) $(LIB_roken) $(MT_LIBS)
 
 cnvldb: cnvldb.o $(LIBS_client)
 	$(LT_LDRULE_static) cnvldb.o \
@@ -129,6 +137,8 @@ install: vlserver cnvldb vldb_check
 			${DESTDIR}${afssrvsbindir}/vldb_convert_old; \
 		$(LT_INSTALL_PROGRAM) vldb_check \
 			${DESTDIR}${afssrvsbindir}/vldb_check; \
+		$(LT_INSTALL_PROGRAM) vldb_upgrade \
+			${DESTDIR}${afssrvsbindir}/vldb_upgrade; \
 	fi
 
 dest: vlserver cnvldb vldb_check
@@ -139,6 +149,8 @@ dest: vlserver cnvldb vldb_check
 			${DEST}/etc/vldb_convert_old; \
 		$(LT_INSTALL_PROGRAM) vldb_check \
 			${DEST}/etc/vldb_check; \
+		$(LT_INSTALL_PROGRAM) vldb_upgrade \
+			${DEST}/etc/vldb_upgrade; \
 	fi
 
 #
@@ -150,4 +162,4 @@ clean:
 	$(LT_CLEAN)
 	$(RM) -f *.o *.a *.otl *.xdr.c *.cs.c *.ss.c core \
 		vlserver vlclient cnvldb vldbint.h vlserver.h vldb_check \
-		vl_errors.c AFS_component_version_number.c
+		vldb_upgrade vl_errors.c AFS_component_version_number.c

@@ -744,6 +744,7 @@ mv $RPM_BUILD_ROOT%{_prefix}/afs/bin/kadb_check $RPM_BUILD_ROOT%{_sbindir}/kadb_
 %endif
 mv $RPM_BUILD_ROOT%{_prefix}/afs/bin/prdb_check $RPM_BUILD_ROOT%{_sbindir}/prdb_check
 mv $RPM_BUILD_ROOT%{_prefix}/afs/bin/vldb_check $RPM_BUILD_ROOT%{_sbindir}/vldb_check
+mv $RPM_BUILD_ROOT%{_prefix}/afs/bin/vldb_upgrade $RPM_BUILD_ROOT%{_sbindir}/vldb_upgrade
 %if %{krb5support}
 mv $RPM_BUILD_ROOT%{_prefix}/afs/bin/akeyconvert $RPM_BUILD_ROOT%{_sbindir}/akeyconvert
 mv $RPM_BUILD_ROOT%{_prefix}/afs/bin/asetkey $RPM_BUILD_ROOT%{_sbindir}/asetkey
@@ -1252,6 +1253,7 @@ dkms remove -m %{name} -v %{dkms_version} --rpm_safe_upgrade --all ||:
 %{_prefix}/afs/bin/volserver
 %{_sbindir}/prdb_check
 %{_sbindir}/vldb_check
+%{_sbindir}/vldb_upgrade
 %{_sbindir}/voldump
 %if 0%{?fedora} < 15 && 0%{?rhel} < 7
 %{initdir}/openafs-server
@@ -1302,6 +1304,7 @@ dkms remove -m %{name} -v %{dkms_version} --rpm_safe_upgrade --all ||:
 %{_mandir}/man8/upclient.8.gz
 %{_mandir}/man8/upserver.8.gz
 %{_mandir}/man8/vldb_check.8.gz
+%{_mandir}/man8/vldb_upgrade.8.gz
 %{_mandir}/man8/vlserver.8.gz
 %{_mandir}/man8/voldump.8.gz
 %{_mandir}/man8/volinfo.8.gz

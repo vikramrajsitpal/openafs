@@ -7,6 +7,7 @@
 /check4-kv-t
 /freeze-t
 /recovery-t
+/upgrade-t
 /vldb4-multi-t
 /vldb4-t
 /vldb4-kv-t
