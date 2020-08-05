@@ -220,6 +220,8 @@ Init_VLdbase(struct vl_ctx *ctx,
     int code = 0, pass, wl;
 
     for (pass = 1; pass <= 3; pass++) {
+	memset(ctx, 0, sizeof(*ctx));
+
 	if (pass == 2) {	/* take write lock to rebuild the db */
 	    code = ubik_BeginTrans(VL_dbase, UBIK_WRITETRANS, &ctx->trans);
 	    wl = 1;
@@ -246,9 +248,9 @@ Init_VLdbase(struct vl_ctx *ctx,
 
 	/* check that dbase is initialized and setup cheader */
 	/* 2nd pass we try to rebuild the header */
-	code = CheckInit(ctx->trans, ((pass == 2) ? 1 : 0));
+	code = CheckInit(ctx, ((pass == 2) ? 1 : 0), locktype);
 	if (!code && wl && extent_mod)
-	    code = readExtents(ctx->trans);	/* Fix the mh extent blocks */
+	    code = readExtents(ctx);	/* Fix the mh extent blocks */
 	if (code) {
 	    countAbort(opcode);
 	    vl_AbortTrans(ctx);
@@ -262,20 +264,13 @@ Init_VLdbase(struct vl_ctx *ctx,
 	    if (pass == 2) {
 		/* The database header was rebuilt; end the write transaction.
 		 * This will call vlsynccache() to copy the write header buffers
-		 * to the read header buffers, before calling vlsetache().
+		 * to the read header buffers.
 		 * Do a third pass to re-acquire the original lock, which
 		 * may be a read lock. */
 		vl_EndTrans(ctx);
 	    } else {
 		break;		/* didn't rebuild and successful - exit */
 	    }
-	}
-    }
-    if (code == 0) {
-	code = vlsetcache(ctx, locktype);
-	if (code != 0) {
-	    countAbort(opcode);
-	    vl_AbortTrans(ctx);
 	}
     }
     return code;
@@ -2770,7 +2765,7 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
     }
 
     /* Write the new mh entry out */
-    if (vlwrite_exblock(ctx.trans, base, ex_addr[base],
+    if (vlwrite_exblock(&ctx, base, ex_addr[base],
 			ntohl(ex_addr[0]->ex_contaddrs[base]),
 			exp, sizeof(*exp))) {
 	code = VL_IO;
@@ -2818,7 +2813,7 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
 
 	/* Write out the modified mh entry */
 	tex->ex_uniquifier = htonl(ntohl(tex->ex_uniquifier) + 1);
-	if (vlwrite_exblock(ctx.trans, base, ex_addr[base],
+	if (vlwrite_exblock(&ctx, base, ex_addr[base],
 			    ntohl(ex_addr[0]->ex_contaddrs[base]),
 			    tex, sizeof(*tex))) {
 	    code = VL_IO;
@@ -3633,7 +3628,7 @@ IpAddrToRelAddr(struct vl_ctx *ctx, afs_uint32 ipaddr, int create)
 	for (i = 0; i <= MAXSERVERID; i++) {
 	    if (cheader->IpMappedAddr[i] == 0) {
 		cheader->IpMappedAddr[i] = htonl(ipaddr);
-		code = vlwrite_cheader(ctx->trans, cheader,
+		code = vlwrite_cheader(ctx, cheader,
 				       &cheader->IpMappedAddr[i],
 				       sizeof(afs_int32));
 		hostaddress[i] = ipaddr;
@@ -3792,7 +3787,7 @@ ChangeIPAddr(struct vl_ctx *ctx, afs_uint32 ipaddr1, afs_uint32 ipaddr2)
 	memset(&tuuid, 0, sizeof(afsUUID));
 	afs_htonuuid(&tuuid);
 	exp->ex_hostuuid = tuuid;
-	code = vlwrite_exblock(ctx->trans, base, ex_addr[base],
+	code = vlwrite_exblock(ctx, base, ex_addr[base],
 			       ntohl(ex_addr[0]->ex_contaddrs[base]),
 			       exp, sizeof(tuuid));
 	if (code)
@@ -3801,7 +3796,7 @@ ChangeIPAddr(struct vl_ctx *ctx, afs_uint32 ipaddr1, afs_uint32 ipaddr2)
 
     /* Now change the host address entry */
     cheader->IpMappedAddr[ipaddr1_id] = htonl(ipaddr2);
-    code = vlwrite_cheader(ctx->trans, cheader,
+    code = vlwrite_cheader(ctx, cheader,
 			   &cheader->IpMappedAddr[ipaddr1_id],
 			   sizeof(afs_int32));
     hostaddress[ipaddr1_id] = ipaddr2;

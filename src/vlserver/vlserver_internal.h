@@ -25,6 +25,7 @@ struct vl_cache {
 struct vl_ctx {
     struct ubik_trans *trans;
     struct vl_cache *cache;
+    int builddb;
 };
 
 /* vlprocs.c */
@@ -32,18 +33,18 @@ extern int Init_VLdbase(struct vl_ctx *ctx, int locktype, int this_op);
 extern int vl_EndTrans(struct vl_ctx *ctx);
 
 /* vlutils.c */
-extern afs_int32 vlwrite_cheader(struct ubik_trans *trans,
+extern afs_int32 vlwrite_cheader(struct vl_ctx *ctx,
 				 struct vlheader *cheader, void *buffer,
 				 afs_int32 length);
-extern afs_int32 vlwrite_exblock(struct ubik_trans *trans, afs_int32 base,
+extern afs_int32 vlwrite_exblock(struct vl_ctx *ctx, afs_int32 base,
 				 struct extentaddr *exblock,
 				 afs_int32 exblock_addr, void *buffer,
 				 afs_int32 length);
 extern afs_int32 vlentrywrite(struct vl_ctx *ctx, afs_int32 offset,
 			      struct nvlentry *nep);
 extern int write_vital_vlheader(struct vl_ctx *ctx);
-extern afs_int32 readExtents(struct ubik_trans *trans);
-extern afs_int32 CheckInit(struct ubik_trans *trans, int builddb);
+extern afs_int32 readExtents(struct vl_ctx *ctx);
+extern afs_int32 CheckInit(struct vl_ctx *ctx, int builddb, int locktype);
 extern afs_int32 AllocBlock(struct vl_ctx *ctx,
 			    struct nvlentry *tentry);
 extern afs_int32 FindExtentBlock(struct vl_ctx *ctx, afsUUID *uuidp,
@@ -75,6 +76,5 @@ extern int UnhashVolname(struct vl_ctx *ctx, afs_int32 blockindex,
 extern afs_int32 NextEntry(struct vl_ctx *ctx, afs_int32 blockindex,
 			   struct nvlentry *tentry, afs_int32 *remaining);
 extern int FreeBlock(struct vl_ctx *ctx, afs_int32 blockindex);
-extern int vlsetcache(struct vl_ctx *ctx, int locktype);
 extern int vlsynccache(void);
 #endif

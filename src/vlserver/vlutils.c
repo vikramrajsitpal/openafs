@@ -57,26 +57,26 @@ NameHash(char *volumename)
 
 /* package up seek and write into one procedure for ease of use */
 static afs_int32
-vlwrite(struct ubik_trans *trans, afs_int32 offset, void *buffer,
+vlwrite(struct vl_ctx *ctx, afs_int32 offset, void *buffer,
 	afs_int32 length)
 {
     afs_int32 errorcode;
 
-    if ((errorcode = ubik_Seek(trans, 0, offset)))
+    if ((errorcode = ubik_Seek(ctx->trans, 0, offset)))
 	return errorcode;
-    return (ubik_Write(trans, buffer, length));
+    return (ubik_Write(ctx->trans, buffer, length));
 }
 
 /* Write a portion of the cheader to disk. Write 'length' bytes of 'buffer',
  * which must point to somewhere inside 'cheader'. */
 afs_int32
-vlwrite_cheader(struct ubik_trans *trans, struct vlheader *cheader,
+vlwrite_cheader(struct vl_ctx *ctx, struct vlheader *cheader,
 		void *buffer, afs_int32 length)
 {
     afs_int32 offset = DOFFSET(0, cheader, buffer);
     opr_Assert(offset >= 0 && offset <= sizeof(*cheader));
     opr_Assert(offset + length <= sizeof(*cheader));
-    return vlwrite(trans, offset, buffer, length);
+    return vlwrite(ctx, offset, buffer, length);
 }
 
 /*
@@ -85,7 +85,7 @@ vlwrite_cheader(struct ubik_trans *trans, struct vlheader *cheader,
  * block is base 'base', and exists at database file offset 'exblock_addr'.
  */
 afs_int32
-vlwrite_exblock(struct ubik_trans *trans, afs_int32 base,
+vlwrite_exblock(struct vl_ctx *ctx, afs_int32 base,
 		struct extentaddr *exblock, afs_int32 exblock_addr,
 		void *buffer, afs_int32 length)
 {
@@ -93,35 +93,35 @@ vlwrite_exblock(struct ubik_trans *trans, afs_int32 base,
     opr_Assert(offset >= 0 && offset <= VL_ADDREXTBLK_SIZE);
     opr_Assert(offset + length <= VL_ADDREXTBLK_SIZE);
 
-    return vlwrite(trans, exblock_addr + offset, buffer, length);
+    return vlwrite(ctx, exblock_addr + offset, buffer, length);
 }
 
 /* Package up seek and read into one procedure for ease of use */
 static afs_int32
-vlread(struct ubik_trans *trans, afs_int32 offset, void *buffer,
+vlread(struct vl_ctx *ctx, afs_int32 offset, void *buffer,
        afs_int32 length)
 {
     afs_int32 errorcode;
 
-    if ((errorcode = ubik_Seek(trans, 0, offset)))
+    if ((errorcode = ubik_Seek(ctx->trans, 0, offset)))
 	return errorcode;
-    return (ubik_Read(trans, buffer, length));
+    return (ubik_Read(ctx->trans, buffer, length));
 }
 
 /* Read in the cheader from disk. */
 static afs_int32
-vlread_cheader(struct ubik_trans *trans, struct vlheader *cheader)
+vlread_cheader(struct vl_ctx *ctx, struct vlheader *cheader)
 {
-    return vlread(trans, 0, cheader, sizeof(*cheader));
+    return vlread(ctx, 0, cheader, sizeof(*cheader));
 }
 
 /* Read in an extent block from disk, for base 'base' at database file offset
  * 'offset'. */
 static afs_int32
-vlread_exblock(struct ubik_trans *trans, afs_int32 base, afs_int32 offset,
+vlread_exblock(struct vl_ctx *ctx, afs_int32 base, afs_int32 offset,
 	       struct extentaddr *exblock)
 {
-    return vlread(trans, offset, exblock, VL_ADDREXTBLK_SIZE);
+    return vlread(ctx, offset, exblock, VL_ADDREXTBLK_SIZE);
 }
 
 static void
@@ -182,7 +182,7 @@ vlentrywrite(struct vl_ctx *ctx, afs_int32 offset, struct nvlentry *nep)
 	memcpy(oentry.serverFlags, nep->serverFlags, OMAXNSERVERS);
 	bufp = &oentry;
     }
-    return vlwrite(ctx->trans, offset, bufp, sizeof(nentry));
+    return vlwrite(ctx, offset, bufp, sizeof(nentry));
 }
 
 /* read entry from disk and convert to host order */
@@ -197,7 +197,7 @@ vlentryread(struct vl_ctx *ctx, afs_int32 offset, struct nvlentry *nbufp)
 
     opr_StaticAssert(sizeof(*oep) == sizeof(*nep));
 
-    i = vlread(ctx->trans, offset, bufp, sizeof(tentry));
+    i = vlread(ctx, offset, bufp, sizeof(tentry));
     if (i)
 	return i;
     if (cache->maxnservers == 13) {
@@ -237,7 +237,7 @@ write_vital_vlheader(struct vl_ctx *ctx)
     struct vlheader *cheader = &cache->cheader;
     afs_int32 code;
 
-    code = vlwrite_cheader(ctx->trans, cheader, &cheader->vital_header,
+    code = vlwrite_cheader(ctx, cheader, &cheader->vital_header,
 			   sizeof(vital_vlheader));
     if (code != 0) {
 	return VL_IO;
@@ -257,9 +257,9 @@ int extent_mod = 0;
  * (extent_mod tells us the on-disk copy is bad).
  */
 afs_int32
-readExtents(struct ubik_trans *trans)
+readExtents(struct vl_ctx *ctx)
 {
-    struct vl_cache *cache = &rd_vlcache;
+    struct vl_cache *cache = ctx->cache;
     afs_uint32 extentAddr;
     afs_int32 error = 0, code;
     int i;
@@ -278,7 +278,7 @@ readExtents(struct ubik_trans *trans)
 	if (!ex_addr[0])
 	    ERROR_EXIT(VL_NOMEM);
     }
-    code = vlread_exblock(trans, 0, extentAddr, ex_addr[0]);
+    code = vlread_exblock(ctx, 0, extentAddr, ex_addr[0]);
     if (code) {
 	free(ex_addr[0]);	/* Not the place to create it */
 	ex_addr[0] = 0;
@@ -309,7 +309,7 @@ readExtents(struct ubik_trans *trans)
 	    if (!ex_addr[i])
 		ERROR_EXIT(VL_NOMEM);
 	}
-	code = vlread_exblock(trans, i, ntohl(ex_addr[0]->ex_contaddrs[i]),
+	code = vlread_exblock(ctx, i, ntohl(ex_addr[0]->ex_contaddrs[i]),
 			      ex_addr[i]);
 	if (code) {
 	    free(ex_addr[i]);	/* Not the place to create it */
@@ -328,7 +328,7 @@ readExtents(struct ubik_trans *trans)
     }
 
     if (extent_mod) {
-	code = vlwrite_exblock(trans, 0, ex_addr[0], extentAddr, ex_addr[0],
+	code = vlwrite_exblock(ctx, 0, ex_addr[0], extentAddr, ex_addr[0],
 			       VL_ADDREXTBLK_SIZE);
 	if (!code) {
 	    VLog(0, ("Multihome server support modification\n"));
@@ -355,16 +355,19 @@ readExtents(struct ubik_trans *trans)
 static afs_int32
 UpdateCache(struct ubik_trans *trans, void *rock)
 {
-    int *builddb_rock = rock;
-    int builddb = *builddb_rock;
+    struct vl_ctx *ctx = rock;
+    int builddb = ctx->builddb;
     struct vl_cache *cache = &rd_vlcache;
     afs_int32 error = 0, i, code, ubcode;
+    int force_cache = 0;
 
     struct vlheader *cheader = &cache->cheader;
     afs_uint32 *hostaddress = cache->hostaddress;
 
+    ctx->cache = cache;
+
     /* if version changed (or first call), read the header */
-    ubcode = vlread_cheader(trans, cheader);
+    ubcode = vlread_cheader(ctx, cheader);
     cache->vldbversion = ntohl(cheader->vital_header.vldbversion);
 
     if (!ubcode && (cache->vldbversion != 0)) {
@@ -373,7 +376,7 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 	    hostaddress[i] = ntohl(hostaddress[i]);
 	}
 
-	code = readExtents(trans);
+	code = readExtents(ctx);
 	if (code)
 	    ERROR_EXIT(code);
     }
@@ -383,9 +386,17 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 	if (builddb) {
 	    VLog(0, ("Can't read VLDB header, re-initialising...\n"));
 
-	    cache = &wr_vlcache;
+	    ctx->cache = cache = &wr_vlcache;
 	    cheader = &cache->cheader;
 	    hostaddress = cache->hostaddress;
+
+	    /*
+	     * Don't reset ctx->cache; we need to make sure this cache is the
+	     * one actually used, since we're populating it from scratch.
+	     * Without this, the caller will copy rd_vlcache into wr_vlcache,
+	     * overwriting our changes here.
+	     */
+	    force_cache = 1;
 
 	    /* try to write a good header */
 	    /* The read cache will be sync'ed to this new header
@@ -400,7 +411,7 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 		cheader->IpMappedAddr[i] = 0;
 		hostaddress[i] = 0;
 	    }
-	    code = vlwrite_cheader(trans, cheader, cheader, sizeof(*cheader));
+	    code = vlwrite_cheader(ctx, cheader, cheader, sizeof(*cheader));
 	    if (code) {
 		VLog(0, ("Can't write VLDB header (error = %d)\n", code));
 		ERROR_EXIT(VL_IO);
@@ -427,15 +438,118 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 	cache->maxnservers = 8;
     }
 
+    if (!force_cache) {
+	/* Let our caller calculate the proper cache to use. */
+	ctx->cache = NULL;
+    }
+
   error_exit:
     /* all done */
     return error;
 }
 
-afs_int32
-CheckInit(struct ubik_trans *trans, int builddb)
+/* makes a deep copy of src_ex into dst_ex */
+static int
+vlexcpy(struct extentaddr **dst_ex, struct extentaddr **src_ex)
 {
-    return ubik_CheckCache(trans, UpdateCache, &builddb);
+    int i;
+    for (i = 0; i < VL_MAX_ADDREXTBLKS; i++) {
+	if (src_ex[i]) {
+	    if (!dst_ex[i]) {
+		dst_ex[i] = malloc(VL_ADDREXTBLK_SIZE);
+	    }
+	    if (!dst_ex[i]) {
+		return VL_NOMEM;
+	    }
+	    memcpy(dst_ex[i], src_ex[i], VL_ADDREXTBLK_SIZE);
+
+	} else if (dst_ex[i]) {
+	    /* we have no src, but we have a dst... meaning, this block
+	     * has gone away */
+	    free(dst_ex[i]);
+	    dst_ex[i] = NULL;
+	}
+    }
+    return 0;
+}
+
+static int
+vlcache_copy(struct vl_cache *dest, struct vl_cache *src)
+{
+    struct extentaddr *save_exaddr[4] = {
+	dest->ex_addr[0],
+	dest->ex_addr[1],
+	dest->ex_addr[2],
+	dest->ex_addr[3],
+    };
+    /*
+     * Everything in struct vl_cache can be a simple shallow copy, except for
+     * the contents of ex_addr. So save a copy of ex_addr, then do a shallow
+     * copy of everything, then restore ex_addr and do a deep copy of ex_addr
+     * by going through vlexcpy.
+     */
+    *dest = *src;
+    dest->ex_addr[0] = save_exaddr[0];
+    dest->ex_addr[1] = save_exaddr[1];
+    dest->ex_addr[2] = save_exaddr[2];
+    dest->ex_addr[3] = save_exaddr[3];
+
+
+    return vlexcpy(dest->ex_addr, src->ex_addr);
+}
+
+afs_int32
+CheckInit(struct vl_ctx *ctx, int builddb, int locktype)
+{
+    int code;
+    struct vl_cache *cache;
+
+    ctx->cache = NULL;
+    ctx->builddb = builddb;
+
+    code = ubik_CheckCache(ctx->trans, UpdateCache, ctx);
+    if (code != 0) {
+	return code;
+    }
+
+    /*
+     * If ctx->cache is not NULL, then UpdateCache has been run to populate the
+     * cache, and it has already picked which cache we should use. Otherwise,
+     * we need to pick the cache to use here.
+     */
+    cache = ctx->cache;
+    if (cache == NULL) {
+	if (locktype == LOCKREAD) {
+	    /* For read transactions, use the read cache. */
+	    cache = &rd_vlcache;
+	} else {
+	    /*
+	     * For write transactions, make a copy of the read cache (into
+	     * wr_vlcache). This will be copied back into the read cache when
+	     * this transaction successfully commits (via vlsynccache).
+	     */
+	    code = vlcache_copy(&wr_vlcache, &rd_vlcache);
+	    if (code != 0) {
+		return code;
+	    }
+	    cache = &wr_vlcache;
+	}
+    }
+
+    /* these next two cases shouldn't happen (UpdateCache should either
+     * rebuild the db or return an error if these cases occur), but just to
+     * be on the safe side... */
+    if (cache->vldbversion == 0) {
+	return VL_EMPTY;
+    }
+    if ((cache->vldbversion != VLDBVERSION_3)
+	&& (cache->vldbversion != VLDBVERSION_2)
+	&& (cache->vldbversion != VLDBVERSION_4)) {
+	return VL_BADVERSION;
+    }
+
+    ctx->cache = cache;
+    return 0;
 }
 
 /**
@@ -491,7 +605,7 @@ GetExtentBlock(struct vl_ctx *ctx, afs_int32 base)
 	if (code)
 	    ERROR_EXIT(VL_IO);
 
-	code = vlwrite_exblock(ctx->trans, base, ex_addr[base], blockindex,
+	code = vlwrite_exblock(ctx, base, ex_addr[base], blockindex,
 			       ex_addr[base], VL_ADDREXTBLK_SIZE);
 	if (code)
 	    ERROR_EXIT(VL_IO);
@@ -503,7 +617,7 @@ GetExtentBlock(struct vl_ctx *ctx, afs_int32 base)
 	/* Write the address of the base extension block in the vldb header */
 	if (base == 0) {
 	    cheader->SIT = htonl(blockindex);
-	    code = vlwrite_cheader(ctx->trans, cheader,
+	    code = vlwrite_cheader(ctx, cheader,
 				   &cheader->SIT, sizeof(cheader->SIT));
 	    if (code)
 		ERROR_EXIT(VL_IO);
@@ -511,7 +625,7 @@ GetExtentBlock(struct vl_ctx *ctx, afs_int32 base)
 
 	/* Write the address of this extension block into the base extension block */
 	ex_addr[0]->ex_contaddrs[base] = htonl(blockindex);
-	code = vlwrite_exblock(ctx->trans, 0, ex_addr[0], ntohl(cheader->SIT),
+	code = vlwrite_exblock(ctx, 0, ex_addr[0], ntohl(cheader->SIT),
 			       ex_addr[0], sizeof(struct extentaddr));
 	if (code)
 	    ERROR_EXIT(VL_IO);
@@ -591,7 +705,7 @@ FindExtentBlock(struct vl_ctx *ctx, afsUUID *uuidp,
 		    tuuid = *uuidp;
 		    afs_htonuuid(&tuuid);
 		    exp->ex_hostuuid = tuuid;
-		    code = vlwrite_exblock(ctx->trans, base, ex_addr[base],
+		    code = vlwrite_exblock(ctx, base, ex_addr[base],
 					   ntohl(ex_addr[0]->ex_contaddrs[base]),
 					   exp, sizeof(tuuid));
 		    if (code)
@@ -608,7 +722,7 @@ FindExtentBlock(struct vl_ctx *ctx, afsUUID *uuidp,
 			    ERROR_EXIT(VL_IO);
 		    }
 		    cheader->IpMappedAddr[i] = htonl(hostaddress[i]);
-		    code = vlwrite_cheader(ctx->trans, cheader,
+		    code = vlwrite_cheader(ctx, cheader,
 					   &cheader->IpMappedAddr[i],
 					   sizeof(afs_int32));
 		    if (code)
@@ -669,7 +783,7 @@ FreeBlock(struct vl_ctx *ctx, afs_int32 blockindex)
     tentry.nextIdHash[0] = cheader->vital_header.freePtr;	/* already in network order */
     tentry.flags = htonl(VLFREE);
     cheader->vital_header.freePtr = htonl(blockindex);
-    if (vlwrite(ctx->trans, blockindex, &tentry, sizeof(nvlentry)))
+    if (vlwrite(ctx, blockindex, &tentry, sizeof(nvlentry)))
 	return VL_IO;
     cheader->vital_header.frees++;
     if (write_vital_vlheader(ctx))
@@ -1004,7 +1118,7 @@ HashVolid(struct vl_ctx *ctx, afs_int32 voltype, afs_int32 blockindex,
     tentry->nextIdHash[voltype] =
 	ntohl(cheader->VolidHash[voltype][hashindex]);
     cheader->VolidHash[voltype][hashindex] = htonl(blockindex);
-    if (vlwrite_cheader(ctx->trans, cheader,
+    if (vlwrite_cheader(ctx, cheader,
 			&cheader->VolidHash[voltype][hashindex],
 			sizeof(afs_int32)))
 	return VL_IO;
@@ -1033,7 +1147,7 @@ UnhashVolid(struct vl_ctx *ctx, afs_int32 voltype, afs_int32 blockindex,
 	/* First on the hash list; just adjust pointers */
 	cheader->VolidHash[voltype][hashindex] =
 	    htonl(aentry->nextIdHash[voltype]);
-	code = vlwrite_cheader(ctx->trans, cheader,
+	code = vlwrite_cheader(ctx, cheader,
 			       &cheader->VolidHash[voltype][hashindex],
 			       sizeof(afs_int32));
 	if (code)
@@ -1049,7 +1163,7 @@ UnhashVolid(struct vl_ctx *ctx, afs_int32 voltype, afs_int32 blockindex,
 	temp = tentry.nextIdHash[voltype] = aentry->nextIdHash[voltype];
 	temp = htonl(temp);	/* convert to network byte order before writing */
 	if (vlwrite
-	    (ctx->trans,
+	    (ctx,
 	     DOFFSET(prevblockindex, &tentry, &tentry.nextIdHash[voltype]),
 	     &temp, sizeof(afs_int32)))
 	    return VL_IO;
@@ -1072,7 +1186,7 @@ HashVolname(struct vl_ctx *ctx, afs_int32 blockindex,
     hashindex = NameHash(aentry->name);
     aentry->nextNameHash = ntohl(cheader->VolnameHash[hashindex]);
     cheader->VolnameHash[hashindex] = htonl(blockindex);
-    code = vlwrite_cheader(ctx->trans, cheader,
+    code = vlwrite_cheader(ctx, cheader,
 			   &cheader->VolnameHash[hashindex],
 			   sizeof(afs_int32));
     if (code)
@@ -1097,7 +1211,7 @@ UnhashVolname(struct vl_ctx *ctx, afs_int32 blockindex,
     if (nextblockindex == blockindex) {
 	/* First on the hash list; just adjust pointers */
 	cheader->VolnameHash[hashindex] = htonl(aentry->nextNameHash);
-	if (vlwrite_cheader(ctx->trans, cheader,
+	if (vlwrite_cheader(ctx, cheader,
 			    &cheader->VolnameHash[hashindex],
 			    sizeof(afs_int32)))
 	    return VL_IO;
@@ -1112,7 +1226,7 @@ UnhashVolname(struct vl_ctx *ctx, afs_int32 blockindex,
 	tentry.nextNameHash = aentry->nextNameHash;
 	temp = htonl(tentry.nextNameHash);
 	if (vlwrite
-	    (ctx->trans, DOFFSET(prevblockindex, &tentry, &tentry.nextNameHash),
+	    (ctx, DOFFSET(prevblockindex, &tentry, &tentry.nextNameHash),
 	     &temp, sizeof(afs_int32)))
 	    return VL_IO;
     }
@@ -1182,87 +1296,6 @@ index_OK(struct vl_ctx *ctx, afs_int32 blockindex)
 	|| (blockindex >= ntohl(cheader->vital_header.eofPtr)))
 	return 0;
     return 1;
-}
-
-/* makes a deep copy of src_ex into dst_ex */
-static int
-vlexcpy(struct extentaddr **dst_ex, struct extentaddr **src_ex)
-{
-    int i;
-    for (i = 0; i < VL_MAX_ADDREXTBLKS; i++) {
-	if (src_ex[i]) {
-	    if (!dst_ex[i]) {
-		dst_ex[i] = malloc(VL_ADDREXTBLK_SIZE);
-	    }
-	    if (!dst_ex[i]) {
-		return VL_NOMEM;
-	    }
-	    memcpy(dst_ex[i], src_ex[i], VL_ADDREXTBLK_SIZE);
-
-	} else if (dst_ex[i]) {
-	    /* we have no src, but we have a dst... meaning, this block
-	     * has gone away */
-	    free(dst_ex[i]);
-	    dst_ex[i] = NULL;
-	}
-    }
-    return 0;
-}
-
-static int
-vlcache_copy(struct vl_cache *dest, struct vl_cache *src)
-{
-    struct extentaddr *save_exaddr[4] = {
-	dest->ex_addr[0],
-	dest->ex_addr[1],
-	dest->ex_addr[2],
-	dest->ex_addr[3],
-    };
-    /*
-     * Everything in struct vl_cache can be a simple shallow copy, except for
-     * the contents of ex_addr. So save a copy of ex_addr, then do a shallow
-     * copy of everything, then restore ex_addr and do a deep copy of ex_addr
-     * by going through vlexcpy.
-     */
-    *dest = *src;
-    dest->ex_addr[0] = save_exaddr[0];
-    dest->ex_addr[1] = save_exaddr[1];
-    dest->ex_addr[2] = save_exaddr[2];
-    dest->ex_addr[3] = save_exaddr[3];
-
-
-    return vlexcpy(dest->ex_addr, src->ex_addr);
-}
-
-int
-vlsetcache(struct vl_ctx *ctx, int locktype)
-{
-    struct vl_cache *cache;
-    if (locktype == LOCKREAD) {
-	cache = &rd_vlcache;
-    } else {
-	int code;
-	cache = &wr_vlcache;
-	code = vlcache_copy(&wr_vlcache, &rd_vlcache);
-	if (code != 0) {
-	    return code;
-	}
-    }
-
-    /* these next two cases shouldn't happen (UpdateCache should either
-     * rebuild the db or return an error if these cases occur), but just to
-     * be on the safe side... */
-    if (cache->vldbversion == 0) {
-	return VL_EMPTY;
-    }
-    if ((cache->vldbversion != VLDBVERSION_3)
-	&& (cache->vldbversion != VLDBVERSION_2)
-	&& (cache->vldbversion != VLDBVERSION_4)) {
-	return VL_BADVERSION;
-    }
-
-    ctx->cache = cache;
-    return 0;
 }
 
 int
