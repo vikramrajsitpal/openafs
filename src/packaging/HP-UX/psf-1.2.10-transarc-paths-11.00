@@ -319,7 +319,7 @@
         file    vsys
 	file	prdb_check
 	file	vldb_check
-	file	vldb_convert
+	file	vldb_convert_old
 
     end # fileset
 

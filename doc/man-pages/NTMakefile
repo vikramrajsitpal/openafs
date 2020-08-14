@@ -339,7 +339,7 @@ PODS = \
         pod8\uss_delete.pod            \
         pod8\uss_help.pod              \
         pod8\vldb_check.pod            \
-        pod8\vldb_convert.pod          \
+        pod8\vldb_convert_old.pod      \
         pod8\vlserver.pod              \
         pod8\voldump.pod               \
         pod8\volinfo.pod               \

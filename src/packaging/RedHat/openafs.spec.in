@@ -721,6 +721,7 @@ rm -f $RPM_BUILD_ROOT%{_bindir}/install
 rm -f $RPM_BUILD_ROOT%{_bindir}/knfs
 rm -f $RPM_BUILD_ROOT%{_bindir}/livesys
 rm -f $RPM_BUILD_ROOT%{_prefix}/afs/bin/kdb
+rm -f $RPM_BUILD_ROOT%{_prefix}/afs/bin/vldb_convert_old
 rm -f $RPM_BUILD_ROOT%{_sbindir}/rmtsysd
 %if !%{build_authlibs}
 rm -f $RPM_BUILD_ROOT%{_libdir}/libafsauthent.so*
@@ -743,7 +744,6 @@ mv $RPM_BUILD_ROOT%{_prefix}/afs/bin/kadb_check $RPM_BUILD_ROOT%{_sbindir}/kadb_
 %endif
 mv $RPM_BUILD_ROOT%{_prefix}/afs/bin/prdb_check $RPM_BUILD_ROOT%{_sbindir}/prdb_check
 mv $RPM_BUILD_ROOT%{_prefix}/afs/bin/vldb_check $RPM_BUILD_ROOT%{_sbindir}/vldb_check
-mv $RPM_BUILD_ROOT%{_prefix}/afs/bin/vldb_convert $RPM_BUILD_ROOT%{_sbindir}/vldb_convert
 %if %{krb5support}
 mv $RPM_BUILD_ROOT%{_prefix}/afs/bin/akeyconvert $RPM_BUILD_ROOT%{_sbindir}/akeyconvert
 mv $RPM_BUILD_ROOT%{_prefix}/afs/bin/asetkey $RPM_BUILD_ROOT%{_sbindir}/asetkey
@@ -785,6 +785,7 @@ rm -f $RPM_BUILD_ROOT%{_mandir}/man8/afsd.fuse.8
 rm -f $RPM_BUILD_ROOT%{_mandir}/man8/rmtsysd.*
 rm -f $RPM_BUILD_ROOT%{_mandir}/man8/aklog_dynamic_auth.*
 rm -f $RPM_BUILD_ROOT%{_mandir}/man8/kdb.*
+rm -f $RPM_BUILD_ROOT%{_mandir}/man8/vldb_convert_old.*
 rm -f $RPM_BUILD_ROOT%{_mandir}/man8/xfs_size_check.*
 rm -f $RPM_BUILD_ROOT%{_mandir}/man1/package_test.*
 rm -f $RPM_BUILD_ROOT%{_mandir}/man5/package.*
@@ -1251,7 +1252,6 @@ dkms remove -m %{name} -v %{dkms_version} --rpm_safe_upgrade --all ||:
 %{_prefix}/afs/bin/volserver
 %{_sbindir}/prdb_check
 %{_sbindir}/vldb_check
-%{_sbindir}/vldb_convert
 %{_sbindir}/voldump
 %if 0%{?fedora} < 15 && 0%{?rhel} < 7
 %{initdir}/openafs-server
@@ -1302,7 +1302,6 @@ dkms remove -m %{name} -v %{dkms_version} --rpm_safe_upgrade --all ||:
 %{_mandir}/man8/upclient.8.gz
 %{_mandir}/man8/upserver.8.gz
 %{_mandir}/man8/vldb_check.8.gz
-%{_mandir}/man8/vldb_convert.8.gz
 %{_mandir}/man8/vlserver.8.gz
 %{_mandir}/man8/voldump.8.gz
 %{_mandir}/man8/volinfo.8.gz

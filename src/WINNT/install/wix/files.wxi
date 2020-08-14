@@ -675,7 +675,7 @@
                             <File Id="file_CmdRef_8_uss_delete_html"  Name="uss_dele.htm"  LongName="uss_delete.html"  DiskId="1"  />
                             <File Id="file_CmdRef_8_uss_help_html"  Name="uss_help.htm"  LongName="uss_help.html"  DiskId="1"  />
                             <File Id="file_CmdRef_8_vldb_check_html"  Name="vldb_che.htm"  LongName="vldb_check.html"  DiskId="1"  />
-                            <File Id="file_CmdRef_8_vldb_convert_html"  Name="vldb_con.htm"  LongName="vldb_convert.html"  DiskId="1"  />
+                            <File Id="file_CmdRef_8_vldb_convert_old_html"  Name="vldb_con.htm"  LongName="vldb_convert_old.html"  DiskId="1"  />
                             <File Id="file_CmdRef_8_vlserver_html"  Name="vlserver.htm"  LongName="vlserver.html"  DiskId="1"  />
                             <File Id="file_CmdRef_8_voldump_html"  Name="voldump.htm"  LongName="voldump.html"  DiskId="1"  />
                             <File Id="file_CmdRef_8_volinfo_html"  Name="volinfo.htm"  LongName="volinfo.html"  DiskId="1"  />

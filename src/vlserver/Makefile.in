@@ -165,7 +165,7 @@ install: vlserver cnvldb vldb_check libvldb.a vl_opcodes.h vlserver.h \
 	${INSTALL} -d ${DESTDIR}${includedir}/afs
 	if [ "x$(ENABLE_PTHREADED_UBIK)" != "xyes" ] ; then \
 		${INSTALL_PROGRAM} vlserver ${DESTDIR}${afssrvlibexecdir}/vlserver; \
-		${INSTALL_PROGRAM} cnvldb ${DESTDIR}${afssrvsbindir}/vldb_convert; \
+		${INSTALL_PROGRAM} cnvldb ${DESTDIR}${afssrvsbindir}/vldb_convert_old; \
 		${INSTALL_PROGRAM} vldb_check ${DESTDIR}${afssrvsbindir}/vldb_check; \
 	fi;
 	${INSTALL_DATA} libvldb.a ${DESTDIR}${libdir}/afs/libvldb.a
@@ -182,7 +182,7 @@ dest: vlserver cnvldb vldb_check libvldb.a vl_opcodes.h vlserver.h \
 	${INSTALL} -d ${DEST}/include/afs
 	if [ "x$(ENABLE_PTHREADED_UBIK)" != "xyes" ] ; then \
 		${INSTALL_PROGRAM} vlserver ${DEST}/root.server/usr/afs/bin/vlserver; \
-		${INSTALL_PROGRAM} cnvldb ${DEST}/etc/vldb_convert; \
+		${INSTALL_PROGRAM} cnvldb ${DEST}/etc/vldb_convert_old; \
 		${INSTALL_PROGRAM} vldb_check ${DEST}/etc/vldb_check; \
 	fi;
 	${INSTALL_DATA} libvldb.a ${DEST}/lib/afs/libvldb.a

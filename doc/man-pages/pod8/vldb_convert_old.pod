@@ -1,13 +1,13 @@
 =head1 NAME
 
-vldb_convert - Convert the VLDB to/from Transarc AFS versions 3.1-3.4a
+vldb_convert_old - Convert the VLDB to/from Transarc AFS versions 3.1-3.4a
 
 =head1 SYNOPSIS
 
 =for html
 <div class="synopsis">
 
-B<vldb_convert> [B<initcmd>] S<<< [B<-to>] <I<AFS version goal>> >>>
+B<vldb_convert_old> [B<initcmd>] S<<< [B<-to>] <I<AFS version goal>> >>>
     S<<< [B<-from>] <I<current AFS version>> >>>
     S<<< [B<-path>] <I<path to VLDB file>> >>> [B<-showversion>]
     [B<-dumpvldb>] [B<-help>]
@@ -17,7 +17,7 @@ B<vldb_convert> [B<initcmd>] S<<< [B<-to>] <I<AFS version goal>> >>>
 
 =head1 DESCRIPTION
 
-The B<vldb_convert> command is used to convert legacy Transarc 3.1-3.4
+The B<vldb_convert_old> command is used to convert legacy Transarc 3.1-3.4
 VLDB database files between versions. This command is not needed when
 using OpenAFS except in the case of preparing to migrate a pre-3.4 version
 of Transarc AFS to OpenAFS.
@@ -48,10 +48,10 @@ machines.
 
 =item 5.
 
-Run the B<vldb_convert> command on the VLDB file using the following
+Run the B<vldb_convert_old> command on the VLDB file using the following
 command:
 
-   # vldb_convert -path /usr/afs/db/vldb.DB0
+   # vldb_convert_old -path /usr/afs/db/vldb.DB0
 
 =item 6.
 
