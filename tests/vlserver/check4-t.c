@@ -138,12 +138,12 @@ static struct vlmod vlsmall_mods[] = {
 	 */
 	.check_output =
 	    "Header reports its size as 131972 (should be 132120)\n"
-	    "address 131972 (offset 0x203c4): VLDB entry '' contains an unknown RW/RO index serverFlag\n"
-	    "address 131972 (offset 0x203c4): Volume '' (0) has no RW volume\n"
-	    "address 131972 (offset 0x203c4): Volume '' (0) has an invalid name\n"
-	    "address 131972 (offset 0x203c4): Volume '' (0) has an invalid volume id\n"
-	    "address 131972 (offset 0x203c4): Volume '' not found in name hash 0\n"
-	    "address 131972 (offset 0x203c4): Record is not in a name chain (type 0x1)\n",
+	    "address 0x20384 (offset 0x203c4): VLDB entry '' contains an unknown RW/RO index serverFlag\n"
+	    "address 0x20384 (offset 0x203c4): Volume '' (0) has no RW volume\n"
+	    "address 0x20384 (offset 0x203c4): Volume '' (0) has an invalid name\n"
+	    "address 0x20384 (offset 0x203c4): Volume '' (0) has an invalid volume id\n"
+	    "address 0x20384 (offset 0x203c4): Volume '' not found in name hash 0\n"
+	    "address 0x20384 (offset 0x203c4): Record is not in a name chain (type 0x1)\n",
 	.skip_rerun = 1,
     },
     {
@@ -155,7 +155,7 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 0x22458): VLDB entry 'root.afs' contains an unknown RW/RO index serverFlag\n",
+	    "address 0x22418 (offset 0x22458): VLDB entry 'root.afs' contains an unknown RW/RO index serverFlag\n",
 
 	/*
 	 * Note that -fix doesn't fix this (we don't know what to set the
@@ -203,7 +203,7 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 132120 (offset 0x20458): Name Hash 0: Not a vlentry\n",
+	    "address 0x20418 (offset 0x20458): Name Hash 0: Not a vlentry\n",
 
 	/*
 	 * The vlserver doesn't really notice this corruption; we'll just try
@@ -223,7 +223,7 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 132120 (offset 0x20458): Name Hash 306: Not a vlentry\n",
+	    "address 0x20418 (offset 0x20458): Name Hash 306: Not a vlentry\n",
 
 	/*
 	 * No .dbtest_corrupt or .dbtest_fix checks here, since the vlserver
@@ -240,8 +240,8 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 0x22458): Name Hash 306: volume name 'root.afs' is already in the name hash\n"
-	    "address 140312 (offset 0x22458): Volume 'root.afs' id 536870912 also found on other chains (0x8b0b1)\n",
+	    "address 0x22418 (offset 0x22458): Name Hash 306: volume name 'root.afs' is already in the name hash\n"
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs' id 536870912 also found on other chains (0x8b0b1)\n",
 
 	/*
 	 * No .dbtest_corrupt check here, because running with this corrupted
@@ -266,10 +266,10 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 0x22458): Name Hash forward link of 'root.afs' is out of range\n"
-	    "address 140312 (offset 0x22458): Volume 'root.afs'  forward link in name hash chain is broken (hash 306 != -1)\n"
-	    "address 140312 (offset 0x22458): Volume 'root.afs' id 536870912 also found on other chains (0x83031)\n"
-	    "address 140312 (offset 0x22458): Record is not in a name chain (type 0x83031)\n",
+	    "address 0x22418 (offset 0x22458): Name Hash forward link of 'root.afs' is out of range\n"
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs'  forward link in name hash chain is broken (hash 306 != -1)\n"
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs' id 536870912 also found on other chains (0x83031)\n"
+	    "address 0x22418 (offset 0x22458): Record is not in a name chain (type 0x83031)\n",
 
 	.dbtest_corrupt = {
 	    {
@@ -297,8 +297,8 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 0x22458): Name Hash 305: volume name 'root.afs': Incorrect name hash chain (should be in 306)\n"
-	    "address 140312 (offset 0x22458): Volume 'root.afs' id 536870912 also found on other chains (0x8b0b1)\n",
+	    "address 0x22418 (offset 0x22458): Name Hash 305: volume name 'root.afs': Incorrect name hash chain (should be in 306)\n"
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs' id 536870912 also found on other chains (0x8b0b1)\n",
 
 	.dbtest_corrupt = {
 	    {
@@ -359,7 +359,7 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 132120 (offset 0x20458): rw Id Hash 8: Not a vlentry\n",
+	    "address 0x20418 (offset 0x20458): rw Id Hash 8: Not a vlentry\n",
 
 	/*
 	 * No .dbtest_corrupt or .dbtest_fix checks here, since the vlserver
@@ -376,8 +376,8 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 0x22458): rw Id Hash 8: volume name 'root.afs': Already in the hash table\n"
-	    "address 140312 (offset 0x22458): Volume 'root.afs' id 536870912 also found on other chains (0x1b0b1)\n",
+	    "address 0x22418 (offset 0x22458): rw Id Hash 8: volume name 'root.afs': Already in the hash table\n"
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs' id 536870912 also found on other chains (0x1b0b1)\n",
 
 	/*
 	 * No .dbtest_corrupt check here, because running with this corrupted
@@ -395,10 +395,10 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 0x22458): rw Id Hash forward link of 'root.afs' is out of range\n"
-	    "address 140312 (offset 0x22458): Volume 'root.afs' id 536870912  forward link in RW hash chain is broken (hash 8 != -1)\n"
-	    "address 140312 (offset 0x22458): Volume 'root.afs' id 536870912 also found on other chains (0x1a0a1)\n"
-	    "address 140312 (offset 0x22458): Record not in a RW chain (type 0x1a0a1)\n",
+	    "address 0x22418 (offset 0x22458): rw Id Hash forward link of 'root.afs' is out of range\n"
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs' id 536870912  forward link in RW hash chain is broken (hash 8 != -1)\n"
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs' id 536870912 also found on other chains (0x1a0a1)\n"
+	    "address 0x22418 (offset 0x22458): Record not in a RW chain (type 0x1a0a1)\n",
 
 	.dbtest_corrupt = {
 	    {
@@ -427,8 +427,8 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 0x22458): rw Id Hash 7: volume name 'root.afs': Incorrect Id hash chain (should be in 8)\n"
-	    "address 140312 (offset 0x22458): Volume 'root.afs' id 536870912 also found on other chains (0x1b0b1)\n",
+	    "address 0x22418 (offset 0x22458): rw Id Hash 7: volume name 'root.afs': Incorrect Id hash chain (should be in 8)\n"
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs' id 536870912 also found on other chains (0x1b0b1)\n",
 
 	.dbtest_corrupt = {
 	    {
@@ -461,7 +461,7 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 022458): Free Chain 0: Not a free vlentry (0x1)\n",
+	    "address 0x22418 (offset 022458): Free Chain 0: Not a free vlentry (0x1)\n",
 
 	/*
 	 * To check this corruption, create a new volume, and check if root.afs
@@ -525,7 +525,7 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 132120 (offset 0x20458): MH Blocks Chain 1: Already a MH block\n",
+	    "address 0x20418 (offset 0x20458): MH Blocks Chain 1: Already a MH block\n",
 	.only_corrupt = 1,
 
 	/*
@@ -565,8 +565,8 @@ static struct vlmod vlsmall_mods[] = {
 	.check_code = 2,
 	.check_output =
 	    "warning: IP Addr for entry 1: Multihome entry has no ip addresses\n"
-	    "address 140608 (offset 0x22580): Volume 'vol.691719c1', index 0 points to empty server entry 1\n"
-	    "address 140756 (offset 0x22614): Volume 'vol.bigid', index 0 points to empty server entry 1\n",
+	    "address 0x22540 (offset 0x22580): Volume 'vol.691719c1', index 0 points to empty server entry 1\n"
+	    "address 0x225d4 (offset 0x22614): Volume 'vol.bigid', index 0 points to empty server entry 1\n",
 
 	/*
 	 * -fix doesn't fix this (it doesn't know what IP to put in the entry).
@@ -731,7 +731,7 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 0x22458): Volume 'root.afs' (536870912) has no RW volume\n",
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs' (536870912) has no RW volume\n",
 	.only_corrupt = 1,
 
 	.dbtest_corrupt = {
@@ -763,7 +763,7 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 0x22458): Volume 'root+83c' (536870912) has an invalid name\n",
+	    "address 0x22418 (offset 0x22458): Volume 'root+83c' (536870912) has an invalid name\n",
 
 	.dbtest_corrupt = {
 	    {
@@ -794,9 +794,9 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 0x22458): rw Id Hash 8: volume name 'root.afs': Incorrect Id hash chain (should be in 0)\n"
-	    "address 140312 (offset 0x22458): Volume 'root.afs' (0) has an invalid volume id\n"
-	    "address 140312 (offset 0x22458): Volume 'root.afs' id 0 also found on other chains (0x1b0b1)\n",
+	    "address 0x22418 (offset 0x22458): rw Id Hash 8: volume name 'root.afs': Incorrect Id hash chain (should be in 0)\n"
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs' (0) has an invalid volume id\n"
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs' id 0 also found on other chains (0x1b0b1)\n",
 
 	.dbtest_corrupt = {
 	    {
@@ -821,10 +821,10 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140460 (offset 0x224ec): Name Hash 306: volume name 'root.cell': Incorrect name hash chain (should be in 7485)\n"
-	    "address 140460 (offset 0x224ec): Name Hash 7485: volume name 'root.cell' is already in the name hash\n"
-	    "address 140312 (offset 0x22458): Volume 'root.afs'  forward link in name hash chain is broken (hash 306 != 7485)\n"
-	    "address 140460 (offset 0x224ec): Volume 'root.cell' id 536870915 also found on other chains (0x8b0b1)\n",
+	    "address 0x224ac (offset 0x224ec): Name Hash 306: volume name 'root.cell': Incorrect name hash chain (should be in 7485)\n"
+	    "address 0x224ac (offset 0x224ec): Name Hash 7485: volume name 'root.cell' is already in the name hash\n"
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs'  forward link in name hash chain is broken (hash 306 != 7485)\n"
+	    "address 0x224ac (offset 0x224ec): Volume 'root.cell' id 536870915 also found on other chains (0x8b0b1)\n",
 
 	/*
 	 * We don't really notice this corruption via VL RPCs, since we're just
@@ -843,10 +843,10 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140460 (offset 0x224ec): rw Id Hash 8: volume name 'root.cell': Incorrect Id hash chain (should be in 11)\n"
-	    "address 140460 (offset 0x224ec): rw Id Hash 11: volume name 'root.cell': Already in the hash table\n"
-	    "address 140312 (offset 0x22458): Volume 'root.afs' id 536870912  forward link in RW hash chain is broken (hash 8 != 11)\n"
-	    "address 140460 (offset 0x224ec): Volume 'root.cell' id 536870915 also found on other chains (0x1b0b1)\n",
+	    "address 0x224ac (offset 0x224ec): rw Id Hash 8: volume name 'root.cell': Incorrect Id hash chain (should be in 11)\n"
+	    "address 0x224ac (offset 0x224ec): rw Id Hash 11: volume name 'root.cell': Already in the hash table\n"
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs' id 536870912  forward link in RW hash chain is broken (hash 8 != 11)\n"
+	    "address 0x224ac (offset 0x224ec): Volume 'root.cell' id 536870915 also found on other chains (0x1b0b1)\n",
 
 	/*
 	 * No .dbtest_corrupt or .dbtest_fix checks for this, since we don't
@@ -862,8 +862,8 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 0x22458): Volume 'root.afs' not found in name hash 306\n"
-	    "address 140312 (offset 0x22458): Record is not in a name chain (type 0x3031)\n",
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs' not found in name hash 306\n"
+	    "address 0x22418 (offset 0x22458): Record is not in a name chain (type 0x3031)\n",
 
 	.dbtest_corrupt = {
 	    {
@@ -896,8 +896,8 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 0x22458): Volume 'root.afs' id 536870912 not found in RW hash 8\n"
-	    "address 140312 (offset 0x22458): Record not in a RW chain (type 0xa0a1)\n",
+	    "address 0x22418 (offset 0x22458): Volume 'root.afs' id 536870912 not found in RW hash 8\n"
+	    "address 0x22418 (offset 0x22458): Record not in a RW chain (type 0xa0a1)\n",
 
 	.dbtest_corrupt = {
 	    {
@@ -932,7 +932,7 @@ static struct vlmod vlsmall_mods[] = {
 
 	.check_code = 2,
 	.check_output =
-	    "address 140312 (offset 0x22458): Lock inconsistency in volume 'root.afs'; timestamp 1617319170, lock flags 0x0\n",
+	    "address 0x22418 (offset 0x22458): Lock inconsistency in volume 'root.afs'; timestamp 1617319170, lock flags 0x0\n",
 
 	.dbtest_corrupt = {
 	    {
