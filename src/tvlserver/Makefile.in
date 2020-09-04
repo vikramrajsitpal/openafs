@@ -56,6 +56,7 @@ vldb_check: vldb_check.o AFS_component_version_number.o $(LIBS_client)
 	$(LT_LDRULE_static) vldb_check.o AFS_component_version_number.o \
 		$(LIBS_client) $(LIB_hcrypto) $(LIB_roken) ${MT_LIBS}
 
+CFLAGS_vldb_check.o = -I$(TOP_SRCDIR)/ubik
 vldb_check.o: ${VLSERVER}/vldb_check.c
 	$(AFS_CCRULE) $(VLSERVER)/vldb_check.c
 

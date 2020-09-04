@@ -10,6 +10,8 @@
 #ifndef _VLSERVER_INTERNAL_H
 #define _VLSERVER_INTERNAL_H
 
+#include "vlserver.h"
+
 struct vl_cache {
     int vldbversion;
     int maxnservers;

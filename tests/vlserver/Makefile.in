@@ -6,6 +6,7 @@ include @TOP_OBJDIR@/src/config/Makefile.pthread
 
 BINS = badversion-t \
        check4-t \
+       check4-kv-t \
        freeze-t \
        recovery-t \
        vldb4-t \
@@ -31,6 +32,10 @@ badversion-t: badversion-t.o
 
 check4-t: check4-t.o $(vltest_deps)
 	$(LT_LDRULE_static) check4-t.o $(vltest_libs)
+
+CFLAGS_check4-kv-t.o = -I$(TOP_SRCDIR)/ubik
+check4-kv-t: check4-kv-t.o $(vltest_deps)
+	$(LT_LDRULE_static) check4-kv-t.o $(vltest_libs)
 
 freeze-t: freeze-t.o $(vltest_deps)
 	$(LT_LDRULE_static) freeze-t.o $(vltest_libs)

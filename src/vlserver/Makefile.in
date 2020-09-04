@@ -80,6 +80,7 @@ ${TOP_INCDIR}/afs/cnvldb.h: cnvldb.h
 vldb_check: vldb_check.o ${LIBS}
 	$(AFS_LDRULE) vldb_check.o ${LIBS} $(LIB_roken) ${XLIBS}
 
+CFLAGS_vldb_check.o = -I$(TOP_SRCDIR)/ubik
 vldb_check.o: vldb_check.c AFS_component_version_number.o
 
 cnvldb: cnvldb.o ${LIBS}

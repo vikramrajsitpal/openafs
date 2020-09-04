@@ -30,6 +30,7 @@ rx/perf
 rxgk/derive
 vlserver/badversion
 vlserver/check4
+vlserver/check4-kv
 vlserver/freeze
 vlserver/recovery
 vlserver/vldb4

@@ -4,6 +4,7 @@
 
 /badversion-t
 /check4-t
+/check4-kv-t
 /freeze-t
 /recovery-t
 /vldb4-multi-t
