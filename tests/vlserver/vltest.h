@@ -45,5 +45,6 @@ struct vltest_voldef {
 void vltest_init(char **argv);
 void vltest_createvol(struct vltest_voldef *vol);
 void vltest_createvol_list(struct vltest_voldef *vol_defs);
+void vltest_renamevol(char *oldname, char *newname);
 
 #endif /* OPENAFS_VLTEST_H */

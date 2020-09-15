@@ -5,6 +5,7 @@ include @TOP_OBJDIR@/src/config/Makefile.config
 include @TOP_OBJDIR@/src/config/Makefile.pthread
 
 BINS = badversion-t \
+       check4-t \
        vldb4-t
 
 MODULE_CFLAGS=-I$(TOP_OBJDIR) -I$(srcdir)/../common/
@@ -22,6 +23,9 @@ vltest_libs =	$(vltest_objs) \
 
 badversion-t: badversion-t.o
 	$(LT_LDRULE_static) badversion-t.o $(MODULE_LIBS)
+
+check4-t: check4-t.o $(vltest_deps)
+	$(LT_LDRULE_static) check4-t.o $(vltest_libs)
 
 vldb4-t: vldb4-t.o $(vltest_deps)
 	$(LT_LDRULE_static) vldb4-t.o $(vltest_libs)

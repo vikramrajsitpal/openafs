@@ -212,7 +212,10 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
     struct ubiktest_dbdef *dbdef;
     struct ubiktest_dbtest *testlist;
     struct stat st;
+    struct ubiktest_cbinfo cbinfo;
     const char *progname = getprogname();
+
+    memset(&cbinfo, 0, sizeof(cbinfo));
 
     opr_Assert(progname != NULL);
 
@@ -224,8 +227,10 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 
     dir = afsconf_Open(dirname);
     opr_Assert(dir != NULL);
+    cbinfo.confdir = dirname;
 
     db_path = afstest_asprintf("%s/%s.DB0", dirname, server->db_name);
+    cbinfo.db_path = db_path;
 
     /* Get the path to the sample db we're using. */
 
@@ -247,6 +252,10 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 			"while copying %s into place", src_db);
 	    goto error;
 	}
+    }
+
+    if (ops->pre_start != NULL) {
+	(*ops->pre_start)(&cbinfo, ops);
     }
 
     code = afstest_StartServer(server, dirname, &pid);
@@ -288,7 +297,13 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 	diag("Copy of created db saved in %s", db_copy);
     }
 
+    if (ops->extra_dbtests != NULL) {
+	run_testlist(ds, ops->extra_dbtests, dirname);
+    }
     testlist = ds->tests;
+    if (ops->override_dbtests != NULL && ops->override_dbtests[0].descr != NULL) {
+	testlist = ops->override_dbtests;
+    }
     run_testlist(ds, testlist, dirname);
 
     code = afstest_StopServer(pid);
@@ -314,6 +329,10 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 
     ok(valid_db(db_path),
        "db %s is a valid ubik db", db_path);
+
+    if (ops->post_stop != NULL) {
+	(*ops->post_stop)(&cbinfo, ops);
+    }
 
     code = 0;
 

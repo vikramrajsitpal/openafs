@@ -470,3 +470,35 @@ vltest_createvol_list(struct vltest_voldef *voldef)
 	vltest_createvol(voldef);
     }
 }
+
+void
+vltest_renamevol(char *oldname, char *newname)
+{
+    int code;
+    struct nvldbentry entry;
+
+    code = ubik_VL_GetEntryByNameN(uclient, 0, oldname, &entry);
+    if (code != 0) {
+	is_int(0, code, "Rename %s -> %s (VL_GetEntryByNameN return code)",
+	       oldname, newname);
+	return;
+    }
+
+    if (strcmp(oldname, entry.name) != 0) {
+	is_string(oldname, entry.name, "Rename %s -> %s (entry.name mismatch)",
+		  oldname, newname);
+	return;
+    }
+
+    strlcpy(entry.name, newname, sizeof(entry.name));
+
+    code = ubik_VL_ReplaceEntryN(uclient, 0, entry.volumeId[RWVOL], RWVOL,
+				 &entry, 0);
+    if (code != 0) {
+	is_int(0, code, "Rename %s -> %s (VL_ReplaceEntryN return code)",
+	       oldname, newname);
+	return;
+    }
+
+    ok(1, "Rename %s -> %s", oldname, newname);
+}

@@ -3,4 +3,5 @@
 # to check that you haven't inadvertently ignored any tracked files.
 
 /badversion-t
+/check4-t
 /vldb4-t

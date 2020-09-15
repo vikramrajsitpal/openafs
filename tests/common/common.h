@@ -128,6 +128,15 @@ struct ubiktest_dbdef {
 };
 
 /*
+ * Info that ubiktest passes back to various callback functions given by
+ * callers. (e.g. pre_start)
+ */
+struct ubiktest_cbinfo {
+    char *confdir;  /**< The config dir used by the server process. */
+    char *db_path;  /**< abs path to the .DB0 file used by the server process. */
+};
+
+/*
  * Defines a scenario to setup a server process to test against a sample
  * dataset. (e.g. "use this existing db", or "create the db from scratch")
  */
@@ -141,6 +150,23 @@ struct ubiktest_ops {
     int create_db;  /**< If nonzero, run the dataset's 'create_func' function
 		     *   to create the sample dataset via RPCs and commands,
 		     *   etc. */
+
+    void (*pre_start)(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops);
+		    /**< If set, run this right before starting the server
+		     *   process. */
+
+    void (*post_stop)(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops);
+		    /**< If set, run this after stopping the server process
+		     *   after the dataset tests have run. */
+    void *rock;
+
+    struct ubiktest_dbtest *override_dbtests;
+		    /**< If set, run this list of tests instead of the normal
+		     *   dataset tests. */
+
+    struct ubiktest_dbtest *extra_dbtests;
+		    /**< If set, run this list of tests in addition to the
+		     *   normal dataset tests. */
 };
 
 /*
