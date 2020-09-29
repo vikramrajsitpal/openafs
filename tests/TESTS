@@ -21,6 +21,7 @@ ptserver/pt_util
 ptserver/pts-man
 ptserver/recovery
 rx/event
+rx/opaque
 rx/perf
 vlserver/badversion
 vlserver/check4

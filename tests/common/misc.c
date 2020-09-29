@@ -53,3 +53,22 @@ afstest_asprintf(const char *fmt, ...)
     va_end(ap);
     return str;
 }
+
+int
+is_pointer(void *left, void *right, const char *fmt, ...)
+{
+    int success;
+    va_list ap;
+
+    success = (left == right);
+    if (!success) {
+	diag(" left: %p", left);
+	diag("right: %p", right);
+    }
+
+    va_start(ap, fmt);
+    okv(success, fmt, ap);
+    va_end(ap);
+
+    return success;
+}

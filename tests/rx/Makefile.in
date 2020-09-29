@@ -12,12 +12,14 @@ LIBS = $(abs_top_builddir)/tests/common/libafstest_common.la \
 
 LIB_rxstat = $(abs_top_builddir)/src/rxstat/liboafs_rxstat.la
 
-BINS = event-t procstat-t
+BINS = event-t opaque-t procstat-t
 
 all: $(BINS)
 
 event-t: event-t.o $(LIBS)
 	$(LT_LDRULE_static) event-t.o $(LIBS) $(LIB_roken) $(XLIBS)
+opaque-t: opaque-t.o $(LIBS)
+	$(LT_LDRULE_static) opaque-t.o $(LIBS) $(LIB_roken) $(XLIBS)
 install:
 
 test_objs = test_procs.o test_int.cs.o test_int.ss.o test_int.xdr.o

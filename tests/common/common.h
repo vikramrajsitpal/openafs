@@ -33,6 +33,7 @@
 
 #include <afs/opr.h>
 #include <afs/com_err.h>
+#include <rx/rx_opaque.h>
 
 #include <tests/tap/basic.h>
 
@@ -286,5 +287,12 @@ extern afs_uint32 afstest_MyHostAddr(void);
 extern char *afstest_vasprintf(const char *fmt, va_list ap);
 extern char *afstest_asprintf(const char *fmt, ...)
 	AFS_ATTRIBUTE_FORMAT(__printf__, 1, 2);
+extern int is_pointer(void *left, void *right, const char *fmt, ...)
+	AFS_ATTRIBUTE_FORMAT(__printf__, 3, 4);
+
+/* opaque.c */
+extern int is_opaque(struct rx_opaque *left, struct rx_opaque *right,
+		     const char *format, ...)
+	AFS_ATTRIBUTE_FORMAT(__printf__, 3, 4);
 
 #endif /* OPENAFS_TEST_COMMON_H */
