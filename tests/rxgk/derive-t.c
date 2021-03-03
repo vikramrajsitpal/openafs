@@ -25,7 +25,7 @@ struct tcase {
 
     afs_uint32 epoch;
     afs_uint32 cid;
-    rxgkTime start_time;
+    struct afs_time64 start_time;
     afs_uint32 key_number;
 };
 
@@ -43,7 +43,7 @@ struct tcase {
 	.enctype = ETYPE_AES128_CTS_HMAC_SHA1_96, \
 	.epoch = (a_epoch), \
 	.cid = (a_cid), \
-	.start_time = (a_start_time), \
+	.start_time = { .clunks = (a_start_time) }, \
 	.key_number = (a_key_number), \
     }
 
@@ -102,7 +102,7 @@ main(void)
 	is_int(0, code, "[%s] rxgk_make_key succeeds", test->descr);
 
 	code = rxgk_derive_tk(&tk, k0, test->epoch, test->cid,
-			      test->start_time, test->key_number);
+			      &test->start_time, test->key_number);
 	is_int(0, code, "[%s] rxgk_derive_tk succeeds", test->descr);
 
 	key2data(tk, &keydata);

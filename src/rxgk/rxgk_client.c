@@ -38,6 +38,7 @@
 #include <afs/stds.h>
 
 #include <afs/opr.h>
+#include <opr/time64.h>
 
 /* OS-specific system headers go here */
 
@@ -102,6 +103,7 @@ rxgk_NewClientConnection(struct rx_securityClass *aobj,
 {
     struct rxgk_cconn *cc = NULL;
     struct rxgk_cprivate *cp;
+    int code;
 
     if (rx_GetSecurityData(aconn) != NULL)
 	goto error;
@@ -110,7 +112,11 @@ rxgk_NewClientConnection(struct rx_securityClass *aobj,
     cc = rxi_Alloc(sizeof(*cc));
     if (cc == NULL)
 	goto error;
-    cc->start_time = RXGK_NOW();
+
+    code = opr_time64_now(&cc->start_time);
+    if (code != 0)
+	goto error;
+
     /* Set the header and trailer size to be reserved for the security
      * class in each packet. */
     if (rxgk_security_overhead(aconn, cp->level, cp->k0) != 0)
@@ -151,7 +157,7 @@ rxgk_ClientPreparePacket(struct rx_securityClass *aobj, struct rx_call *acall,
         return 0;
 
     ret = rxgk_derive_tk(&tk, cp->k0, rx_GetConnectionEpoch(aconn),
-			 rx_GetConnectionId(aconn), cc->start_time, lkvno);
+			 rx_GetConnectionId(aconn), &cc->start_time, lkvno);
     if (ret != 0)
 	return ret;
 
@@ -240,7 +246,7 @@ pack_wrap_authenticator(RXGK_Data *encdata, RXGK_Authenticator *authenticator,
 	goto done;
     }
     ret = rxgk_derive_tk(&tk, cp->k0, authenticator->epoch, authenticator->cid,
-		         cc->start_time, cc->key_number);
+			 &cc->start_time, cc->key_number);
     if (ret != 0)
 	goto done;
     ret = rxgk_encrypt_in_key(tk, RXGK_CLIENT_ENC_RESPONSE, &data, encdata);
@@ -405,7 +411,7 @@ rxgk_ClientCheckPacket(struct rx_securityClass *aobj, struct rx_call *acall,
     cc->stats.brecv += len;
 
     lkvno = kvno = cc->key_number;
-    ret = rxgk_check_packet(0, aconn, apacket, cp->level, cc->start_time,
+    ret = rxgk_check_packet(0, aconn, apacket, cp->level, &cc->start_time,
                             &kvno, cp->k0);
     if (ret != 0)
 	return ret;

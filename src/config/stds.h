@@ -208,6 +208,11 @@ struct afsUUID {
 };
 typedef struct afsUUID afsUUID;
 
+struct afs_time64 {
+    /* Number of 100ns units ("clunks") since the unix epoch. */
+    afs_int64 clunks;
+};
+
 /* for now, demand attach fileserver is only support on unix pthreads builds */
 #if defined(DEMAND_ATTACH_ENABLE) && defined(AFS_PTHREAD_ENV) && !defined(AFS_NT40_ENV)
 #define AFS_DEMAND_ATTACH_FS 1

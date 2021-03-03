@@ -453,7 +453,7 @@ rxgk_print_token(struct rx_opaque *out, RXGK_TokenInfo *input_info,
     info.level = input_info->level;
     info.lifetime = DEFAULT_LIFETIME;
     info.bytelife = DEFAULT_BYTELIFE;
-    info.expiration = RXGK_NEVERDATE;
+    info.expiration.clunks = RXGK_NEVERDATE;
 
     return make_token(out, &info, k0, NULL, 0, key, kvno, enctype);
 }
