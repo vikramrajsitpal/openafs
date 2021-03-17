@@ -572,14 +572,28 @@ cmd_Seek(struct cmd_syndesc *as, int apos)
     return 0;
 }
 
+static int
+check_parm(char *aname)
+{
+    if (strcmp(aname, "--") == 0)
+	return CMD_BADNAME;
+    return 0;
+}
+
 int
 cmd_AddParmAtOffset(struct cmd_syndesc *as, int ref, char *aname, int atype,
 		    afs_int32 aflags, char *ahelp)
 {
     struct cmd_parmdesc *tp;
+    int code;
 
     if (ref >= CMD_MAXPARMS)
 	return CMD_EXCESSPARMS;
+
+    code = check_parm(aname);
+    if (code != 0)
+	return code;
+
     tp = &as->parms[ref];
 
     tp->name = strdup(aname);
@@ -615,9 +629,14 @@ int
 cmd_AddParmAlias(struct cmd_syndesc *as, int pos, char *alias)
 {
     struct cmd_item *item;
+    int code;
 
     if (pos > as->nParms)
 	return CMD_EXCESSPARMS;
+
+    code = check_parm(alias);
+    if (code != 0)
+	return code;
 
     item = calloc(1, sizeof(struct cmd_item));
     item->data = strdup(alias);
@@ -832,6 +851,7 @@ cmd_Parse(int argc, char **argv, struct cmd_syndesc **outsyntax)
     int positional;
     int ambig;
     int code = 0;
+    int process_opts = 1;
     char *param = NULL;
     char *embeddedvalue = NULL;
     static int initd = 0;	/*Is this the first time this routine has been called? */
@@ -951,8 +971,17 @@ cmd_Parse(int argc, char **argv, struct cmd_syndesc **outsyntax)
 	/* Only tokens that start with a hyphen and are not followed by a digit
 	 * are considered switches.  This allow negative numbers. */
 
-	if ((argv[i][0] == '-') && !isdigit(argv[i][1])) {
+	if (process_opts && (argv[i][0] == '-') && !isdigit(argv[i][1])) {
 	    int j;
+
+	    if (strcmp(argv[i], "--") == 0) {
+		/*
+		 * If we encounter "--", stop processing options, and assume
+		 * all further args are just plain arguments.
+		 */
+		process_opts = 0;
+		continue;
+	    }
 
 	    /* Find switch */
 	    if (strrchr(argv[i], '=') != NULL) {

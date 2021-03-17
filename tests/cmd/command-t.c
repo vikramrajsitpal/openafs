@@ -97,7 +97,7 @@ main(int argc, char **argv)
     char *path;
     char *retstring = NULL;
 
-    plan(109);
+    plan(137);
 
     initialize_CMD_error_table();
 
@@ -196,6 +196,54 @@ main(int argc, char **argv)
     is_int(0, code, "disabling specific abbreviations succeeds");
     code = cmd_Parse(tc, tv, &retopts);
     is_int(0, code, "and works with cmd_Parse into the bargain");
+    cmd_FreeOptions(&retopts);
+    cmd_FreeArgv(tv);
+
+    /* Check "--" behavior */
+
+    code = cmd_ParseLine("-flag -- foo bar", tv, &tc, 100);
+    is_int(0, code, "cmd_ParseLine succeeds");
+    code = cmd_Dispatch(tc, tv);
+    is_int(0, code, "dispatching simple command line with '--' succeeds");
+    code = cmd_Parse(tc, tv, &retopts);
+    is_int(0, code, "parsing succeeeds with '--' args");
+    is_string("foo", retopts->parms[copt_first].items->data,
+	      " ... 1st option matches");
+    code = cmd_OptionAsList(retopts, copt_second, &list);
+    is_int(0, code, "cmd_OptionAsList succeeds");
+    checkList(list, "bar", (char*)NULL);
+    cmd_FreeOptions(&retopts);
+    cmd_FreeArgv(tv);
+
+    code = cmd_ParseLine("-first -- -value", tv, &tc, 100);
+    is_int(0, code, "cmd_ParseLine succeeds");
+    code = cmd_Parse(tc, tv, &retopts);
+    is_int(0, code, "parsing succeeds with single unknown flag with '--'");
+    is_string("-value", retopts->parms[copt_first].items->data,
+	      " ... 1st option matches");
+    cmd_FreeOptions(&retopts);
+    cmd_FreeArgv(tv);
+
+    code = cmd_ParseLine("-first -- -second", tv, &tc, 100);
+    is_int(0, code, "cmd_ParseLine succeeds");
+    code = cmd_Parse(tc, tv, &retopts);
+    is_int(0, code, "parsing succeeds with single known flag with '--'");
+    is_string("-second", retopts->parms[copt_first].items->data,
+	      " ... 1st option matches");
+    ok(retopts->parms[copt_second].items == NULL, " ... 2nd option is unset");
+    cmd_FreeOptions(&retopts);
+    cmd_FreeArgv(tv);
+
+    code = cmd_ParseLine("-first foo -second -- bar -- -flag", tv, &tc, 100);
+    is_int(0, code, "cmd_ParseLine succeeds");
+    code = cmd_Parse(tc, tv, &retopts);
+    is_int(0, code, "parsing succeeds with multiple args with '--'");
+    is_string("foo", retopts->parms[copt_first].items->data,
+	      " ... 1st option matches");
+    code = cmd_OptionAsList(retopts, copt_second, &list);
+    is_int(0, code, "cmd_OptionAsList succeeds");
+    checkList(list, "bar", "--", "-flag", (char*)NULL);
+    ok(retopts->parms[copt_flag].items == NULL, " ... flag is unset");
     cmd_FreeOptions(&retopts);
     cmd_FreeArgv(tv);
 
@@ -383,6 +431,12 @@ main(int argc, char **argv)
     code = cmd_OptionAsList(retopts, copt_second, &list);
     is_int(0, code, "cmd_OptionAsList succeeds");
     checkList(list, "one", "two", "three", "four", NULL);
+
+    /* Check specifying an invalid option name */
+    code = cmd_AddParm(opts, "--", CMD_FLAG, CMD_OPTIONAL, "bogus flag");
+    is_int(CMD_BADNAME, code, "cmd_AddParm(--) fails as expected");
+    code = cmd_AddParmAlias(opts, copt_second, "--");
+    is_int(CMD_BADNAME, code, "cmd_AddParmAlias(--) fails as expected");
 
     return 0;
 }
