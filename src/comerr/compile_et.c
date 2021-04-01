@@ -163,13 +163,13 @@ main(int argc, char **argv)
     nsa.sa_flags = SA_FULLDUMP;
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
+
+    setprogname(argv[0]);
+    whoami = getprogname();
+
     /* argument parsing */
     debug = 0;
     filename = 0;
-    whoami = argv[0];
-    p = strrchr(whoami, '/');
-    if (p)
-	whoami = p + 1;
     while (--argc) {
 	char *arg = *++argv;
 	if (arg[0] != '-') {

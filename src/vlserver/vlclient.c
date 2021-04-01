@@ -1038,6 +1038,8 @@ main(int argc, char **argv)
     struct cmd_syndesc *ts;
     afs_int32 code;
 
+    setprogname(argv[0]);
+
     strcpy(confdir, AFSDIR_CLIENT_ETC_DIRPATH);
     ts = cmd_CreateSyntax("initcmd", handleit, NULL, 0, "initialize the program");
     cmd_AddParm(ts, "-cellpath", CMD_LIST, CMD_OPTIONAL,

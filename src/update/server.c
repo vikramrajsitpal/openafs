@@ -45,7 +45,7 @@ struct afsconf_dir *cdir;
 int nDirs;
 char *dirName[MAXENTRIES];
 int dirLevel[MAXENTRIES];
-char *whoami;
+static const char *whoami;
 
 static int Quit(char *);
 
@@ -225,7 +225,8 @@ main(int argc, char *argv[])
 
     memset(&bsso, 0, sizeof(bsso));
 
-    whoami = argv[0];
+    setprogname(argv[0]);
+    whoami = getprogname();
 
 #ifdef AFS_NT40_ENV
     /* dummy signal call to force afsprocmgmt.dll to load on NT */

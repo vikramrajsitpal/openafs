@@ -57,6 +57,8 @@ main(int argc, char **argv)
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
 
+    setprogname(argv[0]);
+
     /* has no args ... support for help flag */
 
     if (argc > 1) {

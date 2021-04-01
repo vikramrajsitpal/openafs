@@ -35,7 +35,7 @@ main(int argc, char *argv[])
     afs_int32 code;
     char *ap[25];
     int i;
-    char *whoami = argv[0];
+    const char *whoami;
 
 #ifdef	AFS_AIX32_ENV
     /*
@@ -57,6 +57,9 @@ main(int argc, char *argv[])
     initialize_KA_error_table();
     initialize_ACFG_error_table();
     initialize_U_error_table();
+
+    setprogname(argv[0]);
+    whoami = getprogname();
 
 #ifdef AFS_NT40_ENV
     /* initialize winsock */

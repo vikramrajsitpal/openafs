@@ -34,21 +34,6 @@
 #include "common.h"
 
 char *
-afstest_GetProgname(char **argv)
-{
-    char *argv0;
-
-    /* For invocations like ./foo/bar/prog, strip out everything but the
-     * trailing 'prog'. */
-    argv0 = strrchr(argv[0], '/');
-    if (argv0 != NULL) {
-        argv0++;
-        return argv0;
-    }
-    return argv[0];
-}
-
-char *
 afstest_vasprintf(const char *fmt, va_list ap)
 {
     char *str;

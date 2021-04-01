@@ -34,7 +34,7 @@
 #include "ptuser.h"
 #include "ptprototypes.h"
 
-static char *whoami = "testpr";
+static const char *whoami = "testpr";
 static struct afsconf_dir *conf;	/* cell info, set by MyBeforeProc */
 static char conf_dir[100];
 static char lcell[MAXCELLCHARS];
@@ -1059,7 +1059,9 @@ main(int argc, char *argv[])
     afs_int32 code;
     struct cmd_syndesc *ts;	/* ptr to parsed command line syntax */
 
-    whoami = argv[0];
+    setprogname(argv[0]);
+    whoami = getprogname();
+
     initialize_CMD_error_table();
     initialize_ACFG_error_table();
     initialize_KTC_error_table();

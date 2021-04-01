@@ -339,6 +339,8 @@ main(int argc, char **argv)
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
 
+    setprogname(argv[0]);
+
     /*
      * Look in /usr/vice/etc (client side database).
      */

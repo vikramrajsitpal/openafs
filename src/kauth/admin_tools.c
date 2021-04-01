@@ -1296,11 +1296,7 @@ MyBeforeProc(struct cmd_syndesc *as, void *arock)
     int i, acode, code = 0;
 
     {
-	char *ws = strrchr(as->a0name, '/');
-	if (ws)
-	    ws++;		/* skip everything before the "/" */
-	else
-	    ws = as->a0name;
+	const char *ws = getprogname();
 	if (strlen(ws) > 0) {
 	    strncpy(whoami, ws, sizeof(whoami));
 	    if (strlen(whoami) + 1 >= sizeof(whoami))

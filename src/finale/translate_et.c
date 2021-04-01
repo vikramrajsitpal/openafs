@@ -52,6 +52,9 @@ main(int argc, char *argv[])
     nsa.sa_flags = SA_FULLDUMP;
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
+
+    setprogname(argv[0]);
+
     initialize_KA_error_table();
     initialize_RXK_error_table();
     initialize_KTC_error_table();

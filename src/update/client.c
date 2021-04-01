@@ -37,7 +37,7 @@
 #include "global.h"
 #include "update_internal.h"
 
-char *whoami;
+static const char *whoami;
 static int verbose;
 
 /* prototypes */
@@ -122,7 +122,10 @@ main(int argc, char **argv)
     sigaction(SIGABRT, &nsa, NULL);
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
-    whoami = argv[0];
+
+    setprogname(argv[0]);
+    whoami = getprogname();
+
 #ifdef AFS_NT40_ENV
     /* dummy signal call to force afsprocmgmt.dll to load on NT */
     signal(SIGUSR1, SIG_DFL);

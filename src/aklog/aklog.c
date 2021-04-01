@@ -289,7 +289,7 @@ extern char *sys_errlist[];
 #define strerror(x) sys_errlist[x]
 #endif /* HAVE_STRERROR */
 
-static char *progname = NULL;	/* Name of this program */
+static const char *progname = NULL;	/* Name of this program */
 static int dflag = FALSE;	/* Give debugging information */
 static int noauth = FALSE;	/* If true, don't try to get tokens */
 static int zsubs = FALSE;	/* Are we keeping track of zephyr subs? */
@@ -1476,8 +1476,6 @@ main(int argc, char *argv[])
 
     cellinfo_t cellinfo;
 
-    extern char *progname;	/* Name of this program */
-
     int cmode = FALSE;		/* Cellname mode */
     int pmode = FALSE;		/* Path name mode */
 
@@ -1503,11 +1501,8 @@ main(int argc, char *argv[])
     ll_init(&zsublist);
     ll_init(&hostlist);
 
-    /* Store the program name here for error messages */
-    if ((progname = strrchr(argv[0], DIR)))
-	progname++;
-    else
-	progname = argv[0];
+    setprogname(argv[0]);
+    progname = getprogname();
 
 #if defined(KRB5_PROG_ETYPE_NOSUPP) && !(defined(HAVE_KRB5_ENCTYPE_ENABLE) || defined(HAVE_KRB5_ALLOW_WEAK_CRYPTO))
     {

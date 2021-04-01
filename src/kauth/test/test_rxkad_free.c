@@ -85,7 +85,7 @@ Main(struct cmd_syndesc *as, void *arock)
     unsigned long now;
 
     lo = 0;
-    whoami = as->a0name;
+    whoami = getprogname();
     newCell[0] = 0;
 
     if (as->parms[0].items)
@@ -368,6 +368,8 @@ main(argc, argv)
     initialize_KTC_error_table();
     initialize_ACFG_error_table();
     initialize_KA_error_table();
+
+    setprogname(argv[0]);
 
     ts = cmd_CreateSyntax(NULL, Main, NULL, 0, "Main program");
     /* 0 */ cmd_AddParm(ts, "-number", CMD_SINGLE, CMD_OPTIONAL,

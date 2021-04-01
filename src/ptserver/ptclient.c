@@ -32,7 +32,7 @@
 afs_int32 security = 0;
 char confdir[AFSDIR_PATH_MAX];
 
-char *whoami;
+static const char *whoami;
 
 extern struct ubik_client *pruclient;
 static void skip(char **);
@@ -184,7 +184,8 @@ main(int argc, char **argv)
     nsa.sa_flags = SA_FULLDUMP;
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
-    whoami = argv[0];
+    setprogname(argv[0]);
+    whoami = getprogname();
 
     initialize_PT_error_table();
 

@@ -360,7 +360,7 @@ truncateDatabase(void)
 int
 main(int argc, char **argv)
 {
-    char *whoami = argv[0];
+    const char *whoami;
     char *dbNamePtr = 0;
     struct afsconf_cell cellinfo_s;
     struct afsconf_cell *cellinfo = NULL;
@@ -379,15 +379,6 @@ main(int argc, char **argv)
 
     extern int rx_stackSize;
 
-#ifdef AFS_NT40_ENV
-    /* initialize winsock */
-    if (afs_winsockInit() < 0) {
-	ReportErrorEventAlt(AFSEVT_SVR_WINSOCK_INIT_FAILED, 0, argv[0], 0);
-	fprintf(stderr, "%s: Couldn't initialize winsock.\n", whoami);
-	exit(1);
-    }
-#endif
-
 #ifdef	AFS_AIX32_ENV
     /*
      * The following signal action for AIX is necessary so that in case of a
@@ -402,6 +393,18 @@ main(int argc, char **argv)
     nsa.sa_flags = SA_FULLDUMP;
     sigaction(SIGSEGV, &nsa, NULL);
     sigaction(SIGABRT, &nsa, NULL);
+#endif
+
+    setprogname(argv[0]);
+    whoami = getprogname();
+
+#ifdef AFS_NT40_ENV
+    /* initialize winsock */
+    if (afs_winsockInit() < 0) {
+	ReportErrorEventAlt(AFSEVT_SVR_WINSOCK_INIT_FAILED, 0, argv[0], 0);
+	fprintf(stderr, "%s: Couldn't initialize winsock.\n", whoami);
+	exit(1);
+    }
 #endif
 
     memset(&cellinfo_s, 0, sizeof(cellinfo_s));

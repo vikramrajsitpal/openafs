@@ -338,6 +338,9 @@ main(int argc, char **argv)
     nsa.sa_flags = SA_FULLDUMP;
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
+
+    setprogname(argv[0]);
+
     ts = cmd_CreateSyntax(NULL, CommandProc, NULL, 0, "probe ubik server");
     cmd_AddParm(ts, "-server", CMD_SINGLE, CMD_REQUIRED, "server machine");
     cmd_AddParm(ts, "-port", CMD_SINGLE, CMD_OPTIONAL, "IP port");

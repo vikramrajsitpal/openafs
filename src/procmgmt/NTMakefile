@@ -56,7 +56,8 @@ KILL_EXEOBJS =\
 	$(OUT)\afskill.res
 
 KILL_EXELIBS =\
-	$(DESTDIR)\lib\afs\afsprocmgmt.lib
+	$(DESTDIR)\lib\afs\afsprocmgmt.lib \
+	$(DESTDIR)\lib\afsroken.lib
 
 $(RS_KILL_EXEFILE): $(KILL_EXEOBJS)	$(KILL_EXELIBS)
 	$(EXECONLINK)

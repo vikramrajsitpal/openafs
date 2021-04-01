@@ -401,7 +401,10 @@ int main(int argc, char **argv)
     int serverPid, clientPid, waited, stat;
     int ret = 0;
     sigset_t set;
-    char *argv0 = afstest_GetProgname(argv);
+    const char *argv0;
+
+    setprogname(argv[0]);
+    argv0 = getprogname();
 
     afstest_SkipTestsIfBadHostname();
 

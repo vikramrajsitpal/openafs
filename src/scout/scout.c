@@ -2265,6 +2265,9 @@ main(int argc, char **argv)
     nsa.sa_flags = SA_FULLDUMP;
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
+
+    setprogname(argv[0]);
+
     /*
      * Set up the commands we understand.
      */

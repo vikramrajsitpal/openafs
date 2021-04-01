@@ -33,8 +33,6 @@
 
 #include "common.h"
 
-static char *progname;
-
 int
 afstest_GetUbikClient(struct afsconf_dir *dir, char *service,
 		      int serviceId,
@@ -76,7 +74,7 @@ ubiktest_init(char *service, char **argv)
     /* Skip all tests if a server is already running on this system. */
     afstest_SkipTestsIfServerRunning(service);
 
-    progname = afstest_GetProgname(argv);
+    setprogname(argv[0]);
 
     code = rx_Init(0);
     if (code != 0) {
@@ -213,6 +211,7 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
     struct ubiktest_dbdef *dbdef;
     struct ubiktest_dbtest *testlist;
     struct stat st;
+    const char *progname = getprogname();
 
     opr_Assert(progname != NULL);
 

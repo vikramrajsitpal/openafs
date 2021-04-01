@@ -351,6 +351,8 @@ main(int argc, char **argv)
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
 
+    setprogname(argv[0]);
+
     /* Initialize directory paths */
     if (!(initAFSDirPath() & AFSDIR_SERVER_PATHS_OK)) {
 #ifdef AFS_NT40_ENV

@@ -598,6 +598,8 @@ main(int argc, char **argv)
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
 
+    setprogname(argv[0]);
+
 #ifdef AFS_NT40_ENV
     if (afs_winsockInit() < 0) {
         printf("%s: Couldn't initialize winsock. Exiting...\n", argv[0]);

@@ -261,6 +261,8 @@ main(int argc, char **argv)
     afs_int32 code;
     VolumePackageOptions opts;
 
+    setprogname(argv[0]);
+
     VOptDefaults(volumeUtility, &opts);
     if (VInitVolumePackage2(volumeUtility, &opts)) {
 	fprintf(stderr, "errors encountered initializing volume package, but "

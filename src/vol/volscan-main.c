@@ -221,6 +221,8 @@ main(int argc, char **argv)
     afs_int32 code;
     struct cmd_syndesc *ts;
 
+    setprogname(argv[0]);
+
     ts = cmd_CreateSyntax(NULL, VolScan, NULL, 0,
 			  "Print volume vnode information");
 

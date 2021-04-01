@@ -83,7 +83,10 @@ main(int argc, char **argv)
     struct rx_securityClass *secClass;
     struct ubik_client *ubikClient = NULL;
     int ret = 0;
-    char *argv0 = afstest_GetProgname(argv);
+    const char *argv0;
+
+    setprogname(argv[0]);
+    argv0 = getprogname();
 
     /* Skip all tests if the current hostname can't be resolved */
     afstest_SkipTestsIfBadHostname();

@@ -4198,6 +4198,8 @@ main(int argc, char **argv)
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
 
+    setprogname(argv[0]);
+
     /*
      * Set up the commands we understand.
      */

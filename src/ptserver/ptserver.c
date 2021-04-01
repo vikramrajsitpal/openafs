@@ -283,6 +283,8 @@ main(int argc, char **argv)
 #endif
     osi_audit_init();
 
+    setprogname(argv[0]);
+
     memset(&bsso, 0, sizeof(bsso));
 
     /* Initialize dirpaths */

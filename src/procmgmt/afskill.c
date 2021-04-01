@@ -95,16 +95,10 @@ int
 main(int argc, char *argv[])
 {
     int status = 0;
-    char *whoami;
+    const char *whoami;
 
-    /* set whoami to last component of argv[0] */
-    if ((whoami = strrchr(argv[0], '/')) != NULL) {
-	whoami++;
-    } else if ((whoami = strrchr(argv[0], '\\')) != NULL) {
-	whoami++;
-    } else {
-	whoami = argv[0];
-    }
+    setprogname(argv[0]);
+    whoami = getprogname();
 
     /* parse command arguments */
     if (argc <= 1) {

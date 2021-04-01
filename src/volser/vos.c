@@ -5935,6 +5935,8 @@ main(int argc, char **argv)
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
 
+    setprogname(argv[0]);
+
     confdir = AFSDIR_CLIENT_ETC_DIRPATH;
 
     cmd_SetBeforeProc(MyBeforeProc, NULL);

@@ -1643,6 +1643,7 @@ main(int argc, char **argv)
 {
     struct cmd_syndesc *ts;
 
+    setprogname(argv[0]);
     setlinebuf(stdout);
 
     ts = cmd_CreateSyntax(NULL, WorkerBee, NULL, 0, "vldb check");

@@ -1801,6 +1801,8 @@ main(int argc, char **argv)
     sigaction(SIGABRT, &nsa, NULL);
 #endif
 
+    setprogname(argv[0]);
+
     /* start up rx */
     code = rx_Init(0);
     if (code) {

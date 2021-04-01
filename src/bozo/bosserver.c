@@ -936,6 +936,8 @@ main(int argc, char **argv, char **envp)
 
     memset(&bsso, 0, sizeof(bsso));
 
+    setprogname(argv[0]);
+
 #ifdef AFS_NT40_ENV
     /* Initialize winsock */
     if (afs_winsockInit() < 0) {

@@ -1239,6 +1239,7 @@ main(int argc, char **argv)
     sigaction(SIGABRT, &nsa, NULL);
 #endif
 
+    setprogname(argv[0]);
     setlinebuf(stdout);
 
     ts = cmd_CreateSyntax(NULL, WorkerBee, NULL, 0, "tape coordinator");

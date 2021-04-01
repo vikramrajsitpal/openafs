@@ -77,7 +77,7 @@ static afs_int32 GetVenusFidByFid(char *, char *, int, struct afscp_venusfid **)
 static afs_int32 GetVenusFidByPath(char *, char *, struct afscp_venusfid **);
 static int BreakUpPath(char *, char **, char **);
 
-static char pnp[AFSPATHMAX];	/* filename of this program when called */
+static const char *pnp;		/* filename of this program when called */
 static int verbose = 0;		/* Set if -verbose option given */
 static int clear = 0;		/* Set if -clear option given,
 				   Unset if -crypt given; default is -crypt */
@@ -281,23 +281,9 @@ int
 main(int argc, char **argv)
 {
     struct cmd_syndesc *ts;
-    char *baseName;
-    int code;
 
-    /* try to get only the base name of this executable for use in logs */
-#ifdef AFS_NT40_ENV
-    char *p = strdup(argv[0]);
-    ConvertAFSPath(&p);
-    code = BreakUpPath(p, NULL, &baseName);
-    free(p);
-#else
-    code = BreakUpPath(argv[0], NULL, &baseName);
-#endif
-    if (code > 0)
-	strlcpy(pnp, baseName, AFSNAMEMAX);
-    else
-	strlcpy(pnp, argv[0], AFSPATHMAX);
-    free(baseName);
+    setprogname(argv[0]);
+    pnp = getprogname();
 
 #ifdef AFS_PTHREAD_ENV
     opr_Verify(pthread_key_create(&uclient_key, NULL) == 0);

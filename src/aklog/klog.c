@@ -96,6 +96,9 @@ main(int argc, char *argv[])
     sigaction(SIGABRT, &nsa, NULL);
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
+
+    setprogname(argv[0]);
+
     zero_argc = argc;
     zero_argv = argv;
 

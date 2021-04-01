@@ -78,6 +78,9 @@ main(int argc, char *argv[])
     nsa.sa_flags = SA_FULLDUMP;
     sigaction(SIGSEGV, &nsa, NULL);
 #endif
+
+    setprogname(argv[0]);
+
     ScanArgs(argc, argv);
 
     /* now read each line of the CopyList */

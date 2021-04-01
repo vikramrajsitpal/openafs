@@ -1862,6 +1862,8 @@ main(int argc, char *argv[])
 
     memset(&bsso, 0, sizeof(bsso));
 
+    setprogname(argv[0]);
+
     /* Initialize dirpaths */
     if (!(initAFSDirPath() & AFSDIR_SERVER_PATHS_OK)) {
 #ifdef AFS_NT40_ENV

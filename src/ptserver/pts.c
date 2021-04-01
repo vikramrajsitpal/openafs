@@ -32,7 +32,7 @@
 #include "pterror.h"
 #include "ptprototypes.h"
 
-char *whoami;
+static const char *whoami;
 int force = 0;
 
 static int finished;
@@ -187,8 +187,6 @@ GetGlobals(struct cmd_syndesc *as, void *arock)
     int changed = 0;
     const char* confdir;
     RXGK_Level rxgk_level = RXGK_LEVEL_BOGUS;
-
-    whoami = as->a0name;
 
     if (!strcmp(as->name, "help"))
 	return 0;
@@ -1096,6 +1094,9 @@ main(int argc, char **argv)
 
     memset(&state, 0, sizeof(state));
     state.sec = 1; /* default is auth */
+
+    setprogname(argv[0]);
+    whoami = getprogname();
 
     ts = cmd_CreateSyntax("creategroup", CreateGroup, NULL, 0,
 			  "create a new group");
