@@ -16,6 +16,7 @@ opr/rbtree
 opr/softsig
 opr/time
 opr/uuid
+ptserver/prdb
 ptserver/pt_util
 ptserver/pts-man
 rx/event

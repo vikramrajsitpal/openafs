@@ -18,8 +18,29 @@
 
 #include "common.h"
 
+struct afstest_server_type afstest_server_pt = {
+    .logname = "PtLog",
+    .bin_path = "src/tptserver/ptserver",
+    .db_name = "prdb",
+    .exec_name = "ptserver",
+    .startup_string = "Starting AFS ptserver",
+    .service_name = AFSCONF_PROTSERVICE,
+    .port = 7002,
+};
+
+struct afstest_server_type afstest_server_vl = {
+    .logname = "VLLog",
+    .bin_path = "src/tvlserver/vlserver",
+    .db_name = "vldb",
+    .exec_name = "vlserver",
+    .startup_string = "Starting AFS vlserver",
+    .service_name = AFSCONF_VLDBSERVICE,
+    .port = 7003,
+};
+
 static void
-check_startup(pid_t pid, char *log, int *a_started, int *a_stopped)
+check_startup(struct afstest_server_type *server, pid_t pid, char *log,
+	      int *a_started, int *a_stopped)
 {
     int status;
     struct rx_connection *conn;
@@ -43,9 +64,9 @@ check_startup(pid_t pid, char *log, int *a_started, int *a_stopped)
 	return;
     }
 
-    if (!afstest_file_contains(log, "Starting AFS vlserver")) {
-	/* vlserver hasn't logged the "Starting AFS vlserver" line yet, so it's
-	 * presumably still starting up. */
+    if (!afstest_file_contains(log, server->startup_string)) {
+	/* server hasn't logged the e.g. "Starting AFS vlserver" line yet, so
+	 * it's presumably still starting up. */
 	return;
     }
 
@@ -59,12 +80,13 @@ check_startup(pid_t pid, char *log, int *a_started, int *a_stopped)
      * (via VOTE_XDebug).
      */
 
-    conn = rx_NewConnection(afstest_MyHostAddr(), htons(7003), VOTE_SERVICE_ID,
+    conn = rx_NewConnection(afstest_MyHostAddr(), htons(server->port),
+			    VOTE_SERVICE_ID,
 			    rxnull_NewClientSecurityObject(), 0);
     code = VOTE_XDebug(conn, &udebug, &isclone);
     rx_DestroyConnection(conn);
     if (code != 0) {
-	diag("VOTE_XDebug returned %d while waiting for vlserver startup",
+	diag("VOTE_XDebug returned %d while waiting for server startup",
 	     code);
 	return;
     }
@@ -75,12 +97,12 @@ check_startup(pid_t pid, char *log, int *a_started, int *a_stopped)
     }
 }
 
-/* Start up the VLserver, using the configuration in dirname, and putting our
- * logs there too.
+/*
+ * Start up the given server, using the configuration in dirname, and putting
+ * our logs there too.
  */
-
 int
-afstest_StartVLServer(char *dirname, pid_t *serverPid)
+afstest_StartServer(struct afstest_server_type *server, char *dirname, pid_t *serverPid)
 {
     pid_t pid;
     char *logPath;
@@ -90,10 +112,10 @@ afstest_StartVLServer(char *dirname, pid_t *serverPid)
     FILE *fh;
     int code = 0;
 
-    logPath = afstest_asprintf("%s/VLLog", dirname);
+    logPath = afstest_asprintf("%s/%s", dirname, server->logname);
 
     /* Create/truncate the log in advance (since we look at it to detect when
-     * the vlserver has started). */
+     * the server has started). */
     fh = fopen(logPath, "w");
     opr_Assert(fh != NULL);
     fclose(fh);
@@ -106,10 +128,10 @@ afstest_StartVLServer(char *dirname, pid_t *serverPid)
 	char *binPath, *dbPath;
 
 	/* Child */
-	binPath = afstest_obj_path("src/tvlserver/vlserver");
-	dbPath = afstest_asprintf("%s/vldb", dirname);
+	binPath = afstest_obj_path(server->bin_path);
+	dbPath = afstest_asprintf("%s/%s", dirname, server->db_name);
 
-	execl(binPath, "vlserver",
+	execl(binPath, server->exec_name,
 	      "-logfile", logPath, "-database", dbPath, "-config", dirname, NULL);
 	fprintf(stderr, "Running %s failed\n", binPath);
 	exit(1);
@@ -123,28 +145,28 @@ afstest_StartVLServer(char *dirname, pid_t *serverPid)
      * forever.
      */
 
-    diag("waiting for vlserver to startup");
+    diag("waiting for server to startup");
 
     usleep(5000); /* 5ms */
-    check_startup(pid, logPath, &started, &stopped);
+    check_startup(server, pid, logPath, &started, &stopped);
     for (try = 0; !started && !stopped; try++) {
 	if (try > 100 * 5) {
-	    diag("waited too long for vlserver to finish starting up; "
+	    diag("waited too long for server to finish starting up; "
 		 "proceeding anyway");
 	    goto done;
 	}
 
 	usleep(1000 * 10); /* 10ms */
-	check_startup(pid, logPath, &started, &stopped);
+	check_startup(server, pid, logPath, &started, &stopped);
     }
 
     if (stopped) {
-	fprintf(stderr, "vlserver died during startup\n");
+	fprintf(stderr, "server died during startup\n");
 	code = -1;
 	goto done;
     }
 
-    diag("vlserver started after try %d", try);
+    diag("server started after try %d", try);
 
  done:
     *serverPid = pid;

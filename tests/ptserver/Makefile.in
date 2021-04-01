@@ -1,0 +1,27 @@
+
+srcdir=@srcdir@
+abs_top_builddir=@abs_top_builddir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+include @TOP_OBJDIR@/src/config/Makefile.pthread
+
+BINS = prdb-t
+
+MODULE_CFLAGS=-I$(TOP_OBJDIR) -I$(srcdir)/../common/
+
+all check test tests: $(BINS)
+
+MODULE_LIBS = 	$(abs_top_builddir)/tests/common/libafstest_common.la \
+		$(abs_top_builddir)/src/ptserver/liboafs_prot.la \
+		$(XLIBS)
+
+prtest_objs = prtest.o
+prtest_deps = $(prtest_objs) prtest.h
+prtest_libs =	$(prtest_objs) \
+		$(MODULE_LIBS)
+
+prdb-t: prdb-t.o $(prtest_deps)
+	$(LT_LDRULE_static) prdb-t.o $(prtest_libs)
+
+clean:
+	$(LT_CLEAN)
+	rm -f *.o $(BINS)

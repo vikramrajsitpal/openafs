@@ -192,6 +192,7 @@ AC_CONFIG_FILES([
     tests/cmd/Makefile
     tests/common/Makefile
     tests/opr/Makefile
+    tests/ptserver/Makefile
     tests/rx/Makefile
     tests/tap/Makefile
     tests/util/Makefile

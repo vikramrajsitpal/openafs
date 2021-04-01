@@ -103,7 +103,7 @@ main(int argc, char **argv)
 
     dir = afsconf_Open(dirname);
 
-    code = afstest_StartVLServer(dirname, &serverPid);
+    code = afstest_StartServer(&afstest_server_vl, dirname, &serverPid);
     if (code) {
 	afs_com_err(argv0, code, "while starting the vlserver");
 	ret = 1;

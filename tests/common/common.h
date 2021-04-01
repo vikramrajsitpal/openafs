@@ -84,8 +84,27 @@ extern struct rx_securityClass
 				afs_uint32 startTime, afs_uint32 endTime);
 /* servers.c */
 
+/*
+ * Specifies an ubik server type that some ubiktest tests may be for (e.g.
+ * vlserver, ptserver).
+ */
+struct afstest_server_type {
+    char *logname;  /**< Log filename on disk (VLLog) */
+    char *bin_path; /**< Path to server binary, relative to top of objdir */
+    char *db_name;  /**< db filename on disk (e.g. vldb) */
+    char *exec_name;	    /**< argv[0] when running server (e.g. vlserver) */
+    char *startup_string;   /**< string to look for in log file to indicate
+			     *   that the server has successfully started */
+    char *service_name;	    /**< service name for the listening port
+			     *   (AFSCONF_*SERVICE) */
+    afs_uint16 port;	    /**< port number for the service */
+};
+extern struct afstest_server_type afstest_server_vl;
+extern struct afstest_server_type afstest_server_pt;
+
 struct rx_call;
-extern int afstest_StartVLServer(char *dirname, pid_t *serverPid);
+extern int afstest_StartServer(struct afstest_server_type *server,
+			       char *dirname, pid_t *serverPid);
 extern int afstest_StopServer(pid_t serverPid);
 extern int afstest_StartTestRPCService(const char *, pid_t, u_short, u_short,
 				       afs_int32 (*proc)(struct rx_call *));
@@ -152,6 +171,10 @@ struct ubiktest_dbtest {
  */
 struct ubiktest_dataset {
     char *descr;
+    struct afstest_server_type *server_type;
+				    /**< Which application server this is for
+				     *   (vlserver, ptserver, etc) */
+
     struct ubik_client **uclientp;  /**< If non-NULL, this will be set to a
 				     *   ubik_client struct for communicating
 				     *   with the running server. */

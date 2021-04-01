@@ -417,6 +417,7 @@ vlsmall_create(char *dirname)
 
 struct ubiktest_dataset vlsmall = {
     .descr = "vlsmall",
+    .server_type = &afstest_server_vl,
     .uclientp = &uclient,
 
     .dbtest_func = vltest_dbtest,

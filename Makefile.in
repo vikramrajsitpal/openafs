@@ -938,6 +938,7 @@ distclean: clean
 	tests/common/Makefile \
 	tests/rx/Makefile \
 	tests/opr/Makefile \
+	tests/ptserver/Makefile \
 	tests/util/Makefile \
 	tests/vlserver/Makefile \
 	tests/volser/Makefile \
