@@ -28,8 +28,7 @@
 #include <roken.h>
 
 #include <afs/cellconfig.h>
-#define UBIK_INTERNALS
-#include <ubik.h>
+#include <ubik_internal.h>
 
 #include "common.h"
 

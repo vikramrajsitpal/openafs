@@ -8,8 +8,7 @@
 
 #include <lock.h>
 #include <afs/cellconfig.h>
-#define UBIK_INTERNALS
-#include <ubik.h>
+#include <ubik_internal.h>
 #include <rx/xdr.h>
 
 #include "ptint.h"

@@ -14,21 +14,12 @@
 
 #include <assert.h>
 
-#include <afs/opr.h>
-#ifdef AFS_PTHREAD_ENV
-# include <opr/lock.h>
-#else
-# include <opr/lockstub.h>
-#endif
-
 #include <lock.h>
 #include <rx/xdr.h>
 #include <rx/rx.h>
 #include <afs/afsutil.h>
 
-#define UBIK_INTERNALS
-#include "ubik.h"
-#include "ubik_int.h"
+#include "ubik_internal.h"
 
 static void printServerInfo(void);
 

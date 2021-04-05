@@ -12,10 +12,6 @@
 #include <afs/stds.h>
 
 #include <roken.h>
-#include <afs/opr.h>
-#ifdef AFS_PTHREAD_ENV
-# include <opr/lock.h>
-#endif
 
 #ifdef IGNORE_SOME_GCC_WARNINGS
 # pragma GCC diagnostic warning "-Wstrict-prototypes"
@@ -27,7 +23,7 @@
 #include <lock.h>
 #include <afs/rxgen_consts.h>
 #define UBIK_LEGACY_CALLITER
-#include "ubik.h"
+#include "ubik_internal.h"
 
 short ubik_initializationState;	/*!< initial state is zero */
 

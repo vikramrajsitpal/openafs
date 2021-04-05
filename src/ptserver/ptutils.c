@@ -27,7 +27,7 @@
 #include <roken.h>
 
 #include <lock.h>
-#include <ubik.h>
+#include <ubik_internal.h>
 #include <rx/xdr.h>
 #include <afs/com_err.h>
 #include <afs/cellconfig.h>

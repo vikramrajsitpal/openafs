@@ -25,7 +25,7 @@
 #include <afs/auth.h>
 #include <afs/cellconfig.h>
 #include <afs/keys.h>
-#include "ubik.h"
+#include "ubik_internal.h"
 #include <afs/afsint.h>
 #include <afs/cmd.h>
 

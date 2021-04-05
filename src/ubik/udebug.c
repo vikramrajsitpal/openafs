@@ -18,9 +18,7 @@
 #include <afs/cmd.h>
 #include <afs/afsutil.h>
 
-#define UBIK_INTERNALS
-#include "ubik.h"
-#include "ubik_int.h"
+#include "ubik_internal.h"
 
 static_inline int afs_cast_time_t(time_t d) { return (int) d; }
 

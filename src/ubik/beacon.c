@@ -12,13 +12,6 @@
 
 #include <roken.h>
 
-#include <afs/opr.h>
-#ifdef AFS_PTHREAD_ENV
-# include <opr/lock.h>
-#else
-# include <opr/lockstub.h>
-#endif
-
 #include <lock.h>
 #include <rx/rx.h>
 #include <rx/rxkad.h>
@@ -26,9 +19,7 @@
 #include <afs/cellconfig.h>
 #include <afs/afsutil.h>
 
-#define UBIK_INTERNALS
-#include "ubik.h"
-#include "ubik_int.h"
+#include "ubik_internal.h"
 
 /* These global variables were used to set the function to use to initialise
  * the client security layer. They are retained for backwards compatiblity with

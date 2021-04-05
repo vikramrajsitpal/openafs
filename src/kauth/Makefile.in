@@ -111,6 +111,8 @@ libkauth_pic.la: $(LT_objs)
 test tests: all
 	cd test; $(MAKE)
 
+CFLAGS_kaauxdb.o = -I$(TOP_SRCDIR)/ubik
+
 kaserver: kadatabase.o kaprocs.o kalog.o kauth.ss.o kaserver.o krb_udp.o kaauxdb.o \
 	  libkauth.a $(LIBS)
 	$(AFS_LDRULE) kaserver.o kadatabase.o \

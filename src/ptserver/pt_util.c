@@ -27,8 +27,7 @@
 #include <afs/cmd.h>		/*Command line parsing */
 #include <afs/afsutil.h>
 #include <lock.h>
-#define UBIK_INTERNALS
-#include <ubik.h>
+#include <ubik_internal.h>
 #include <rx/xdr.h>
 #include <rx/rx.h>
 

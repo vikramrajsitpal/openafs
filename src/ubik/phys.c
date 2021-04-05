@@ -17,8 +17,7 @@
 #include <lock.h>
 #include <afs/afsutil.h>
 
-#define	UBIK_INTERNALS 1
-#include "ubik.h"
+#include "ubik_internal.h"
 
 /*! \file
  * These routines are called via the proc ptr in the ubik_dbase structure.  They provide access to

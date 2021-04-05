@@ -12,16 +12,10 @@
 
 #include <roken.h>
 
-#include <afs/opr.h>
-#ifdef AFS_PTHREAD_ENV
-# include <opr/lock.h>
-#endif
 #include <lock.h>
 #include <afs/afsutil.h>
 
-#define UBIK_INTERNALS 1
-#include "ubik.h"
-#include "ubik_int.h"
+#include "ubik_internal.h"
 
 /*! \file
  * Locks hang off of each transaction, with all the transaction hanging off of

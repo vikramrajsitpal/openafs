@@ -46,7 +46,6 @@
 #include <afs/bubasics.h>
 #include <rx/rx_null.h>
 
-#define UBIK_INTERNALS		/* need "internal" symbols from ubik.h */
 #include <ubik.h>
 
 #include "cfginternal.h"

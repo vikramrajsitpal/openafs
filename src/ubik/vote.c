@@ -12,19 +12,11 @@
 
 #include <roken.h>
 
-#include <afs/opr.h>
-#ifdef AFS_PTHREAD_ENV
-# include <opr/lock.h>
-#else
-# include <opr/lockstub.h>
-#endif
 #include <lock.h>
 #include <rx/rx.h>
 #include <afs/afsutil.h>
 
-#define UBIK_INTERNALS
-#include "ubik.h"
-#include "ubik_int.h"
+#include "ubik_internal.h"
 
 /*! \file
  * General Ubik Goal:

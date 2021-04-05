@@ -16,7 +16,6 @@
 #include <ctype.h>
 
 #include <lock.h>
-#define UBIK_INTERNALS
 #include <ubik.h>
 #include <rx/xdr.h>
 #include <rx/rx.h>

@@ -16,8 +16,7 @@
 #include <rx/xdr.h>
 #include <rx/rx.h>
 
-#define UBIK_INTERNALS
-#include "ubik.h"
+#include "ubik_internal.h"
 
 /*! \file
  * This file contain useful subroutines for parsing command line args for ubik

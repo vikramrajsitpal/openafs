@@ -12,7 +12,6 @@
 
 #include <afs/authcon.h>
 #include <afs/cellconfig.h>
-#define UBIK_INTERNALS
 #include <ubik.h>
 
 #include <tests/tap/basic.h>

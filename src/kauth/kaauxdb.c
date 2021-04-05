@@ -17,9 +17,7 @@
 #include <roken.h>
 
 #include <rx/rxkad.h>
-#define UBIK_INTERNALS
-#include <ubik.h>
-#include "ubik_int.h"
+#include "ubik_internal.h"
 #include "kauth.h"
 #include "kaserver.h"
 
