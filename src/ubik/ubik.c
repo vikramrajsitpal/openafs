@@ -335,6 +335,17 @@ ubik_thread_create(pthread_attr_t *tattr, pthread_t *thread, void *proc) {
 }
 #endif
 
+static void
+init_locks(struct ubik_dbase *dbase)
+{
+#ifdef AFS_PTHREAD_ENV
+    opr_mutex_init(&dbase->versionLock);
+    opr_cv_init(&dbase->flags_cond);
+#else
+    Lock_Init(&dbase->versionLock);
+#endif
+}
+
 /*!
  * \brief This routine initializes the ubik system for a set of servers.
  * \return 0 for success, or an error code on failure.
@@ -369,14 +380,12 @@ ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
 
     tdb = calloc(1, sizeof(*tdb));
     tdb->pathName = strdup(opts->pathName);
+    init_locks(tdb);
 #ifdef AFS_PTHREAD_ENV
-    opr_mutex_init(&tdb->versionLock);
     opr_mutex_init(&beacon_globals.beacon_lock);
     opr_mutex_init(&vote_globals.vote_lock);
     opr_mutex_init(&addr_globals.addr_lock);
     opr_mutex_init(&version_globals.version_lock);
-#else
-    Lock_Init(&tdb->versionLock);
 #endif
     Lock_Init(&tdb->cache_lock);
     tdb->read = uphys_read;
@@ -391,10 +400,6 @@ ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
     tdb->buffered_append = uphys_buf_append;
     *dbase = tdb;
     ubik_dbase = tdb;		/* for now, only one db per server; can fix later when we have names for the other dbases */
-
-#ifdef AFS_PTHREAD_ENV
-    opr_cv_init(&tdb->flags_cond);
-#endif /* AFS_PTHREAD_ENV */
 
     /* initialize RX */
 
@@ -542,6 +547,30 @@ ubik_ServerInit(afs_uint32 myHost, short myPort, afs_uint32 serverList[],
     return ubik_ServerInitByOpts(&opts, dbase);
 }
 
+static int
+BeginTransRaw(struct ubik_dbase *dbase, afs_int32 transMode,
+	      struct ubik_trans **transPtr, int readAny)
+{
+    struct ubik_trans *trans;
+
+    if (transMode != UBIK_READTRANS) {
+	if (readAny || !dbase->raw_rw)
+	    return UBADTYPE;
+    }
+
+    trans = calloc(1, sizeof(*trans));
+    if (trans == NULL) {
+	return UNOMEM;
+    }
+
+    trans->dbase = dbase;
+    trans->type = transMode;
+    trans->flags |= TRRAW;
+
+    *transPtr = trans;
+    return 0;
+}
+
 /*!
  * \brief This routine begins a read or write transaction on the transaction
  * identified by transPtr, in the dbase named by dbase.
@@ -562,6 +591,10 @@ BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
     struct ubik_trans *jt;
     struct ubik_trans *tt;
     afs_int32 code;
+
+    if (ubik_RawDbase(dbase)) {
+	return BeginTransRaw(dbase, transMode, transPtr, readAny);
+    }
 
     if (readAny > 1 && ubik_SyncWriterCacheProc == NULL) {
 	/* it's not safe to use ubik_BeginTransReadAnyWrite without a
@@ -694,6 +727,11 @@ ubik_AbortTrans(struct ubik_trans *transPtr)
     afs_int32 code2;
     struct ubik_dbase *dbase;
 
+    if (ubik_RawTrans(transPtr)) {
+	free(transPtr);
+	return 0;
+    }
+
     dbase = transPtr->dbase;
 
     if (transPtr->flags & TRCACHELOCKED) {
@@ -756,6 +794,37 @@ WritebackApplicationCache(struct ubik_dbase *dbase)
     }
 }
 
+static int
+EndTransRaw(struct ubik_trans *transPtr)
+{
+    struct ubik_version version;
+    int code;
+
+    memset(&version, 0, sizeof(version));
+
+    if (transPtr->type == UBIK_READTRANS) {
+	return ubik_AbortTrans(transPtr);
+    }
+
+    code = ubik_RawGetVersion(transPtr, &version);
+    if (code != 0) {
+	goto error;
+    }
+
+    if (version.epoch == 0 || version.counter == 0) {
+	/* Require a valid version before we can commit. */
+	code = UNOQUORUM;
+	goto error;
+    }
+
+    free(transPtr);
+    return 0;
+
+ error:
+    ubik_AbortTrans(transPtr);
+    return code;
+}
+
 /*!
  * \brief This routine ends a read or write transaction on the open transaction identified by transPtr.
  * \return an error code.
@@ -770,6 +839,10 @@ ubik_EndTrans(struct ubik_trans *transPtr)
     afs_int32 now;
     int cachelocked = 0;
     struct ubik_dbase *dbase;
+
+    if (ubik_RawTrans(transPtr)) {
+	return EndTransRaw(transPtr);
+    }
 
     if (transPtr->type == UBIK_WRITETRANS) {
 	code = ubik_Flush(transPtr);
@@ -919,6 +992,67 @@ ubik_EndTrans(struct ubik_trans *transPtr)
     return code;
 }
 
+static int
+seek_fread(void *buf, size_t nbytes, FILE *fh, long offset)
+{
+    size_t bytes_read;
+
+    opr_Assert(fh != NULL);
+    if (fseek(fh, offset, SEEK_SET) < 0) {
+	return UIOERROR;
+    }
+
+    bytes_read = fread(buf, 1, nbytes, fh);
+    if (bytes_read == nbytes) {
+	return 0;
+    }
+
+    if (ferror(fh)) {
+	return UIOERROR;
+    }
+
+    /*
+     * For a short read, blank out the rest of 'buf' that we failed to read in
+     * and return success, to match the historical semantics of functions like
+     * ubik_Read().
+     */
+    opr_Assert(bytes_read < nbytes);
+    memset((char*)buf + bytes_read, 0, nbytes - bytes_read);
+
+    return 0;
+}
+
+static int
+seek_fwrite(void *buf, size_t nbytes, FILE *fh, long offset)
+{
+    opr_Assert(fh != NULL);
+    if (fseek(fh, offset, SEEK_SET) < 0) {
+	return UIOERROR;
+    }
+    if (fwrite(buf, 1, nbytes, fh) != nbytes) {
+	return UIOERROR;
+    }
+    return 0;
+}
+
+static int
+rawtrans_io(int do_write, struct ubik_trans *transPtr, void *buffer,
+	    afs_int32 length)
+{
+    int code;
+    if (do_write) {
+	code = seek_fwrite(buffer, length, transPtr->dbase->raw_fh,
+			   transPtr->seekPos + HDRSIZE);
+    } else {
+	code = seek_fread(buffer, length, transPtr->dbase->raw_fh,
+			  transPtr->seekPos + HDRSIZE);
+    }
+    if (code == 0) {
+	transPtr->seekPos += length;
+    }
+    return code;
+}
+
 /*!
  * \brief This routine reads length bytes into buffer from the current position in the database.
  *
@@ -931,6 +1065,10 @@ ubik_Read(struct ubik_trans *transPtr, void *buffer,
 	  afs_int32 length)
 {
     afs_int32 code;
+
+    if (ubik_RawTrans(transPtr)) {
+	return rawtrans_io(0, transPtr, buffer, length);
+    }
 
     /* reads are easy to do: handle locally */
     DBHOLD(transPtr->dbase);
@@ -962,6 +1100,10 @@ ubik_Flush(struct ubik_trans *transPtr)
 
     if (transPtr->type != UBIK_WRITETRANS)
 	return UBADTYPE;
+
+    if (ubik_RawTrans(transPtr)) {
+	return 0;
+    }
 
     DBHOLD(transPtr->dbase);
     if (!transPtr->iovec_info.iovec_wrt_len
@@ -1005,6 +1147,10 @@ ubik_Write(struct ubik_trans *transPtr, void *vbuffer,
     afs_int32 code, error = 0;
     afs_int32 pos, len, size;
     char * buffer = (char *)vbuffer;
+
+    if (ubik_RawTrans(transPtr)) {
+	return rawtrans_io(1, transPtr, buffer, length);
+    }
 
     if (transPtr->type != UBIK_WRITETRANS)
 	return UBADTYPE;
@@ -1100,6 +1246,12 @@ ubik_Seek(struct ubik_trans *transPtr, afs_int32 fileid,
 {
     afs_int32 code;
 
+    if (ubik_RawTrans(transPtr)) {
+	transPtr->seekFile = fileid;
+	transPtr->seekPos = position;
+	return 0;
+    }
+
     DBHOLD(transPtr->dbase);
     if (!urecovery_AllBetter(transPtr->dbase, transPtr->flags & TRREADANY)) {
 	code = UNOQUORUM;
@@ -1142,6 +1294,10 @@ ubik_SetLock(struct ubik_trans *atrans, afs_int32 apos, afs_int32 alen,
 	code = ubik_Flush(atrans);
 	if (code)
 	    return (code);
+    }
+
+    if (ubik_RawTrans(atrans)) {
+	return 0;
     }
 
     DBHOLD(atrans->dbase);
@@ -1223,6 +1379,10 @@ ubik_CheckCache(struct ubik_trans *atrans, ubik_updatecache_func cbf, void *rock
 
     if (!(atrans && atrans->dbase))
 	return -1;
+
+    if (ubik_RawTrans(atrans)) {
+	return (*cbf)(atrans, rock);
+    }
 
     ObtainReadLock(&atrans->dbase->cache_lock);
 
@@ -1324,4 +1484,212 @@ ubik_SetServerSecurityProcs(void (*buildproc) (void *,
     buildSecClassesProc = buildproc;
     checkSecurityProc = checkproc;
     securityRock = rock;
+}
+
+/**
+ * Initialize "raw" access to a ubik database.
+ *
+ * "Raw" access means we access the given database file(s) directly, without
+ * interacting with the ubik distributed system. The intention is for this to
+ * be used by utilities for offline access to ubik database files, while still
+ * using standard ubik calls like ubik_BeginTrans, ubik_Read, etc.
+ *
+ * Note that many things are not initialized about the returned ubik_dbase
+ * struct, and so not all ubik_* calls will work with the given database.
+ *
+ * Transactions can be started and ended for this db the normal way (with
+ * ubik_BeginTrans and ubik_AbortTrans/ubik_EndTrans), but note that i/o is
+ * _not_ transactional. That is, data is written immediately to disk with
+ * ubik_Write, and ubik_AbortTrans will not rollback anything.
+ *
+ * @param[in] path  Path to the database .DB0 file
+ * @param[in] ropts Optional; specifies various options. See ubik_rawinit_opts
+ *                  for details.
+ * @param[out] dbase    The raw database handle.
+ *
+ * @return ubik/errno error codes
+ */
+int
+ubik_RawInit(char *path, struct ubik_rawinit_opts *ropts,
+	     struct ubik_dbase **dbase)
+{
+    static struct ubik_rawinit_opts ropt_defaults;
+
+    struct ubik_dbase *tdb;
+    int code;
+    char *mode;
+
+    if (ropts == NULL) {
+	ropts = &ropt_defaults;
+    }
+
+    *dbase = NULL;
+
+    tdb = calloc(1, sizeof(*tdb));
+    tdb->is_raw = 1;
+    tdb->raw_rw = ropts->r_rw;
+
+    init_locks(tdb);
+
+    if (ropts->r_create) {
+	if (!tdb->raw_rw) {
+	    code = UBADTYPE;
+	    goto done;
+	}
+	mode = "w+bx";
+
+    } else if (tdb->raw_rw) {
+	mode = "r+b";
+    } else {
+	mode = "rb";
+    }
+
+    tdb->raw_fh = fopen(path, mode);
+    if (tdb->raw_fh == NULL) {
+	code = errno;
+	goto done;
+    }
+
+    *dbase = tdb;
+    tdb = NULL;
+    code = 0;
+
+ done:
+    ubik_RawClose(&tdb);
+    return code;
+}
+
+/**
+ * Close a "raw" ubik dbase handle.
+ *
+ * @param[inout] a_dbase    Dbase handle to close (or NULL to do nothing). Set
+ *			    to NULL on return.
+ *
+ * @pre *a_dbase (if given) is a raw handle, opened with ubik_RawInit
+ * @pre All transactions for *a_dbase (if given) have ended
+ */
+void
+ubik_RawClose(struct ubik_dbase **a_dbase)
+{
+    struct ubik_dbase *dbase = *a_dbase;
+    if (dbase == NULL) {
+	return;
+    }
+    *a_dbase = NULL;
+
+    opr_Assert(ubik_RawDbase(dbase));
+    if (dbase->raw_fh != NULL) {
+	fclose(dbase->raw_fh);
+	dbase->raw_fh = NULL;
+    }
+
+#ifdef AFS_PTHREAD_ENV
+    opr_mutex_destroy(&dbase->versionLock);
+    opr_cv_destroy(&dbase->flags_cond);
+#else
+    Lock_Destroy(&dbase->versionLock);
+#endif
+
+    free(dbase);
+}
+
+int
+ubik_RawDbase(struct ubik_dbase *dbase)
+{
+    if (dbase->is_raw) {
+	return 1;
+    }
+    return 0;
+}
+
+int
+ubik_RawTrans(struct ubik_trans *transPtr)
+{
+    if ((transPtr->flags & TRRAW) != 0) {
+	return 1;
+    }
+    return 0;
+}
+
+int
+ubik_RawHandle(struct ubik_trans *trans, FILE **a_fh)
+{
+    if (!ubik_RawTrans(trans)) {
+	return UBADTYPE;
+    }
+    opr_Assert(trans->dbase->raw_fh != NULL);
+    *a_fh = trans->dbase->raw_fh;
+    return 0;
+}
+
+int
+ubik_RawGetHeader(struct ubik_trans *trans, struct ubik_hdr *a_hdr)
+{
+    struct ubik_hdr hdr;
+    int code;
+
+    memset(&hdr, 0, sizeof(hdr));
+
+    if (!ubik_RawTrans(trans)) {
+	return UBADTYPE;
+    }
+
+    code = seek_fread(&hdr, sizeof(hdr), trans->dbase->raw_fh, 0);
+    if (code != 0) {
+	return code;
+    }
+
+    a_hdr->magic = ntohl(hdr.magic);
+    a_hdr->size = ntohs(hdr.size);
+    a_hdr->version.epoch = ntohl(hdr.version.epoch);
+    a_hdr->version.counter = ntohl(hdr.version.counter);
+
+    return 0;
+}
+
+int
+ubik_RawGetVersion(struct ubik_trans *trans, struct ubik_version *version)
+{
+    int code;
+    struct ubik_hdr hdr;
+
+    memset(&hdr, 0, sizeof(hdr));
+
+    if (!ubik_RawTrans(trans)) {
+	return UBADTYPE;
+    }
+
+    code = ubik_RawGetHeader(trans, &hdr);
+    if (code != 0) {
+	return code;
+    }
+
+    *version = hdr.version;
+
+    return 0;
+}
+
+int
+ubik_RawSetVersion(struct ubik_trans *trans, struct ubik_version *version)
+{
+    int code;
+    struct ubik_hdr hdr;
+
+    memset(&hdr, 0, sizeof(hdr));
+
+    if (!ubik_RawTrans(trans) || trans->type != UBIK_WRITETRANS) {
+	return UBADTYPE;
+    }
+
+    hdr.version.epoch = htonl(version->epoch);
+    hdr.version.counter = htonl(version->counter);
+    hdr.magic = htonl(UBIK_MAGIC);
+    hdr.size = htons(HDRSIZE);
+
+    code = seek_fwrite(&hdr, sizeof(hdr), trans->dbase->raw_fh, 0);
+    if (code != 0) {
+	return code;
+    }
+
+    return 0;
 }

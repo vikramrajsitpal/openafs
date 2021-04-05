@@ -219,14 +219,9 @@ testpt: testpt.o libprot.a ${TOP_LIBDIR}/libcmd.a $(LIBS)
 
 testpt.o: testpt.c ${INCLS} ${TOP_INCDIR}/afs/cmd.h AFS_component_version_number.c
 
-CFLAGS_pt_util.o = -I$(TOP_SRCDIR)/ubik
-CFLAGS_ptubik.o = -I$(TOP_SRCDIR)/ubik
-
-pt_util: pt_util.o ptutils.o ptubik.o utils.o map.o libprot.a $(LIBS)
-	$(AFS_LDRULE) pt_util.o ptutils.o ptubik.o utils.o map.o libprot.a \
+pt_util: pt_util.o ptutils.o utils.o map.o libprot.a $(LIBS)
+	$(AFS_LDRULE) pt_util.o ptutils.o utils.o map.o libprot.a \
 		${TOP_LIBDIR}/libcmd.a $(LIBS) $(LIB_roken) ${XLIBS}
-
-ptubik.o: ptubik.c ${INCLS}
 
 prerror.h: pterror.h
 	${INSTALL_DATA} $? $@

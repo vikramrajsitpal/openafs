@@ -27,7 +27,7 @@
 #include <afs/cmd.h>		/*Command line parsing */
 #include <afs/afsutil.h>
 #include <lock.h>
-#include <ubik_internal.h>
+#include <ubik_np.h>
 #include <rx/xdr.h>
 #include <rx/rx.h>
 
@@ -44,15 +44,17 @@ extern char *optarg;
 extern int optind;
 
 extern int pr_noAuth;
+struct ubik_dbase *dbase;
+struct prheader cheader;
+char *prdir = "/dev/null";
 
 int restricted = 0;
 
-static int display_entry(int);
+static int display_entry(struct ubik_trans *, int);
 static void add_group(long);
-static void display_groups(void);
-static void display_group(int);
-static void fix_pre(struct prentry *);
-static char *id_to_name(int);
+static void display_groups(struct ubik_trans *);
+static void display_group(struct ubik_trans *, int);
+static char *id_to_name(struct ubik_trans *, int);
 static char *checkin(struct prentry *);
 static char *check_core(int);
 static int CommandProc(struct cmd_syndesc *, void *);
@@ -84,7 +86,6 @@ struct usr_list {
 static struct usr_list *usr_head = 0;
 
 char buffer[1024];
-int dbase_fd;
 FILE *dfp;
 
 #define FMT_BASE "%-10s %d/%d %d %d %d\n"
@@ -137,12 +138,19 @@ CommandProc(struct cmd_syndesc *a_as, void *arock)
     long upos;
     long gpos = 0;
     struct prentry uentry, gentry;
-    struct ubik_hdr *uh;
     char *dfile = 0;
     const char *pbase = AFSDIR_SERVER_PRDB_FILEPATH;
     char *pfile = NULL;
     char pbuffer[1028];
     struct cmd_parmdesc *tparm;
+    struct ubik_rawinit_opts ropts;
+    struct ubik_trans *trans = NULL;
+    struct ubik_version new_vers;
+    struct ubik_hdr uhdr;
+
+    memset(&ropts, 0, sizeof(ropts));
+    memset(&new_vers, 0, sizeof(new_vers));
+    memset(&uhdr, 0, sizeof(uhdr));
 
     tparm = a_as->parms;
 
@@ -181,15 +189,26 @@ CommandProc(struct cmd_syndesc *a_as, void *arock)
         snprintf(pbuffer, sizeof(pbuffer), "%s.DB0", pbase);
         pfile = pbuffer;
     }
-    if ((dbase_fd = open(pfile, (wflag ? O_RDWR : O_RDONLY) | O_CREAT, 0600))
-	< 0) {
+
+    if (wflag) {
+	ropts.r_rw = 1;
+	if (access(pfile, F_OK) != 0) {
+	    ropts.r_create = 1;
+	}
+    }
+
+    code = ubik_RawInit(pfile, &ropts, &dbase);
+    if (code != 0) {
 	fprintf(stderr, "pt_util: cannot open %s: %s\n", pfile,
-		strerror(errno));
+		afs_error_message(code));
 	exit(1);
     }
-    if (read(dbase_fd, buffer, HDRSIZE) < 0) {
-	fprintf(stderr, "pt_util: error reading %s: %s\n", pfile,
-		strerror(errno));
+
+    code = ubik_BeginTrans(dbase, (wflag ? UBIK_WRITETRANS : UBIK_READTRANS),
+			   &trans);
+    if (code != 0) {
+	fprintf(stderr, "pt_util: error starting transaction on %s: %s\n",
+		pfile, afs_error_message(code));
 	exit(1);
     }
 
@@ -202,36 +221,46 @@ CommandProc(struct cmd_syndesc *a_as, void *arock)
     } else
 	dfp = (wflag ? stdin : stdout);
 
-    uh = (struct ubik_hdr *)buffer;
-    if (ntohl(uh->magic) != UBIK_MAGIC)
+    /* Ignore errors; if we can't read the ubik header, treat the header as
+     * blank. */
+    (void)ubik_RawGetHeader(trans, &uhdr);
+    if (uhdr.magic != UBIK_MAGIC)
 	fprintf(stderr, "pt_util: %s: Bad UBIK_MAGIC. Is %x should be %x\n",
-		pfile, ntohl(uh->magic), UBIK_MAGIC);
-    memcpy(&uv, &uh->version, sizeof(struct ubik_version));
+		pfile, uhdr.magic, UBIK_MAGIC);
 
-    if (wflag && ntohl(uv.epoch) == 0 && ntohl(uv.counter) == 0) {
-	uv.epoch = htonl(2); /* a ubik version of 0 or 1 has special meaning */
-	memcpy(&uh->version, &uv, sizeof(struct ubik_version));
-	lseek(dbase_fd, 0, SEEK_SET);
-	if (write(dbase_fd, buffer, HDRSIZE) < 0) {
+    uv = uhdr.version;
+    if (wflag && uv.epoch == 0 && uv.counter == 0) {
+	uv.epoch = 2; /* a ubik epoch of 0 or 1 has special meaning */
+	uv.counter = 1;
+
+	code = ubik_RawSetVersion(trans, &uv);
+	if (code != 0) {
 	    fprintf(stderr, "pt_util: error writing ubik version to %s: %s\n",
-		    pfile, strerror(errno));
+		    pfile, afs_error_message(code));
 	    exit(1);
 	}
     }
 
-    /* Now that any writeback is done, swap these */
-    uv.epoch = ntohl(uv.epoch);
-    uv.counter = ntohl(uv.counter);
-
-    fprintf(stderr, "Ubik Version is: %d.%d\n", uv.epoch, uv.counter);
-    if (read(dbase_fd, &prh, sizeof(struct prheader)) < 0) {
-	fprintf(stderr, "pt_util: error reading %s: %s\n", pfile,
-		strerror(errno));
+    code = ubik_EndTrans(trans);
+    trans = NULL;
+    if (code != 0) {
+	fprintf(stderr, "pt_util: error ending tx on %s: %s\n", pfile,
+		afs_error_message(code));
 	exit(1);
     }
 
+    fprintf(stderr, "Ubik Version is: %d.%d\n", uv.epoch, uv.counter);
+
     Initdb();
     initialize_PT_error_table();
+
+    code = ubik_BeginTrans(dbase, (wflag ? UBIK_WRITETRANS : UBIK_READTRANS),
+			   &trans);
+    if (code != 0) {
+	fprintf(stderr, "pt_util: error starting transaction on %s: %s\n",
+		pfile, afs_error_message(code));
+	exit(1);
+    }
 
     if (wflag) {
 	struct usr_list *u;
@@ -262,20 +291,20 @@ CommandProc(struct cmd_syndesc *a_as, void *arock)
 		if (u) {
 		    /* Add user - deferred because it is probably foreign */
 		    u->uid = 0;
-		    if (FindByID(0, uid))
+		    if (FindByID(trans, uid))
 			code = PRIDEXIST;
 		    else {
 			if (!code
 			    && (flags & (PRGRP | PRQUOTA)) ==
 			    (PRGRP | PRQUOTA)) {
 			    gentry.ngroups++;
-			    code = pr_WriteEntry(0, 0, gpos, &gentry);
+			    code = pr_WriteEntry(trans, 0, gpos, &gentry);
 			    if (code)
 				fprintf(stderr,
 					"Error setting group count on %s: %s\n",
 					name, afs_error_message(code));
 			}
-			code = CreateEntry(0, u->name, &uid, 1 /*idflag */ ,
+			code = CreateEntry(trans, u->name, &uid, 1 /*idflag */ ,
 					   1 /*gflag */ ,
 					   SYSADMINID /*oid */ ,
 					   SYSADMINID /*cid */ );
@@ -288,15 +317,15 @@ CommandProc(struct cmd_syndesc *a_as, void *arock)
 		/* Add user to group */
 		if (id == ANYUSERID || id == AUTHUSERID || uid == ANONYMOUSID) {
 		    code = PRPERM;
-		} else if ((upos = FindByID(0, uid))
-			   && (gpos = FindByID(0, id))) {
-		    code = pr_ReadEntry(0, 0, upos, &uentry);
+		} else if ((upos = FindByID(trans, uid))
+			   && (gpos = FindByID(trans, id))) {
+		    code = pr_ReadEntry(trans, 0, upos, &uentry);
 		    if (!code)
-			code = pr_ReadEntry(0, 0, gpos, &gentry);
+			code = pr_ReadEntry(trans, 0, gpos, &gentry);
 		    if (!code)
-			code = AddToEntry(0, &gentry, gpos, uid);
+			code = AddToEntry(trans, &gentry, gpos, uid);
 		    if (!code)
-			code = AddToEntry(0, &uentry, upos, id);
+			code = AddToEntry(trans, &uentry, upos, id);
 		} else
 		    code = PRNOENT;
 
@@ -314,10 +343,10 @@ CommandProc(struct cmd_syndesc *a_as, void *arock)
 
 		seenGroup = 1;
 
-		if (FindByID(0, id))
+		if (FindByID(trans, id))
 		    code = PRIDEXIST;
 		else
-		    code = CreateEntry(0, name, &id, 1 /*idflag */ ,
+		    code = CreateEntry(trans, name, &id, 1 /*idflag */ ,
 				       flags & PRGRP, oid, cid);
 		if (code == PRBADNAM) {
 		    u = malloc(sizeof(struct usr_list));
@@ -331,12 +360,12 @@ CommandProc(struct cmd_syndesc *a_as, void *arock)
 		} else if ((flags & PRACCESS)
 			   || (flags & (PRGRP | PRQUOTA)) ==
 			   (PRGRP | PRQUOTA)) {
-		    gpos = FindByID(0, id);
-		    code = pr_ReadEntry(0, 0, gpos, &gentry);
+		    gpos = FindByID(trans, id);
+		    code = pr_ReadEntry(trans, 0, gpos, &gentry);
 		    if (!code) {
 			gentry.flags = flags;
 			gentry.ngroups = quota;
-			code = pr_WriteEntry(0, 0, gpos, &gentry);
+			code = pr_WriteEntry(trans, 0, gpos, &gentry);
 		    }
 		    if (code)
 			fprintf(stderr,
@@ -349,12 +378,20 @@ CommandProc(struct cmd_syndesc *a_as, void *arock)
 	    if (u->uid)
 		fprintf(stderr, "Error while creating %s: %s\n", u->name,
 			afs_error_message(PRBADNAM));
+
     } else {
+	code = pr_Read(trans, 0, 0, &prh, sizeof(struct prheader));
+	if (code != 0) {
+	    fprintf(stderr, "pt_util: error reading %s: %s\n", pfile,
+		    afs_error_message(code));
+	    exit(1);
+	}
+
 	for (i = 0; i < HASHSIZE; i++) {
 	    upos = nflag ? ntohl(prh.nameHash[i]) : ntohl(prh.idHash[i]);
 	    while (upos) {
 		long newpos;
-		newpos = display_entry(upos);
+		newpos = display_entry(trans, upos);
 		if (newpos == upos) {
 		    fprintf(stderr, "pt_util: hash error in %s chain %d\n",
 			    nflag ? "name":"id", i);
@@ -364,42 +401,45 @@ CommandProc(struct cmd_syndesc *a_as, void *arock)
 	    }
 	}
 	if (flags & DO_GRP)
-	    display_groups();
+	    display_groups(trans);
     }
 
-    lseek(dbase_fd, 0, L_SET);	/* rewind to beginning of file */
-    if (read(dbase_fd, buffer, HDRSIZE) < 0) {
-	fprintf(stderr, "pt_util: error reading %s: %s\n", pfile,
-		strerror(errno));
+    code = ubik_RawGetVersion(trans, &new_vers);
+    if (code != 0) {
+	fprintf(stderr, "pt_util: error reading label from %s: %s\n", pfile,
+		afs_error_message(code));
 	exit(1);
     }
-    uh = (struct ubik_hdr *)buffer;
 
-    uh->version.epoch = ntohl(uh->version.epoch);
-    uh->version.counter = ntohl(uh->version.counter);
-
-    if ((uh->version.epoch != uv.epoch)
-	|| (uh->version.counter != uv.counter)) {
+    if ((new_vers.epoch != uv.epoch)
+	|| (new_vers.counter != uv.counter)) {
 	fprintf(stderr,
 		"pt_util: Ubik Version number changed during execution.\n");
 	fprintf(stderr, "Old Version = %d.%d, new version = %d.%d\n",
-		uv.epoch, uv.counter, uh->version.epoch, uh->version.counter);
+		uv.epoch, uv.counter, new_vers.epoch, new_vers.counter);
     }
-    close(dbase_fd);
+
+    code = ubik_EndTrans(trans);
+    if (code != 0) {
+	fprintf(stderr, "pt_util: error ending tx on %s: %s\n", pfile,
+		afs_error_message(code));
+	exit(1);
+    }
+
+    ubik_RawClose(&dbase);
     exit(0);
 }
 
 static int
-display_entry(int offset)
+display_entry(struct ubik_trans *trans, int offset)
 {
-    lseek(dbase_fd, offset + HDRSIZE, L_SET);
-    if (read(dbase_fd, &pre, sizeof(struct prentry)) < 0) {
-	fprintf(stderr, "pt_util: error reading entry %d: %s\n",
-		offset, strerror(errno));
+    int code;
+    code = pr_ReadEntry(trans, 0, offset, &pre);
+    if (code != 0) {
+	fprintf(stderr, "pt_util: error reading entry %d: %s\n", offset,
+		afs_error_message(code));
 	exit(1);
     }
-
-    fix_pre(&pre);
 
     if ((pre.flags & PRFREE) == 0) {
 	if (pre.flags & PRGRP) {
@@ -432,7 +472,7 @@ add_group(long id)
 }
 
 static void
-display_groups(void)
+display_groups(struct ubik_trans *trans)
 {
     int i, id;
     struct grp_list *g;
@@ -441,7 +481,7 @@ display_groups(void)
     while (grp_count--) {
 	i = grp_count % 1024;
 	id = g->groups[i];
-	display_group(id);
+	display_group(trans, id);
 	if (i == 0) {
 	    grp_head = g->next;
 	    free(g);
@@ -451,19 +491,21 @@ display_groups(void)
 }
 
 static void
-display_group(int id)
+display_group(struct ubik_trans *trans, int id)
 {
     int i, offset;
     int print_grp = 0;
+    int code;
 
     offset = ntohl(prh.idHash[IDHash(id)]);
     while (offset) {
-	lseek(dbase_fd, offset + HDRSIZE, L_SET);
-	if (read(dbase_fd, &pre, sizeof(struct prentry)) < 0) {
-	    fprintf(stderr, "pt_util: read i/o error: %s\n", strerror(errno));
+	code = pr_ReadEntry(trans, 0, offset, &pre);
+	if (code != 0) {
+	    fprintf(stderr, "pt_util: error reading entry %d: %s\n", offset,
+		    afs_error_message(code));
 	    exit(1);
 	}
-	fix_pre(&pre);
+
 	if (pre.id == id)
 	    break;
 	offset = pre.nextID;
@@ -489,21 +531,19 @@ display_group(int id)
 			pre.id, pre.owner, pre.creator);
 		print_grp = 2;
 	    }
-	    fprintf(dfp, FMT_MEM, id_to_name(id), id);
+	    fprintf(dfp, FMT_MEM, id_to_name(trans, id), id);
 	}
     }
     if (i == PRSIZE) {
 	offset = pre.next;
 	while (offset) {
-	    lseek(dbase_fd, offset + HDRSIZE, L_SET);
-	    if (read(dbase_fd, &prco, sizeof(struct contentry)) < 0) {
-		fprintf(stderr, "pt_util: read i/o error: %s\n",
-			strerror(errno));
+	    code = pr_ReadCoEntry(trans, 0, offset, &prco);
+	    if (code != 0) {
+		fprintf(stderr, "pt_util: error reading coentry %d: %s\n",
+			offset, afs_error_message(code));
 		exit(1);
 	    }
-	    prco.next = ntohl(prco.next);
 	    for (i = 0; i < COSIZE; i++) {
-		prco.entries[i] = ntohl(prco.entries[i]);
 		if ((id = prco.entries[i]) == 0)
 		    break;
 		if (id == PRBADID)
@@ -514,7 +554,7 @@ display_group(int id)
 				pre.ngroups, pre.id, pre.owner, pre.creator);
 			print_grp = 2;
 		    }
-		    fprintf(dfp, FMT_MEM, id_to_name(id), id);
+		    fprintf(dfp, FMT_MEM, id_to_name(trans, id), id);
 		}
 	    }
 	    if ((i == COSIZE) && prco.next)
@@ -525,56 +565,30 @@ display_group(int id)
     }
 }
 
-static void
-fix_pre(struct prentry *pre)
-{
-    int i;
-
-    pre->flags = ntohl(pre->flags);
-    pre->id = ntohl(pre->id);
-    pre->cellid = ntohl(pre->cellid);
-    pre->next = ntohl(pre->next);
-    pre->nextID = ntohl(pre->nextID);
-    pre->nextName = ntohl(pre->nextName);
-    pre->owner = ntohl(pre->owner);
-    pre->creator = ntohl(pre->creator);
-    pre->ngroups = ntohl(pre->ngroups);
-    pre->nusers = ntohl(pre->nusers);
-    pre->count = ntohl(pre->count);
-    pre->instance = ntohl(pre->instance);
-    pre->owned = ntohl(pre->owned);
-    pre->nextOwned = ntohl(pre->nextOwned);
-    pre->parent = ntohl(pre->parent);
-    pre->sibling = ntohl(pre->sibling);
-    pre->child = ntohl(pre->child);
-    for (i = 0; i < PRSIZE; i++) {
-	pre->entries[i] = ntohl(pre->entries[i]);
-    }
-}
-
 static char *
-id_to_name(int id)
+id_to_name(struct ubik_trans *trans, int id)
 {
     int offset;
     static struct prentry pre;
     char *name;
+    int code;
 
     name = check_core(id);
     if (name)
 	return (name);
     offset = ntohl(prh.idHash[IDHash(id)]);
     while (offset) {
-	lseek(dbase_fd, offset + HDRSIZE, L_SET);
-	if (read(dbase_fd, &pre, sizeof(struct prentry)) < 0) {
-	    fprintf(stderr, "pt_util: read i/o error: %s\n", strerror(errno));
+	code = pr_ReadEntry(trans, 0, offset, &pre);
+	if (code != 0) {
+	    fprintf(stderr, "pt_util: error reading entry %d: %s\n", offset,
+		    afs_error_message(code));
 	    exit(1);
 	}
-	pre.id = ntohl(pre.id);
 	if (pre.id == id) {
 	    name = checkin(&pre);
 	    return (name);
 	}
-	offset = ntohl(pre.nextID);
+	offset = pre.nextID;
     }
     return 0;
 }

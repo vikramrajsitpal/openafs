@@ -66,4 +66,20 @@ struct ubik_serverinit_opts {
 int ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
 			  struct ubik_dbase **dbase);
 
+struct ubik_rawinit_opts {
+    int r_create;
+    int r_rw;
+};
+
+int ubik_RawDbase(struct ubik_dbase *dbase);
+int ubik_RawTrans(struct ubik_trans *trans);
+int ubik_RawHandle(struct ubik_trans *trans, FILE **a_fh);
+
+int ubik_RawInit(char *path, struct ubik_rawinit_opts *ropts,
+		 struct ubik_dbase **dbase);
+void ubik_RawClose(struct ubik_dbase **a_dbase);
+int ubik_RawGetHeader(struct ubik_trans *trans, struct ubik_hdr *hdr);
+int ubik_RawGetVersion(struct ubik_trans *trans, struct ubik_version *version);
+int ubik_RawSetVersion(struct ubik_trans *trans, struct ubik_version *version);
+
 #endif /* OPENAFS_UBIK_UBIK_NP_H */

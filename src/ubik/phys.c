@@ -15,6 +15,7 @@
 #include <lwp.h>
 
 #include <lock.h>
+#include <afs/opr.h>
 #include <afs/afsutil.h>
 
 #include "ubik_internal.h"
@@ -79,6 +80,8 @@ uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
     int i;
     struct fdcache *tfd;
     struct fdcache *bestfd;
+
+    opr_Assert(!ubik_RawDbase(adbase));
 
     /* initialize package */
     if (!initd) {
@@ -355,6 +358,8 @@ uphys_invalidate(struct ubik_dbase *adbase, afs_int32 afid)
 static FILE *
 uphys_buf_append_open(struct ubik_dbase *adbase, afs_int32 afid)
 {
+    opr_Assert(!ubik_RawDbase(adbase));
+
     /* If we have a cached handle open for this file, just return it. */
     if (buf_fdcache.stream && buf_fdcache.fileID == afid) {
         return buf_fdcache.stream;

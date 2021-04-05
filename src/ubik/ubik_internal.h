@@ -68,6 +68,10 @@ struct ubik_dbase {
 #ifdef AFS_PTHREAD_ENV
     pthread_cond_t flags_cond;      /*!< condition variable to manage changes to flags */
 #endif
+
+    int is_raw;	    /*!< is this a raw db handle? */
+    int raw_rw;	    /*!< for raw dbs, can we write to the db? */
+    FILE *raw_fh;   /*!< for raw dbs, the file handle to the db file */
 };
 
 /*!
@@ -106,6 +110,7 @@ struct ubik_trans {
 				 *   ubik_CheckCache at some point */
 #define TRREADWRITE	0x40    /*!< read even if there's a conflicting
 				 *   ubik- level write lock */
+#define TRRAW		0x80    /*!< is this a tx for a raw db? */
 /*\}*/
 
 /*! \name ubik system database numbers */
