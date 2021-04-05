@@ -98,14 +98,14 @@ struct ubik_trans {
 /*\}*/
 
 /*!\name ubik trans flags */
-#define	TRDONE		    1	/*!< commit or abort done */
-#define	TRABORT		    2	/*!< if #TRDONE, tells if aborted */
-#define TRREADANY	    4	/*!< read any data available in trans */
-#define TRCACHELOCKED       32  /*!< this trans has locked dbase->cache_lock
+#define TRDONE		0x01    /*!< commit or abort done */
+#define TRABORT		0x02    /*!< if #TRDONE, tells if aborted */
+#define TRREADANY	0x04    /*!< read any data available in trans */
+#define TRCACHELOCKED	0x20    /*!< this trans has locked dbase->cache_lock
 				 *   (meaning, this trans has called
 				 *   ubik_CheckCache at some point */
-#define TRREADWRITE         64  /*!< read even if there's a conflicting ubik-
-				 *   level write lock */
+#define TRREADWRITE	0x40    /*!< read even if there's a conflicting
+				 *   ubik- level write lock */
 /*\}*/
 
 /*! \name ubik system database numbers */
