@@ -104,13 +104,13 @@ udisk_LogOpcode(struct ubik_dbase *adbase, afs_int32 aopcode, int async)
 
     /* setup data and do write */
     aopcode = htonl(aopcode);
-    code = (*adbase->buffered_append)(adbase, LOGFILE, &aopcode, sizeof(afs_int32));
+    code = uphys_buf_append(adbase, LOGFILE, &aopcode, sizeof(afs_int32));
     if (code != sizeof(afs_int32))
 	return UIOERROR;
 
     /* optionally sync data */
     if (async)
-	code = (*adbase->sync) (adbase, LOGFILE);
+	code = uphys_sync(adbase, LOGFILE);
     else
 	code = 0;
     return code;
@@ -131,13 +131,12 @@ udisk_LogEnd(struct ubik_dbase *adbase, struct ubik_version *aversion)
     data[2] = htonl(aversion->counter);
 
     /* do write */
-    code =
-	(*adbase->buffered_append)(adbase, LOGFILE, data, 3 * sizeof(afs_int32));
+    code = uphys_buf_append(adbase, LOGFILE, data, 3 * sizeof(afs_int32));
     if (code != 3 * sizeof(afs_int32))
 	return UIOERROR;
 
     /* finally sync the log */
-    code = (*adbase->sync) (adbase, LOGFILE);
+    code = uphys_sync(adbase, LOGFILE);
     return code;
 }
 
@@ -158,13 +157,12 @@ udisk_LogWriteData(struct ubik_dbase *adbase, afs_int32 afile, void *abuffer,
     data[3] = htonl(alen);
 
     /* write header */
-    code =
-	(*adbase->buffered_append)(adbase, LOGFILE, data, 4 * sizeof(afs_int32));
+    code = uphys_buf_append(adbase, LOGFILE, data, 4 * sizeof(afs_int32));
     if (code != 4 * sizeof(afs_int32))
 	return UIOERROR;
 
     /* write data */
-    code = (*adbase->buffered_append)(adbase, LOGFILE, abuffer, alen);
+    code = uphys_buf_append(adbase, LOGFILE, abuffer, alen);
     if (code != alen)
 	return UIOERROR;
     return 0;
@@ -307,9 +305,8 @@ DRead(struct ubik_trans *atrans, afs_int32 fid, int page)
     memset(tb->data, 0, UBIK_PAGESIZE);
 
     tb->lockers++;
-    code =
-	(*dbase->read) (dbase, fid, tb->data, page * UBIK_PAGESIZE,
-			UBIK_PAGESIZE);
+    code = uphys_read(dbase, fid, tb->data, page * UBIK_PAGESIZE,
+		      UBIK_PAGESIZE);
     if (code < 0) {
 	tb->file = BADFID;
 	Dlru(tb);
@@ -443,9 +440,8 @@ DFlush(struct ubik_trans *atrans)
     for (i = 0; i < nbuffers; i++, tb++) {
 	if (tb->dirty) {
 	    code = tb->page * UBIK_PAGESIZE;	/* offset within file */
-	    code =
-		(*adbase->write) (adbase, tb->file, tb->data, code,
-				  UBIK_PAGESIZE);
+	    code = uphys_write(adbase, tb->file, tb->data, code,
+			       UBIK_PAGESIZE);
 	    if (code != UBIK_PAGESIZE)
 		return UIOERROR;
 	}
@@ -523,7 +519,7 @@ DSync(struct ubik_trans *atrans)
 	if (file == BADFID)
 	    break;
 	/* otherwise we have a file to sync */
-	code = (*adbase->sync) (adbase, file);
+	code = uphys_sync(adbase, file);
 	if (code)
 	    rCode = code;
     }
@@ -684,7 +680,7 @@ udisk_commit(struct ubik_trans *atrans)
 	    newversion.epoch = version_globals.ubik_epochTime;
 	    newversion.counter = 1;
 
-	    code = (*dbase->setlabel) (dbase, 0, &newversion);
+	    code = uphys_setlabel(dbase, 0, &newversion);
 	    if (code) {
 		UBIK_VERSION_UNLOCK;
 		return code;
@@ -724,11 +720,11 @@ udisk_commit(struct ubik_trans *atrans)
 	    panic("Synchronizing Ubik DB modifications\n");
 
 	/* label the committed dbase */
-	code = (*dbase->setlabel) (dbase, 0, &dbase->version);
+	code = uphys_setlabel(dbase, 0, &dbase->version);
 	if (code)
 	    panic("Truncating Ubik DB\n");
 
-	code = (*dbase->truncate) (dbase, LOGFILE, 0);	/* discard log (optional) */
+	code = uphys_truncate(dbase, LOGFILE, 0);	/* discard log (optional) */
 	if (code)
 	    panic("Truncating Ubik logfile\n");
 
@@ -763,7 +759,7 @@ udisk_abort(struct ubik_trans *atrans)
     dbase = atrans->dbase;
     if (atrans->type == UBIK_WRITETRANS && dbase->dbFlags & DBWRITING) {
 	udisk_LogOpcode(dbase, LOGABORT, 1);
-	code = (*dbase->truncate) (dbase, LOGFILE, 0);
+	code = uphys_truncate(dbase, LOGFILE, 0);
 	if (code)
 	    panic("Truncating Ubik logfile during an abort\n");
 	DAbort(atrans);		/* remove all dirty pages */

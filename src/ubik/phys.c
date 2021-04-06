@@ -260,18 +260,6 @@ uphys_truncate(struct ubik_dbase *adbase, afs_int32 afile,
 }
 
 /*!
- * \brief Get number of dbase files.
- *
- * \todo Really should scan dir for data.
- */
-int
-uphys_getnfiles(struct ubik_dbase *adbase)
-{
-    /* really should scan dir for data */
-    return 1;
-}
-
-/*!
  * \brief Get database label, with \p aversion in host order.
  */
 int

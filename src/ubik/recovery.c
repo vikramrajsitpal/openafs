@@ -214,9 +214,7 @@ ReplayLog(struct ubik_dbase *adbase)
     logIsGood = 0;
     /* for now, assume that all ops in log pertain to one transaction; see if there's a commit */
     while (1) {
-	code =
-	    (*adbase->read) (adbase, LOGFILE, (char *)&opcode, tpos,
-			     sizeof(afs_int32));
+	code = uphys_read(adbase, LOGFILE, &opcode, tpos, sizeof(afs_int32));
 	if (code != sizeof(afs_int32))
 	    break;
 	opcode = ntohl(opcode);
@@ -230,9 +228,8 @@ ReplayLog(struct ubik_dbase *adbase)
 	    break;
 	} else if (opcode == LOGDATA) {
 	    tpos += 4;
-	    code =
-		(*adbase->read) (adbase, LOGFILE, (char *)buffer, tpos,
-				 3 * sizeof(afs_int32));
+	    code = uphys_read(adbase, LOGFILE, buffer, tpos,
+			      3 * sizeof(afs_int32));
 	    if (code != 3 * sizeof(afs_int32))
 		break;
 	    /* otherwise, skip over the data bytes, too */
@@ -250,9 +247,8 @@ ReplayLog(struct ubik_dbase *adbase)
 	logIsGood = 0;
 	syncFile = -1;
 	while (1) {
-	    code =
-		(*adbase->read) (adbase, LOGFILE, (char *)&opcode, tpos,
-				 sizeof(afs_int32));
+	    code = uphys_read(adbase, LOGFILE, &opcode, tpos,
+			      sizeof(afs_int32));
 	    if (code != sizeof(afs_int32))
 		break;
 	    opcode = ntohl(opcode);
@@ -264,14 +260,13 @@ ReplayLog(struct ubik_dbase *adbase)
 	    else if (opcode == LOGEND) {
 		struct ubik_version version;
 		tpos += 4;
-		code =
-		    (*adbase->read) (adbase, LOGFILE, (char *)buffer, tpos,
-				     2 * sizeof(afs_int32));
+		code = uphys_read(adbase, LOGFILE, buffer, tpos,
+				  2 * sizeof(afs_int32));
 		if (code != 2 * sizeof(afs_int32))
 		    return UBADLOG;
 		version.epoch = ntohl(buffer[0]);
 		version.counter = ntohl(buffer[1]);
-		code = (*adbase->setlabel) (adbase, 0, &version);
+		code = uphys_setlabel(adbase, 0, &version);
 		if (code)
 		    return code;
 		ViceLog(0, ("Successfully replayed log for interrupted "
@@ -281,9 +276,8 @@ ReplayLog(struct ubik_dbase *adbase)
 		break;		/* all done now */
 	    } else if (opcode == LOGDATA) {
 		tpos += 4;
-		code =
-		    (*adbase->read) (adbase, LOGFILE, (char *)buffer, tpos,
-				     3 * sizeof(afs_int32));
+		code = uphys_read(adbase, LOGFILE, buffer, tpos,
+				  3 * sizeof(afs_int32));
 		if (code != 3 * sizeof(afs_int32))
 		    break;
 		tpos += 3 * sizeof(afs_int32);
@@ -294,7 +288,7 @@ ReplayLog(struct ubik_dbase *adbase)
 		/* try to minimize file syncs */
 		if (syncFile != tfile) {
 		    if (syncFile >= 0)
-			code = (*adbase->sync) (adbase, syncFile);
+			code = uphys_sync(adbase, syncFile);
 		    else
 			code = 0;
 		    syncFile = tfile;
@@ -304,14 +298,10 @@ ReplayLog(struct ubik_dbase *adbase)
 		while (len > 0) {
 		    thisSize = (len > sizeof(data) ? sizeof(data) : len);
 		    /* copy sizeof(data) buffer bytes at a time */
-		    code =
-			(*adbase->read) (adbase, LOGFILE, (char *)data, tpos,
-					 thisSize);
+		    code = uphys_read(adbase, LOGFILE, data, tpos, thisSize);
 		    if (code != thisSize)
 			return UBADLOG;
-		    code =
-			(*adbase->write) (adbase, tfile, (char *)data, filePos,
-					  thisSize);
+		    code = uphys_write(adbase, tfile, data, filePos, thisSize);
 		    if (code != thisSize)
 			return UBADLOG;
 		    filePos += thisSize;
@@ -326,7 +316,7 @@ ReplayLog(struct ubik_dbase *adbase)
 	}
 	if (logIsGood) {
 	    if (syncFile >= 0)
-		code = (*adbase->sync) (adbase, syncFile);
+		code = uphys_sync(adbase, syncFile);
 	    if (code)
 		return code;
 	} else {
@@ -336,7 +326,7 @@ ReplayLog(struct ubik_dbase *adbase)
     }
 
     /* now truncate the log, we're done with it */
-    code = (*adbase->truncate) (adbase, LOGFILE, 0);
+    code = uphys_truncate(adbase, LOGFILE, 0);
     return code;
 }
 
@@ -350,18 +340,18 @@ InitializeDB(struct ubik_dbase *adbase)
 {
     afs_int32 code;
 
-    code = (*adbase->getlabel) (adbase, 0, &adbase->version);
+    code = uphys_getlabel(adbase, 0, &adbase->version);
     if (code) {
 	/* try setting the label to a new value */
 	UBIK_VERSION_LOCK;
 	adbase->version.epoch = 1;	/* value for newly-initialized db */
 	adbase->version.counter = 1;
-	code = (*adbase->setlabel) (adbase, 0, &adbase->version);
+	code = uphys_setlabel(adbase, 0, &adbase->version);
 	if (code) {
 	    /* failed, try to set it back */
 	    adbase->version.epoch = 0;
 	    adbase->version.counter = 0;
-	    (*adbase->setlabel) (adbase, 0, &adbase->version);
+	    uphys_setlabel(adbase, 0, &adbase->version);
 	}
 	UBIK_VERSION_UNLOCK;
     }
@@ -710,9 +700,9 @@ urecovery_Interact(void *dummy)
 		    code = rename(pbuffer, tbuffer);
 		if (!code) {
 		    newdb_visible = 1;
-		    (*ubik_dbase->open) (ubik_dbase, file);
+		    uphys_invalidate(ubik_dbase, file);
 		    /* after data is good, sync disk with correct label */
-		    code = (*ubik_dbase->setlabel) (ubik_dbase, 0, &tversion);
+		    code = uphys_setlabel(ubik_dbase, 0, &tversion);
 		}
 #ifdef AFS_NT40_ENV
 		snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD",
@@ -733,8 +723,7 @@ urecovery_Interact(void *dummy)
 
 		if (newdb_visible) {
 		    memset(&ubik_dbase->version, 0, sizeof(ubik_dbase->version));
-		    if ((*ubik_dbase->setlabel) (ubik_dbase, file,
-			&ubik_dbase->version)) {
+		    if (uphys_setlabel(ubik_dbase, file, &ubik_dbase->version)) {
 			ViceLog(0, ("Ubik: Synchronize database: Failed to "
 				    "invalidate database on disk. This is "
 				    "unusual, but should not cause problems, "
@@ -774,8 +763,7 @@ urecovery_Interact(void *dummy)
 	    UBIK_VERSION_LOCK;
 	    ubik_dbase->version.epoch = 2;
 	    ubik_dbase->version.counter = 1;
-	    code =
-		(*ubik_dbase->setlabel) (ubik_dbase, 0, &ubik_dbase->version);
+	    code = uphys_setlabel(ubik_dbase, 0, &ubik_dbase->version);
 	    UBIK_VERSION_UNLOCK;
 	    udisk_Invalidate(ubik_dbase, 0);	/* data may have changed */
 	}
@@ -830,7 +818,7 @@ urecovery_Interact(void *dummy)
 			    afs_inet_ntoa_r(inAddr.s_addr, hoststr)));
 
 		    /* Rx code to do the Bulk Store */
-		    code = (*ubik_dbase->stat) (ubik_dbase, 0, &ubikstat);
+		    code = uphys_stat(ubik_dbase, 0, &ubikstat);
 		    if (!code) {
 			length = ubikstat.size;
 			file = offset = 0;
@@ -849,9 +837,8 @@ urecovery_Interact(void *dummy)
 			    tlen =
 				(length >
 				 sizeof(tbuffer) ? sizeof(tbuffer) : length);
-			    nbytes =
-				(*ubik_dbase->read) (ubik_dbase, file,
-						     tbuffer, offset, tlen);
+			    nbytes = uphys_read(ubik_dbase, file, tbuffer,
+						offset, tlen);
 			    if (nbytes != tlen) {
 				code = UIOERROR;
 				ViceLog(0, ("Local disk read error=%d\n", code));

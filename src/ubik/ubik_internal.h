@@ -47,21 +47,7 @@ struct ubik_dbase {
 #endif
     afs_int32 dbFlags;		/*!< flags */
     /* physio procedures */
-    int (*read) (struct ubik_dbase * adbase, afs_int32 afile, void *abuffer,
-		 afs_int32 apos, afs_int32 alength);
-    int (*write) (struct ubik_dbase * adbase, afs_int32 afile, void *abuffer,
-		  afs_int32 apos, afs_int32 alength);
     ubik_writehook_func write_hook; /*!< app hook for writing data */
-    int (*truncate) (struct ubik_dbase * adbase, afs_int32 afile,
-		     afs_int32 asize);
-    int (*sync) (struct ubik_dbase * adbase, afs_int32 afile);
-    int (*stat) (struct ubik_dbase * adbase, afs_int32 afid,
-		 struct ubik_stat * astat);
-    void (*open) (struct ubik_dbase * adbase, afs_int32 afid);
-    int (*setlabel) (struct ubik_dbase * adbase, afs_int32 afile, struct ubik_version * aversion);	/*!< set the version label */
-    int (*getlabel) (struct ubik_dbase * adbase, afs_int32 afile, struct ubik_version * aversion);	/*!< retrieve the version label */
-    int (*getnfiles) (struct ubik_dbase * adbase);	/*!< find out number of files */
-    int (*buffered_append)(struct ubik_dbase *adbase, afs_int32 afid, void *adata, afs_int32 alength);
     short readers;		/*!< number of current read transactions */
     struct ubik_version cachedVersion;	/*!< version of caller's cached data */
     struct Lock cache_lock; /*!< protects cached application data */

@@ -344,7 +344,7 @@ SDISK_GetVersion(struct rx_call *rxcall,
 	return UDEADLOCK;
     }
 
-    code = (*ubik_dbase->getlabel) (ubik_dbase, 0, aversion);
+    code = uphys_getlabel(ubik_dbase, 0, aversion);
     DBRELE(ubik_dbase);
     if (code) {
 	/* tell other side there's no dbase */
@@ -389,7 +389,7 @@ SDISK_GetFile(struct rx_call *rxcall, afs_int32 file,
     osi_Assert(code == 0);
     ubik_set_db_flags(dbase, DBSENDING);
 
-    code = (*dbase->stat) (dbase, file, &ubikstat);
+    code = uphys_stat(dbase, file, &ubikstat);
     if (code < 0) {
 	ViceLog(0, ("database stat() error:%d\n", code));
 	goto failed;
@@ -405,7 +405,7 @@ SDISK_GetFile(struct rx_call *rxcall, afs_int32 file,
     offset = 0;
     while (length > 0) {
 	tlen = (length > sizeof(tbuffer) ? sizeof(tbuffer) : length);
-	code = (*dbase->read) (dbase, file, tbuffer, offset, tlen);
+	code = uphys_read(dbase, file, tbuffer, offset, tlen);
 	if (code != tlen) {
 	    ViceLog(0, ("read failed error=%d\n", code));
 	    code = UIOERROR;
@@ -427,7 +427,7 @@ SDISK_GetFile(struct rx_call *rxcall, afs_int32 file,
 	length -= tlen;
 	offset += tlen;
     }
-    code = (*dbase->getlabel) (dbase, file, version);	/* return the dbase, too */
+    code = uphys_getlabel(dbase, file, version);	/* return the dbase, too */
     if (code)
 	ViceLog(0, ("getlabel error=%d\n", code));
 
@@ -602,8 +602,8 @@ SDISK_SendFile(struct rx_call *rxcall, afs_int32 file,
 	code = rename(pbuffer, tbuffer);
     if (!code) {
 	newdb_visible = 1;
-	(*ubik_dbase->open) (ubik_dbase, file);
-	code = (*ubik_dbase->setlabel) (dbase, file, avers);
+	uphys_invalidate(ubik_dbase, file);
+	code = uphys_setlabel(dbase, file, avers);
     }
 #ifdef AFS_NT40_ENV
     snprintf(pbuffer, sizeof(pbuffer), "%s.DB%s%d.OLD",
@@ -632,7 +632,7 @@ failed:
 	if (newdb_visible) {
 	    UBIK_VERSION_LOCK;
 	    memset(&dbase->version, 0, sizeof(dbase->version));
-	    if ((*dbase->setlabel) (dbase, file, &dbase->version)) {
+	    if (uphys_setlabel(dbase, file, &dbase->version)) {
 		ViceLog(0, ("Ubik: Synchronize database: Failed to invalidate "
 			    "database on disk. This is unusual, but should not "
 			    "cause problems, since the database should already "
@@ -803,7 +803,7 @@ SDISK_SetVersion(struct rx_call *rxcall, struct ubik_tid *atid,
 	|| (uvote_eq_dbVersion(*newversionp)
 	    && vcmp(ubik_dbase->version, *oldversionp) == 0)) {
 	UBIK_VERSION_LOCK;
-	code = (*ubik_dbase->setlabel) (ubik_dbase, 0, newversionp);
+	code = uphys_setlabel(ubik_dbase, 0, newversionp);
 	if (!code) {
 	    ubik_dbase->version = *newversionp;
 	    uvote_set_dbVersion(*newversionp);

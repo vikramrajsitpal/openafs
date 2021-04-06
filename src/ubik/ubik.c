@@ -387,16 +387,6 @@ ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
     opr_mutex_init(&version_globals.version_lock);
 #endif
     Lock_Init(&tdb->cache_lock);
-    tdb->read = uphys_read;
-    tdb->write = uphys_write;
-    tdb->truncate = uphys_truncate;
-    tdb->open = uphys_invalidate;	/* this function isn't used any more */
-    tdb->sync = uphys_sync;
-    tdb->stat = uphys_stat;
-    tdb->getlabel = uphys_getlabel;
-    tdb->setlabel = uphys_setlabel;
-    tdb->getnfiles = uphys_getnfiles;
-    tdb->buffered_append = uphys_buf_append;
     *dbase = tdb;
     ubik_dbase = tdb;		/* for now, only one db per server; can fix later when we have names for the other dbases */
 
