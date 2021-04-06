@@ -82,4 +82,8 @@ int ubik_RawGetHeader(struct ubik_trans *trans, struct ubik_hdr *hdr);
 int ubik_RawGetVersion(struct ubik_trans *trans, struct ubik_version *version);
 int ubik_RawSetVersion(struct ubik_trans *trans, struct ubik_version *version);
 
+typedef void (*ubik_writehook_func)(struct ubik_dbase *tdb, afs_int32 fno,
+				    void *bp, afs_int32 pos, afs_int32 count);
+int ubik_InstallWriteHook(ubik_writehook_func func);
+
 #endif /* OPENAFS_UBIK_UBIK_NP_H */

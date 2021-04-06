@@ -52,6 +52,7 @@ struct ubik_dbase {
 		 afs_int32 apos, afs_int32 alength);
     int (*write) (struct ubik_dbase * adbase, afs_int32 afile, void *abuffer,
 		  afs_int32 apos, afs_int32 alength);
+    ubik_writehook_func write_hook; /*!< app hook for writing data */
     int (*truncate) (struct ubik_dbase * adbase, afs_int32 afile,
 		     afs_int32 asize);
     int (*sync) (struct ubik_dbase * adbase, afs_int32 afile);

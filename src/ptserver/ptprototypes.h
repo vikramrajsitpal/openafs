@@ -24,7 +24,7 @@ extern afs_int32 GetSGList(struct ubik_trans *at, struct prentry *tentry,
                            prlist *alist);
 extern afs_int32 RemoveFromSGEntry(struct ubik_trans *at, afs_int32 aid,
                                    afs_int32 bid);
-extern void pt_hook_write(void);
+extern int pt_hook_write(void);
 #endif
 
 extern afs_int32 NameHash(unsigned char *aname);

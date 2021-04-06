@@ -604,7 +604,11 @@ main(int argc, char **argv)
     }
 
 #if defined(SUPERGROUPS)
-    pt_hook_write();
+    code = pt_hook_write();
+    if (code) {
+	afs_com_err(whoami, code, "failed to install pt write hook");
+	PT_EXIT(1);
+    }
 #endif
 
     bsso.dir = prdir;

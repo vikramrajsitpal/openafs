@@ -224,6 +224,10 @@ uphys_write(struct ubik_dbase *adbase, afs_int32 afile,
     afs_int32 code;
     afs_int32 length;
 
+    if (adbase->write_hook != NULL) {
+	(*adbase->write_hook)(adbase, afile, abuffer, apos, alength);
+    }
+
     fd = uphys_open(adbase, afile);
     if (fd < 0)
 	return -1;

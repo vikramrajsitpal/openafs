@@ -1693,3 +1693,31 @@ ubik_RawSetVersion(struct ubik_trans *trans, struct ubik_version *version)
 
     return 0;
 }
+
+/**
+ * Install a 'write hook'.
+ *
+ * If a write hook is installed, then it is called any time ubik writes to the
+ * active database on disk (via local or remote transactions, but notably not
+ * during recovery operations). The hook is given the buffer that will be
+ * written, along with the offset it will be written to, and the ubik dbase and
+ * file number. The hook is called right before the data is actually written to
+ * disk.
+ *
+ * Currently only one write hook can be installed, and it must be installed
+ * during server startup.
+ *
+ * @param[in] func  Write hook to install. If NULL, uninstall any installed
+ *		    hook.
+ * @return ubik error codes
+ */
+int
+ubik_InstallWriteHook(ubik_writehook_func func)
+{
+    struct ubik_dbase *dbase = ubik_dbase;
+    if (dbase->write_hook != NULL && func != NULL) {
+	return UINTERNAL;
+    }
+    dbase->write_hook = func;
+    return 0;
+}

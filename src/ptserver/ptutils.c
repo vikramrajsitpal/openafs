@@ -27,7 +27,7 @@
 #include <roken.h>
 
 #include <lock.h>
-#include <ubik_internal.h>
+#include <ubik_np.h>
 #include <rx/xdr.h>
 #include <afs/com_err.h>
 #include <afs/cellconfig.h>
@@ -76,11 +76,7 @@ struct map *sg_found;
  *  The stuff we're interested in (flags, id) are in the first 8 bytes.
  *  so we can always tell if we're writing a group record.
  */
-
-int (*pt_save_dbase_write)(struct ubik_dbase *, afs_int32, void *, afs_int32,
-                           afs_int32);
-
-int
+static void
 pt_mywrite(struct ubik_dbase *tdb, afs_int32 fno, void *bp, afs_int32 pos, afs_int32 count)
 {
     afs_uint32 headersize = ntohl(cheader.headerSize);
@@ -148,7 +144,6 @@ pt_mywrite(struct ubik_dbase *tdb, afs_int32 fno, void *bp, afs_int32 pos, afs_i
 #undef xPT
 	}
     }
-    return (*pt_save_dbase_write) (tdb, fno, bp, pos, count);
 }
 
 /*
@@ -156,14 +151,10 @@ pt_mywrite(struct ubik_dbase *tdb, afs_int32 fno, void *bp, afs_int32 pos, afs_i
  *  just after ubik_ServerInit.
  */
 
-void
+int
 pt_hook_write(void)
 {
-    extern struct ubik_dbase *ubik_dbase;
-    if (ubik_dbase->write != pt_mywrite) {
-	pt_save_dbase_write = ubik_dbase->write;
-	ubik_dbase->write = pt_mywrite;
-    }
+    return ubik_InstallWriteHook(pt_mywrite);
 }
 
 #endif /* SUPERGROUPS */
