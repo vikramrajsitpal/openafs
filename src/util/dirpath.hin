@@ -181,6 +181,9 @@ ConstructLocalLogPath(const char *cpath,
 #define AFSDIR_WEIGHTINGCONST_FILE "Weight.LocalConstants"
 #define AFSDIR_THRESHOLDCONST_FILE "Thershold.LocalConstants"
 
+#define AFSDIR_PTSERVER_CTLSOCK_FILE	"pt.ctl.sock"
+#define AFSDIR_VLSERVER_CTLSOCK_FILE	"vl.ctl.sock"
+
 /* -------------- Canonical (wire-format) path macros -------------- */
 
 /* Each of the following is a canonical form of the corresponding
@@ -297,6 +300,8 @@ typedef enum afsdir_id {
       AFSDIR_SERVER_CONFIG_FILE_FILEPATH_ID,
       AFSDIR_SERVER_RXKAD_KEYTAB_FILEPATH_ID,
       AFSDIR_SERVER_EXT_KEY_FILEPATH_ID,
+      AFSDIR_SERVER_PTSERVER_CTLSOCK_FILEPATH_ID,
+      AFSDIR_SERVER_VLSERVER_CTLSOCK_FILEPATH_ID,
       AFSDIR_PATHSTRING_MAX } afsdir_id_t;
 
 /* afs_getDirPath() returns a pointer to a string from an internal array of path strings 
@@ -373,6 +378,8 @@ const char *afs_getDirPath(afsdir_id_t string_id);
 #define AFSDIR_SERVER_CONFIG_FILE_FILEPATH afs_getDirPath(AFSDIR_SERVER_CONFIG_FILE_FILEPATH_ID)
 #define AFSDIR_SERVER_RXKAD_KEYTAB_FILEPATH afs_getDirPath(AFSDIR_SERVER_RXKAD_KEYTAB_FILEPATH_ID)
 #define AFSDIR_SERVER_EXT_KEY_FILEPATH afs_getDirPath(AFSDIR_SERVER_EXT_KEY_FILEPATH_ID)
+#define AFSDIR_SERVER_PTSERVER_CTLSOCK_FILEPATH afs_getDirPath(AFSDIR_SERVER_PTSERVER_CTLSOCK_FILEPATH_ID)
+#define AFSDIR_SERVER_VLSERVER_CTLSOCK_FILEPATH afs_getDirPath(AFSDIR_SERVER_VLSERVER_CTLSOCK_FILEPATH_ID)
 
 /* client file paths */
 #define AFSDIR_CLIENT_CONFIG_FILE_FILEPATH afs_getDirPath(AFSDIR_CLIENT_CONFIG_FILE_FILEPATH_ID)

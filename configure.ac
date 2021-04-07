@@ -90,6 +90,7 @@ AC_CONFIG_FILES([
     src/config/shlib-install
     src/crypto/hcrypto/Makefile
     src/crypto/rfc3961/Makefile
+    src/ctl/Makefile
     src/dir/Makefile
     src/dir/test/Makefile
     src/dviced/Makefile
@@ -191,6 +192,7 @@ AC_CONFIG_FILES([
     tests/auth/Makefile
     tests/cmd/Makefile
     tests/common/Makefile
+    tests/ctl/Makefile
     tests/opr/Makefile
     tests/ptserver/Makefile
     tests/rx/Makefile

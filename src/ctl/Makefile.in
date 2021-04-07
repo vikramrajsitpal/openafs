@@ -1,0 +1,33 @@
+srcdir=@srcdir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+include @TOP_OBJDIR@/src/config/Makefile.pthread
+include @TOP_OBJDIR@/src/config/Makefile.libtool
+
+LT_objs = ctl_stubs.lo
+@JANSSON_ONLY@LT_objs = ctl_client.lo ctl_common.lo ctl_server.lo
+
+MODULE_CFLAGS = $(JANSSON_CFLAGS)
+
+LT_deps = $(top_builddir)/src/util/liboafs_util.la
+LT_libs = $(LIB_roken) $(JANSSON_LIBS)
+
+HEADERS = $(TOP_INCDIR)/afs/afsctl.h
+
+all: lib
+lib: $(HEADERS) liboafs_ctl.la
+
+$(LT_objs): $(HEADERS)
+
+liboafs_ctl.la: liboafs_ctl.la.sym $(LT_objs) $(LT_deps)
+	$(LT_LDLIB_shlib) $(LT_objs) $(LT_deps) $(LT_libs)
+
+$(TOP_INCDIR)/afs/afsctl.h: afsctl.h
+	$(INSTALL_DATA) $? $@
+
+clean:
+	$(LT_CLEAN)
+	$(RM) -f *.o
+
+install: all
+
+dest: all

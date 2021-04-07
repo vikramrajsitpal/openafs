@@ -1,0 +1,22 @@
+
+srcdir=@srcdir@
+abs_top_builddir=@abs_top_builddir@
+include @TOP_OBJDIR@/src/config/Makefile.config
+include @TOP_OBJDIR@/src/config/Makefile.pthread
+
+BINS = ctl-t
+
+MODULE_CFLAGS=-I$(TOP_OBJDIR) -I$(srcdir)/../common/ $(JANSSON_CFLAGS)
+
+all check test tests: $(BINS)
+
+MODULE_LIBS = 	$(abs_top_builddir)/tests/common/libafstest_common.la \
+		$(abs_top_builddir)/src/ctl/liboafs_ctl.la \
+		$(XLIBS)
+
+ctl-t: ctl-t.o
+	$(LT_LDRULE_static) ctl-t.o $(MODULE_LIBS)
+
+clean:
+	$(LT_CLEAN)
+	rm -f *.o $(BINS)

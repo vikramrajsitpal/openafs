@@ -228,6 +228,11 @@ struct afs_time64 {
 # define AFS_RXGK_ENV 1
 #endif
 
+#if defined(ENABLE_JANSSON) && defined(AFS_PTHREAD_ENV)
+/* Only build afsctl stuff if we have jansson and we're pthreaded */
+# define AFS_CTL_ENV 1
+#endif
+
 /* A macro that can be used when printf'ing 64 bit integers, as Unix and
  * windows use a different format string
  */

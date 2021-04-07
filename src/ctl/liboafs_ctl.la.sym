@@ -1,0 +1,12 @@
+afsctl_call_describe
+afsctl_call_destroy
+afsctl_call_shutdown_read
+afsctl_client_call
+afsctl_client_end
+afsctl_client_start
+afsctl_recv_unpack
+afsctl_send_pack
+afsctl_server_create
+afsctl_server_listen
+afsctl_server_reg
+afsctl_wait_recv

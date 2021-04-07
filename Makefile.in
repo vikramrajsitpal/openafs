@@ -54,6 +54,7 @@ generated: force buildtools
 	+${COMPILE_PART1} bucoord ${COMPILE_GENERATED}
 	+${COMPILE_PART1} budb ${COMPILE_GENERATED}
 	+${COMPILE_PART1} cmd ${COMPILE_GENERATED}
+	+${COMPILE_PART1} ctl ${COMPILE_GENERATED}
 	+${COMPILE_PART1} fsint ${COMPILE_GENERATED}
 	+${COMPILE_PART1} kauth ${COMPILE_GENERATED}
 	+${COMPILE_PART1} ptserver ${COMPILE_GENERATED}
@@ -404,6 +405,9 @@ man-pages: config
 		cd doc/man-pages ${COMPILE_PART2} ; \
 	fi
 
+ctl: rx
+	+${COMPILE_PART1} ctl ${COMPILE_PART2}
+
 #
 # _depinstall targets - only build and install headers/sources that are
 #			needed by libafs/libuafs
@@ -638,7 +642,7 @@ finale_notest: project cmd comerr afsd butc tbutc tbudb @ENABLE_KERNEL_MODULE@ \
 	bozo @VFSCK@ volser tvolser tsalvaged dviced dvolser libafscp \
 	venus venustests update xstat afsmonitor rxdebug libafsrpc rfc3961 \
 	hcrypto libafsauthent libadmin man-pages tools platform kopenafs \
-	authtools $(DIR_roken) rxgk
+	authtools $(DIR_roken) rxgk ctl
 	+${COMPILE_PART1} finale ${COMPILE_PART2}
 
 finale_nolibafs_notest: project cmd comerr afsd butc tbutc tbudb libuafs audit kauth \
@@ -646,7 +650,7 @@ finale_nolibafs_notest: project cmd comerr afsd butc tbutc tbudb libuafs audit k
 	volser tvolser tsalvaged dviced dvolser libafscp venus venustests \
 	update xstat afsmonitor rxdebug libafsrpc rfc3961 hcrypto \
 	libafsauthent libadmin man-pages tools platform kopenafs \
-	authtools $(DIR_roken) rxgk
+	authtools $(DIR_roken) rxgk ctl
 	+${COMPILE_PART1} finale ${COMPILE_PART2}
 
 finale: finale_notest test_build
@@ -772,6 +776,7 @@ clean2:
 	-${COMPILE_PART1} crypto/hcrypto ${COMPILE_CLEAN}
 	-${COMPILE_PART1} roken ${COMPILE_CLEAN}
 	-${COMPILE_PART1} crypto/rfc3961 ${COMPILE_CLEAN}
+	-${COMPILE_PART1} ctl ${COMPILE_CLEAN}
 	-(cd src; /bin/rm cscope.out)
 	-(cd src/libafs; /bin/rm -rf afs afsint config rx)
 	-(cd src/libuafs; /bin/rm -rf afs afsint config rx)
@@ -837,6 +842,7 @@ distclean: clean
 	src/config/shlib-install \
 	src/crypto/hcrypto/Makefile \
 	src/crypto/rfc3961/Makefile \
+	src/ctl/Makefile \
 	src/dir/Makefile \
 	src/dir/test/Makefile \
 	src/dviced/Makefile \
@@ -939,6 +945,7 @@ distclean: clean
 	tests/auth/Makefile \
 	tests/cmd/Makefile \
 	tests/common/Makefile \
+	tests/ctl/Makefile \
 	tests/rx/Makefile \
 	tests/rxgk/Makefile \
 	tests/opr/Makefile \
