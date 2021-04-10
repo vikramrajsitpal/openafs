@@ -9,4 +9,7 @@
 /salvager.pod
 /volserver.pod
 /openafs-ctl.pod
+/openafs-ctl_vldb-dump.pod
+/openafs-ctl_vldb-freeze-abort.pod
+/openafs-ctl_vldb-freeze-run.pod
 /openafs-ctl_vldb-info.pod

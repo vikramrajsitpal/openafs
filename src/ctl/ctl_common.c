@@ -165,6 +165,33 @@ calc_sockpath(const char *server_type, const char **a_path)
     }
 }
 
+/**
+ * Get the default socket path for a server_type.
+ *
+ * @param[in] server_type   The server type to get the socket path for.
+ * @param[out] a_path	    On success, set to the default socket path. This
+ *			    string must be freed by the caller.
+ * @return errno error codes
+ */
+int
+afsctl_socket_path(const char *server_type, char **a_path)
+{
+    int code;
+    const char *path = NULL;
+
+    code = calc_sockpath(server_type, &path);
+    if (code != 0) {
+	return code;
+    }
+
+    *a_path = strdup(path);
+    if (*a_path == NULL) {
+	return ENOMEM;
+    }
+
+    return 0;
+}
+
 /* Create a unix socket and the sockaddr to use for it. */
 int
 ctl_socket(const char *server_type, const char *path, int *a_sock,

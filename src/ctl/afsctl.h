@@ -43,6 +43,7 @@ typedef struct json_stub {
 
 struct afsctl_call;
 
+int afsctl_socket_path(const char *server_type, char **a_path);
 int afsctl_send_pack(struct afsctl_call *ctl, const char *fmt, ...);
 int afsctl_recv_unpack(struct afsctl_call *ctl, json_t **a_jobj,
 		       const char *fmt, ...);

@@ -278,6 +278,18 @@ extern void ubiktest_runtest_list(struct ubiktest_dataset *ds,
 				  struct ubiktest_ops *ops);
 extern void urectest_runtests(struct ubiktest_dataset *ds, char *use_db);
 
+struct frztest_ops {
+    char *suite;    /**< e.g. 'vl' for the 'openafs-ctl vldb-dump' command */
+    char *freeze_envname;
+		    /**< e.g. 'VL' for the 'OPENAFS_VL_FREEZE_ID' env var */
+    char *use_db;   /**< which 'existing_dbs' dbase to use when running the
+		     *   server process. */
+    char **server_argv;
+		    /**< args to pass to server process */
+};
+extern void frztest_runtests(struct ubiktest_dataset *ds,
+			     struct frztest_ops *ops);
+
 /* network.c */
 extern int afstest_IsLoopbackNetworkDefault(void);
 extern int afstest_SkipTestsIfLoopbackNetIsDefault(void);
@@ -296,5 +308,13 @@ extern int is_pointer(void *left, void *right, const char *fmt, ...)
 extern int is_opaque(struct rx_opaque *left, struct rx_opaque *right,
 		     const char *format, ...)
 	AFS_ATTRIBUTE_FORMAT(__printf__, 3, 4);
+
+static_inline void
+afstest_SkipTestsIfNoCtl(void)
+{
+#ifndef AFS_CTL_ENV
+    skip_all("Built without afsctl support");
+#endif
+}
 
 #endif /* OPENAFS_TEST_COMMON_H */

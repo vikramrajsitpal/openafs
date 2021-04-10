@@ -15,8 +15,8 @@ LT_authent_objs = uinit.lo ubikclient.lo uerrors.lo ubik_int.cs.lo \
 
 LT_objs =   $(LT_authent_objs) \
 	    disk.lo remote.lo beacon.lo recovery.lo ubik.lo vote.lo lock.lo \
-	    phys.lo ubik_int.ss.lo ubikcmd.lo udb.lo
-
+	    phys.lo ubik_int.ss.lo ubikcmd.lo udb.lo freeze_client.lo \
+	    freeze_server.lo
 
 LT_deps =   $(top_builddir)/src/auth/liboafs_auth.la \
 	    $(top_builddir)/src/opr/liboafs_opr.la \
@@ -135,6 +135,8 @@ ubik.h: uerrors.et ubik.p.h
 	${COMPILE_ET_H} -p ${srcdir} uerrors -h ubik
 
 CFLAGS_ubik.lo = $(JANSSON_CFLAGS)
+CFLAGS_freeze_client.lo = $(JANSSON_CFLAGS)
+CFLAGS_freeze_server.lo = $(JANSSON_CFLAGS)
 
 beacon.o beacon.lo: ubik.h
 disk.o disk.lo: ubik.h

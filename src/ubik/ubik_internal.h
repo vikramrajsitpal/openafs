@@ -306,6 +306,7 @@ extern int uphys_buf_append(struct ubik_dbase *adbase, afs_int32 afid,
 int uphys_stat_path(char *path, struct ubik_stat *astat);
 int uphys_getlabel_path(char *path, struct ubik_version *aversion);
 int uphys_setlabel_path(char *path, struct ubik_version *aversion);
+int uphys_copydb(char *src_path, char *dest_path);
 int uphys_recvdb(struct rx_call *rxcall, char *path,
 		 struct ubik_version *version, afs_int64 length);
 int uphys_senddb(char *path, struct rx_call *rxcall,
@@ -458,11 +459,17 @@ extern int uvote_HaveSyncAndVersion(struct ubik_version);
 /* udb.c */
 
 void udb_v32to64(struct ubik_version *from, struct ubik_version64 *to);
-
+int udb_vcmp64(struct ubik_version64 *vers_a,
+	       struct ubik_version64 *vers_b);
 int udb_path(struct ubik_dbase *dbase, char *suffix, char **apath);
+int udb_delpath(char *path);
 int udb_del_suffixes(struct ubik_dbase *dbase, char *suffix_new,
 		     char *suffix_spare);
 int udb_install(struct ubik_dbase *dbase, char *suffix_new,
 		struct ubik_version *new_vers);
+
+/* freeze_server.c */
+
+void ufreeze_Init(struct ubik_serverinit_opts *opts);
 
 #endif /* OPENAFS_UBIK_INTERNAL_H */

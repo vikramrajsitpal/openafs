@@ -9,4 +9,5 @@ afsctl_send_pack
 afsctl_server_create
 afsctl_server_listen
 afsctl_server_reg
+afsctl_socket_path
 afsctl_wait_recv

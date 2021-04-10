@@ -17,6 +17,7 @@ opr/rbtree
 opr/softsig
 opr/time64
 opr/uuid
+ptserver/freeze
 ptserver/prdb
 ptserver/pt_util
 ptserver/pts-man
@@ -27,6 +28,7 @@ rx/perf
 rxgk/derive
 vlserver/badversion
 vlserver/check4
+vlserver/freeze
 vlserver/recovery
 vlserver/vldb4
 volser/vos-man

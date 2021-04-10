@@ -716,3 +716,133 @@ urectest_runtests(struct ubiktest_dataset *ds, char *use_db)
 	memset(&utest, 0, sizeof(utest));
     }
 }
+
+struct freeze_test {
+    struct frztest_ops *ops;
+
+    char *db_path;  /**< path to the ops->use_db dbase */
+};
+
+static char *ctl_path;
+static char *ctl_sockname;
+
+/* Generate a openafs-ctl command string to run */
+static char *
+ctl_cmd_v(char *confdir, char *suite, char *subcmd, char *fmt, va_list ap)
+{
+    char *args = NULL;
+    char *cmdline;
+
+    opr_Assert(ctl_path != NULL);
+    opr_Assert(ctl_sockname != NULL);
+
+    args = afstest_vasprintf(fmt, ap);
+    cmdline = afstest_asprintf("%s %s%s -quiet -ctl-socket %s/%s %s",
+			       ctl_path, suite, subcmd, confdir, ctl_sockname,
+			       args);
+    free(args);
+
+    return cmdline;
+}
+
+/* Run an openafs-ctl command */
+static void
+AFS_ATTRIBUTE_FORMAT(__printf__, 4, 5)
+ctl_run(char *confdir, char *suite, char *subcmd, char *fmt, ...)
+{
+    va_list ap;
+    char *cmdline;
+    struct afstest_cmdinfo cmdinfo;
+
+    memset(&cmdinfo, 0, sizeof(cmdinfo));
+
+    va_start(ap, fmt);
+    cmdline = ctl_cmd_v(confdir, suite, subcmd, fmt, ap);
+    va_end(ap);
+
+    cmdinfo.output = "";
+    cmdinfo.fd = STDOUT_FILENO;
+    cmdinfo.command = cmdline;
+
+    is_command(&cmdinfo, "openafs-ctl %s%s %s runs successfully",
+	       suite, subcmd, fmt);
+
+    free(cmdline);
+}
+
+static int
+db_equal(char *path_a, char *path_b)
+{
+    /*
+     * Compare the contents of two ubik databases. Skip the ubik
+     * header (HDRSIZE), and just do a byte-for-byte comparison of all of the
+     * remaining bytes in the file. We skip the ubik header, so the dbases
+     * still appear "equal" if just the ubik version differs.
+     */
+    return afstest_file_equal(path_a, path_b, HDRSIZE);
+}
+
+static void
+frztest_dump(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
+{
+    char *dump_path = NULL;
+    struct freeze_test *test = ops->rock;
+    struct frztest_ops *frzops = test->ops;
+
+    /* Dump the db from the running server, and verify that the dumped db
+     * matches the original db. */
+
+    dump_path = afstest_asprintf("%s/db.dump", info->confdir);
+
+    ctl_run(info->confdir, frzops->suite, "db-dump", "-output %s", dump_path);
+
+    ok(db_equal(test->db_path, dump_path), "dumped db matches");
+
+    opr_Verify(udb_delpath(dump_path) == 0);
+
+    free(dump_path);
+}
+
+void
+frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
+{
+    char *src_db = NULL;
+    struct ubiktest_dbdef *dbdef;
+    struct ubiktest_ops utest;
+    struct freeze_test frztest;
+
+    memset(&utest, 0, sizeof(utest));
+    memset(&frztest, 0, sizeof(frztest));
+
+    ctl_path = afstest_obj_path("src/ctl/openafs-ctl");
+    ctl_sockname = ds->server_type->ctl_sock;
+
+    opr_Assert(ctl_sockname != NULL);
+
+    dbdef = find_dbdef(ds, ops->use_db);
+    if (dbdef != NULL) {
+	src_db = get_dbpath(dbdef);
+    }
+
+    frztest.ops = ops;
+    frztest.db_path = src_db;
+
+    {
+	utest.rock = &frztest;
+	utest.descr = afstest_asprintf("dump %s", ops->use_db);
+	utest.use_db = ops->use_db;
+	utest.post_start = frztest_dump;
+	utest.server_argv = ops->server_argv;
+
+	ubiktest_runtest(ds, &utest);
+
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
+    }
+
+    free(src_db);
+
+    free(ctl_path);
+    ctl_path = NULL;
+    ctl_sockname = NULL;
+}

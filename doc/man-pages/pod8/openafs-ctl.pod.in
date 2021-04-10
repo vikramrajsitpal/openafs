@@ -24,6 +24,8 @@ B<openafs-ctl> suite.
 
 =include fragments/openafs-ctl-options.pod
 
+=include fragments/common-options-progress.pod
+
 =back
 
 =head1 PRIVILEGE REQUIRED
@@ -35,6 +37,9 @@ will need to be the local superuser C<root> in order to run any commands.
 
 =head1 SEE ALSO
 
+L<openafs-ctl_vldb-dump(8)>,
+L<openafs-ctl_vldb-freeze-abort(8)>,
+L<openafs-ctl_vldb-freeze-run(8)>,
 L<openafs-ctl_vldb-info(8)>
 
 =head1 COPYRIGHT

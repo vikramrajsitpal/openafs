@@ -1,0 +1,5 @@
+=item B<-timeout-ms> <I<timeout>>
+
+Specifies the maximum amount of time the database can be frozen for this
+operation. If the database has been frozen for longer than this, the freeze is
+automatically aborted.

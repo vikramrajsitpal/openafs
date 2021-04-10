@@ -1,0 +1,3 @@
+=item B<-quiet>
+
+Don't print informational or progress-related messages.

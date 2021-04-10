@@ -472,6 +472,75 @@ uphys_buf_append(struct ubik_dbase *adbase, afs_int32 afid, void *adata,
     return alength;
 }
 
+int
+uphys_copydb(char *src_path, char *dest_path)
+{
+    FILE *src_fh = NULL;
+    FILE *dest_fh = NULL;
+    void *buf = NULL;
+    int len = 4096;
+    int code = 0;
+
+    src_fh = fopen(src_path, "re");
+    if (src_fh == NULL) {
+	ViceLog(0, ("ubik: Cannot open %s, errno=%d\n", src_path, errno));
+	goto ioerror;
+    }
+
+    dest_fh = fopen(dest_path, "wex");
+    if (dest_fh == NULL) {
+	ViceLog(0, ("ubik: Cannot open %s, errno=%d\n", dest_path, errno));
+	goto ioerror;
+    }
+
+    buf = calloc(1, len);
+    if (buf == NULL) {
+	code = UNOMEM;
+	goto done;
+    }
+
+    for (;;) {
+	size_t nbytes;
+	nbytes = fread(buf, 1, len, src_fh);
+	if (nbytes == 0) {
+	    if (feof(src_fh)) {
+		break;
+	    }
+	    ViceLog(0, ("ubik: Error reading from %s, errno=%d\n", src_path, errno));
+	    goto ioerror;
+	}
+
+	if (fwrite(buf, nbytes, 1, dest_fh) != 1) {
+	    ViceLog(0, ("ubik: Error writing to %s, errno=%d\n", dest_path, errno));
+	    goto ioerror;
+	}
+    }
+
+ done:
+    if (src_fh != NULL) {
+	if (fclose(src_fh) != 0) {
+	    ViceLog(0, ("ubik: Error closing %s, errno=%d\n", src_path, errno));
+	    if (code == 0) {
+		code = UIOERROR;
+	    }
+	}
+    }
+    if (dest_fh != NULL) {
+	if (fclose(dest_fh) != 0) {
+	    ViceLog(0, ("ubik: Error closing %s, errno=%d\n", dest_path, errno));
+	    if (code == 0) {
+		code = UIOERROR;
+	    }
+	}
+    }
+    free(buf);
+    return code;
+
+ ioerror:
+    code = UIOERROR;
+    goto done;
+}
+
 /**
  * Receive a ubik database from an Rx call.
  *

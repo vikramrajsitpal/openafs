@@ -69,6 +69,8 @@ struct ubik_serverinit_opts {
 int ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
 			  struct ubik_dbase **dbase);
 
+int ubik_CopyDB(char *src_path, char *dest_path);
+
 struct ubik_rawinit_opts {
     int r_create;
     int r_rw;
@@ -88,5 +90,32 @@ int ubik_RawSetVersion(struct ubik_trans *trans, struct ubik_version *version);
 typedef void (*ubik_writehook_func)(struct ubik_dbase *tdb, afs_int32 fno,
 				    void *bp, afs_int32 pos, afs_int32 count);
 int ubik_InstallWriteHook(ubik_writehook_func func);
+
+/* freeze_client.c */
+
+struct ubik_freeze_client;
+struct ubik_freezeinit_opts {
+    struct afsctl_clientinfo *fi_cinfo;
+
+    int fi_nonest;
+    int fi_needsync;
+
+    afs_uint32 fi_timeout_ms;
+};
+
+int ubik_FreezeInit(struct ubik_freezeinit_opts *opts,
+		    struct ubik_freeze_client **a_freeze);
+int ubik_FreezeIsNested(struct ubik_freeze_client *freeze,
+			afs_uint64 *a_freezeid);
+int ubik_FreezeSetEnv(struct ubik_freeze_client *freeze);
+void ubik_FreezePrintEnv(struct ubik_freeze_client *freeze, FILE *fh);
+void ubik_FreezeDestroy(struct ubik_freeze_client **a_freeze);
+int ubik_FreezeBegin(struct ubik_freeze_client *freeze, afs_uint64 *a_freezeid,
+		     struct ubik_version64 *a_version, char **a_dbpath);
+int ubik_FreezeAbort(struct ubik_freeze_client *freeze, char *message);
+int ubik_FreezeEnd(struct ubik_freeze_client *freeze, char *message);
+int ubik_FreezeAbortId(struct ubik_freeze_client *freeze, afs_uint64 freezeid,
+		       char *message);
+int ubik_FreezeAbortForce(struct ubik_freeze_client *freeze, char *message);
 
 #endif /* OPENAFS_UBIK_UBIK_NP_H */

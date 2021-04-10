@@ -45,6 +45,23 @@ udb_v32to64(struct ubik_version *from, struct ubik_version64 *to)
     to->counter64 = from->counter;
 }
 
+int
+udb_vcmp64(struct ubik_version64 *vers_a, struct ubik_version64 *vers_b)
+{
+    int res;
+    res = opr_time64_cmp(&vers_a->epoch64, &vers_b->epoch64);
+    if (res != 0) {
+	return res;
+    }
+    if (vers_a->counter64 > vers_b->counter64) {
+	return 1;
+    }
+    if (vers_a->counter64 < vers_b->counter64) {
+	return -1;
+    }
+    return 0;
+}
+
 /**
  * Calculate the path on disk for the given databse file.
  *
@@ -78,7 +95,7 @@ udb_path(struct ubik_dbase *dbase, char *suffix, char **apath)
     return 0;
 }
 
-static int
+int
 udb_delpath(char *path)
 {
     int code;

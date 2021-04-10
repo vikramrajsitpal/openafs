@@ -1,0 +1,209 @@
+=head1 NAME
+
+openafs-ctl_vldb-freeze-run, openafs-ctl_ptdb-freeze-run - Freeze a ubik db
+
+=head1 SYNOPSIS
+
+=for html
+<div class="synopsis">
+
+B<openafs-ctl vldb-freeze-run> S<<< [B<-cmd>] <I<cmd>+> >>>
+    [B<-require-sync>] S<<< [B<-timeout-ms> <I<timeout>>] >>>
+    [B<-quiet>] S<<< [B<-reason> <I<message>>] >>>
+    S<<< [B<-ctl-socket> <I<path>>] >>> [B<-help>]
+
+B<openafs-ctl ptdb-freeze-run> S<<< [B<-cmd>] <I<cmd>+> >>>
+    [B<-require-sync>] S<<< [B<-timeout-ms> <I<timeout>>] >>>
+    [B<-quiet>] S<<< [B<-reason> <I<message>>] >>>
+    S<<< [B<-ctl-socket> <I<path>>] >>> [B<-help>]
+
+=for html
+</div>
+
+=head1 DESCRIPTION
+
+The B<openafs-ctl vldb-freeze-run> command freezes the Volume Location Database
+(VLDB) on a locally-running B<vlserver>, and runs the given command for the
+duration of the freeze. The B<openafs-ctl ptdb-dump> command is the same, but
+for the Protection Database (PTDB) and the B<ptserver>.
+
+While the VLDB is frozen, the B<vlserver> can still read from the database to
+service requests, but it cannot write to the database, and it cannot
+synchronize the db with other dbservers. So while the database is frozen, the
+specified command can read the VLDB directly from disk with the guarantee that
+the VLDB is not changing underneath it. That is, as long as the parent
+B<openafs-ctl vldb-freeze-run> command exits successfully, it is guaranteed
+that the B<vlserver> never modified the VLDB while I<cmd> was running.
+
+Specifically, B<openafs-ctl vldb-freeze-run> performs the following steps:
+
+=over 4
+
+=item *
+
+B<openafs-ctl> freezes the VLDB
+
+=item *
+
+B<openafs-ctl> runs the given I<cmd> in a child process.
+
+=item *
+
+When I<cmd> exits successfully, B<openafs-ctl> ends the freeze.
+
+=item *
+
+If the freeze was successful (that is, it was not aborted), B<openafs-ctl>
+exits successfully.
+
+=back
+
+If the freeze was aborted for any reason, B<openafs-ctl> exits with an
+error (after waiting for I<cmd> to exit, if it was started). A freeze may be
+aborted for a few reasons, including:
+
+=over 4
+
+=item *
+
+If B<openafs-ctl vldb-freeze-abort> was run for the freeze.
+
+=item *
+
+If the I<timeout> for the freeze was exceeded.
+
+=item *
+
+If the I<cmd> exited non-successfully.
+
+=back
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-cmd> <I<cmd>+>
+
+The command and arguments to run while the database is frozen. The given
+command is not run through the shell; separate arguments are given as separate
+items to the B<-cmd> option. B<openafs-ctl> ends the freeze when the command
+exits.
+
+The given command is run with several environment variables set; see
+L</ENVIRONMENT>.
+
+The given command can read the database data directly, but it B<must not>
+modify or write to the database. See L</CAUTIONS>.
+
+=item B<-require-sync>
+
+If this flag is given, and the local B<vlserver> is not the sync site,
+B<openafs-ctl> will exit with an error, and the database will not be frozen.
+
+=include fragments/openafs-ctl-options-freeze.pod
+
+=include fragments/openafs-ctl-options.pod
+
+=include fragments/common-options-progress.pod
+
+=back
+
+=head1 ENVIRONMENT
+
+The given I<cmd> is run with several environment variables added to the
+environment. These are used by various B<openafs-ctl> commands to operate
+within an existing freeze, but they can also be used by shell scripts or other
+commands directly.
+
+=over 4
+
+=item OPENAFS_VL_FREEZE_ID
+=item OPENAFS_PT_FREEZE_ID
+
+The freeze id for the current freeze.
+
+=item OPENAFS_VL_FREEZE_DB_PATH
+=item OPENAFS_PT_FREEZE_DB_PATH
+
+The path to the frozen database on disk.
+
+=item OPENAFS_VL_FREEZE_VERSION
+=item OPENAFS_PT_FREEZE_VERSION
+
+The version of the frozen database. This can be used by the underlying command
+to check that it is interacting with the correct database file.
+
+=item OPENAFS_VL_FREEZE_CTL_SOCKET
+=item OPENAFS_PT_FREEZE_CTL_SOCKET
+
+The path to the socket used to communicate with the B<vlserver> or B<ptserver>.
+You should not normally need to use this directly, but B<openfas-ctl> commands
+will use it.
+
+=back
+
+=head1 EXAMPLES
+
+This will make a copy of the VLDB, similar to B<openafs-ctl vldb-dump>, but
+without various integrity checks:
+
+    % openafs-ctl vldb-freeze-run -cmd -- \
+        sh -c 'cp -v "$OPENAFS_VL_FREEZE_DB_PATH" /tmp/vldb.copy.DB0'
+    Freezing database... done (freezeid 3, db 15895059090000000.1).
+    '/opt/openafs/var/openafs/db/vldb.DB0' -> '/tmp/vldb.copy.DB0'
+
+    openafs-ctl: Command exited with status 0
+    Ending freeze... done.
+
+This will run vldb_check against the VLDB without making a copy, and output
+some freeze-related info:
+
+    % cat runcheck.sh
+    #!/bin/sh
+
+    echo "Freeze id: $OPENAFS_VL_FREEZE_ID"
+    echo "VLDB version: $OPENAFS_VL_FREEZE_VERSION"
+    echo "VLDB path: $OPENAFS_VL_FREEZE_DB_PATH"
+
+    # Do _NOT_ run with -fix!
+    exec vldb_check "$OPENAFS_VL_FREEZE_DB_PATH" -uheader
+
+    % openafs-ctl vldb-freeze-run runcheck.sh
+    Freezing database... done (freezeid 8, db 15895059090000000.1).
+    Freeze id: 8
+    VLDB version: 15895059090000000.1
+    VLDB path: /usr/afs/db/vldb.DB0
+    Ubik Header
+       Magic           = 0x354545
+       Size            = 64
+       Version.epoch   = 1589505909
+       Version.counter = 1
+    Header's maximum volume id is 542870957 and largest id found in VLDB is 542870954
+    Scanning 2000949 entries for possible repairs
+
+    openafs-ctl: Command exited with status 0
+    Ending freeze... done.
+
+=head1 CAUTIONS
+
+The given I<cmd> B<must NOT> write to or modify the database on disk in any
+way. Doing so can cause corruption in the database, and inconsistent behavior
+between dbservers.
+
+=head1 PRIVILEGE REQUIRED
+
+Callers must be able to open the unix domain socket for the relevant daemon
+process. By default, this is a socket in F</usr/afs/local>, and the caller must
+be the local superuser C<root>.
+
+=head1 SEE ALSO
+
+L<openafs-ctl(8)>,
+L<openafs-ctl_vldb-freeze-abort(8)>
+
+=head1 COPYRIGHT
+
+Copyright 2021 Andrew Deason <adeason@sinenomine.net>.
+
+This documentation is covered by the BSD License as written in the doc/LICENSE
+file. This man page was written by Andrew Deason for OpenAFS.

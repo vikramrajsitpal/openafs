@@ -585,6 +585,7 @@ ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
 
 #ifdef AFS_CTL_ENV
     uctl_Init(opts);
+    ufreeze_Init(opts);
 #endif
 
     return 0;
@@ -1556,6 +1557,20 @@ ubik_SetServerSecurityProcs(void (*buildproc) (void *,
     buildSecClassesProc = buildproc;
     checkSecurityProc = checkproc;
     securityRock = rock;
+}
+
+/**
+ * Make a copy of an on-disk ubik database.
+ *
+ * @param[in] src_path	Path to source ubik db.
+ * @param[in] dest_path	Path to copy db to create.
+ *
+ * @returns ubik error codes
+ */
+int
+ubik_CopyDB(char *src_path, char *dest_path)
+{
+    return uphys_copydb(src_path, dest_path);
 }
 
 /**
