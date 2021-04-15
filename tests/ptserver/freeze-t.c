@@ -36,15 +36,31 @@ static struct frztest_ops prdb_ops = {
     .freeze_envname = "PT",
 
     .use_db = "prdb0",
+    .blankdb = { .flat_path = "tests/ptserver/db.blank/prdb.DB0" },
 };
 
 int
 main(int argc, char **argv)
 {
+    char *pts = NULL;
+
     afstest_SkipTestsIfNoCtl();
     prtest_init(argv);
 
-    plan(31);
+    plan(316);
+
+    pts = afstest_obj_path("src/ptserver/pts");
+    prdb_ops.blank_cmd =
+	afstest_asprintf("%s listentries -users -groups -localauth", pts);
+
+    prdb_ops.blank_cmd_stdout =
+	"Name                          ID  Owner Creator\n"
+	"system:administrators       -204   -204    -204 \n"
+	"system:backup               -205   -204    -204 \n"
+	"system:anyuser              -101   -204    -204 \n"
+	"system:authuser             -102   -204    -204 \n"
+	"system:ptsviewers           -203   -204    -204 \n"
+	"anonymous                  32766   -204    -204 \n";
 
     frztest_runtests(&prtiny, &prdb_ops);
 

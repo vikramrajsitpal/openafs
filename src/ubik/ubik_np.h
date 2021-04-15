@@ -97,8 +97,10 @@ struct ubik_freeze_client;
 struct ubik_freezeinit_opts {
     struct afsctl_clientinfo *fi_cinfo;
 
+    int fi_forcenest;
     int fi_nonest;
     int fi_needsync;
+    int fi_needrw;
 
     afs_uint32 fi_timeout_ms;
 };
@@ -117,5 +119,8 @@ int ubik_FreezeEnd(struct ubik_freeze_client *freeze, char *message);
 int ubik_FreezeAbortId(struct ubik_freeze_client *freeze, afs_uint64 freezeid,
 		       char *message);
 int ubik_FreezeAbortForce(struct ubik_freeze_client *freeze, char *message);
+int ubik_FreezeInstall(struct ubik_freeze_client *freeze, char *path,
+		       char *backup_suffix);
+int ubik_FreezeDistribute(struct ubik_freeze_client *freeze);
 
 #endif /* OPENAFS_UBIK_UBIK_NP_H */

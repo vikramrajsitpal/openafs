@@ -41,7 +41,7 @@
 
 #include "common.h"
 
-static void
+void
 afstest_command_start(struct afstest_cmdinfo *cmdinfo)
 {
     int code;
@@ -184,6 +184,19 @@ command_end_v(struct afstest_cmdinfo *cmdinfo, const char *format, va_list args)
  * @param[in] format	Message to print for the test (a la 'is_int' etc)
  * @return whether the test succeeded
  */
+int
+afstest_command_end(struct afstest_cmdinfo *cmdinfo, const char *format, ...)
+{
+    va_list args;
+    int ret;
+
+    va_start(args, format);
+    ret = command_end_v(cmdinfo, format, args);
+    va_end(args);
+
+    return ret;
+}
+
 int
 is_command(struct afstest_cmdinfo *cmdinfo, const char *format, ...)
 {

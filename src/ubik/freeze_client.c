@@ -49,6 +49,7 @@ struct ubik_freeze_client {
     int running;    /**< is the db currently frozen? */
     int timeout_ms; /**< max time the freeze can run */
     int need_sync;  /**< do we need to contact the sync site? */
+    int need_rw;    /**< do we need RW access to the db? */
 
     /* Formatted env var names for OPENAFS_VL_FREEZE_ID, et al */
     char *env_socket;
@@ -235,6 +236,12 @@ ubik_FreezeInit(struct ubik_freezeinit_opts *opts,
 	goto done;
     }
 
+    if (!freeze->nested && opts->fi_forcenest) {
+	printerr("ubik: Error: Cannot find existing freeze.\n");
+	code = UBADTYPE;
+	goto done;
+    }
+
     if (freeze->ctl_cinfo.sock_path == NULL) {
 	/* We can give afsctl a NULL sock_path, but we need to know the actual
 	 * sock_path used, if we ubik_FreezeSetEnv later on. */
@@ -251,6 +258,7 @@ ubik_FreezeInit(struct ubik_freezeinit_opts *opts,
     }
 
     freeze->need_sync = opts->fi_needsync;
+    freeze->need_rw = opts->fi_needrw;
 
     *a_freeze = freeze;
     freeze = NULL;
@@ -497,9 +505,10 @@ ubik_FreezeBegin(struct ubik_freeze_client *freeze, afs_uint64 *a_freezeid,
     }
 
     code = afsctl_client_start(&freeze->ctl_cinfo, "ufreeze.freeze",
-			       json_pack("{s:b, s:i}",
+			       json_pack("{s:b, s:i, s:b}",
 					 "need_sync", freeze->need_sync,
-					 "timeout_ms", freeze->timeout_ms),
+					 "timeout_ms", freeze->timeout_ms,
+					 "readwrite", freeze->need_rw),
 			       &freeze->frz_ctl);
     if (code != 0) {
 	goto done;
@@ -653,6 +662,210 @@ ubik_FreezeAbortForce(struct ubik_freeze_client *freeze, char *message)
     return end_freeze(freeze, 0, message, 1, 1);
 }
 
+static int
+calc_suffix(struct ubik_freeze_client *freeze, char *new_path, char **a_suffix)
+{
+    char *abs_base = freeze->db_path;
+    char *abs_new = NULL;
+    size_t base_len;
+    size_t new_len;
+    int code;
+
+    abs_new = realpath(new_path, NULL);
+    if (abs_new == NULL) {
+	goto realpath_error;
+    }
+
+    base_len = strlen(abs_base);
+    new_len = strlen(abs_new);
+
+    if (new_len > base_len && strncmp(abs_base, abs_new, base_len) == 0) {
+	*a_suffix = strdup(&abs_new[base_len]);
+	if (*a_suffix == NULL) {
+	    code = UNOMEM;
+	    goto done;
+	}
+
+    } else {
+	printerr("ubik: New db path (%s) must be prefixed with existing db path "
+		 "(%s) to be installed.\n", abs_new, abs_base);
+	code = UINTERNAL;
+	goto done;
+    }
+
+    code = 0;
+
+ done:
+    free(abs_new);
+    return code;
+
+ realpath_error:
+    if (errno == ENOMEM) {
+	code = UNOMEM;
+    } else {
+	code = UIOERROR;
+    }
+    goto done;
+}
+
+/**
+ * Install a new db during a freeze.
+ *
+ * Note that the epoch of newly-installed database must be newer than the
+ * installed db, and must be older than the current timestamp. If it does not
+ * fit in that range, it will be relabelled before installation. If the
+ * existing db has an epoch close to the current timestamp, we can sleep for a
+ * couple of seconds so the label we write to the newly-installed db can "fit"
+ * in the above restrictions.
+ *
+ * @param[in] freeze	Freeze context.
+ * @param[in] path	Path to the new db. This path must be a suffix of the
+ *			existing db; that is, the path must start with the
+ *			existing db's path. For example, with a db of path
+ *			/usr/afs/vldb.DB0, the new to-be-installed path can be
+ *			/usr/afs/vldb.DB0.NEW, but not /tmp/new.DB0.
+ * @param[in] backup_suffix Suffix for a backup of the existing database (e.g.
+ *			    ".OLD"). If NULL, no backup copy is made.
+ * @return ubik error codes
+ */
+int
+ubik_FreezeInstall(struct ubik_freeze_client *freeze, char *path,
+		   char *backup_suffix)
+{
+    int code;
+    struct ubik_version vers32;
+    struct ubik_version64 version;
+    struct ubik_version64 old_vers;
+    char *suffix = NULL;
+    afs_uint64 now;
+
+    memset(&vers32, 0, sizeof(vers32));
+    memset(&version, 0, sizeof(version));
+    memset(&old_vers, 0, sizeof(old_vers));
+
+    code = calc_suffix(freeze, path, &suffix);
+    if (code != 0) {
+	goto done;
+    }
+
+    code = uphys_getlabel_path(path, &vers32);
+    if (code != 0) {
+	goto done;
+    }
+
+    udb_v32to64(&vers32, &version);
+    now = time(NULL);
+
+    if (udb_vcmp64(&version, &freeze->db_vers) <= 0 || vers32.epoch >= now) {
+	afs_int64 epoch;
+	/*
+	 * The server won't let us install an "older" db (that would
+	 * understandably confuse ubik). But we don't want to just fail for
+	 * older dbs, since the user may be trying to do something like restore
+	 * a db backup.
+	 *
+	 * The server also doesn't let us install a version where the epoch is
+	 * newer than (or equal to) 'now', since ubik itself might relabel the
+	 * database with an epoch of 'now' or later.
+	 *
+	 * So in either of these situations, we relabel the new db with the
+	 * current timestamp. But make sure the current timestamp is actually
+	 * different from the current db's epoch; if it's not, then just wait a
+	 * couple of seconds. If the current db has an epoch in the _future_
+	 * (more than a couple of seconds) for some reason, just throw an error
+	 * immediately, so we don't wait around forever waiting for the epoch
+	 * to become "old".
+	 *
+	 * Note that we mostly work with afs_time64-based epochs (which are
+	 * measured in 100ns intervals), but ubik internals still tend to use
+	 * 32-bit second-based epochs. So we need to make sure the _seconds_ of
+	 * the epochs differ, and not just look at e.g. opr_time64_cmp.
+	 */
+	epoch = opr_time64_toSecs(&freeze->db_vers.epoch64);
+	if (epoch > now + 1) {
+	    printerr("ubik: Refusing to install new db; current db epoch is "
+		     "too far in the future (%lld > %lld)\n",
+		     epoch, now);
+	    code = UINTERNAL;
+	    goto done;
+	}
+	while (epoch >= now) {
+	    printerr("warning: Waiting for db epoch to be older than current "
+		     "timestamp\n");
+	    sleep(2);
+	    now = time(NULL);
+	}
+
+	vers32.epoch = now;
+	vers32.counter = 1;
+	udb_v32to64(&vers32, &version);
+
+	printerr("\nnote: Relabelling %s as %d.%d\n",
+		 path, vers32.epoch, vers32.counter);
+
+	code = uphys_setlabel_path(path, &vers32);
+	if (code != 0) {
+	    printerr("ubik: Cannot label new db, error %d\n", code);
+	    code = UIOERROR;
+	    goto done;
+	}
+
+	/*
+	 * Try to make sure the epoch we just labelled is older than 'now'
+	 * (when we go to install the db). The server will refuse the db if the
+	 * epoch is the same as 'now'.
+	 */
+	sleep(2);
+    }
+
+    old_vers = freeze->db_vers;
+    if (backup_suffix == NULL) {
+	backup_suffix = "";
+    }
+
+    code = afsctl_client_call(&freeze->ctl_cinfo, "ufreeze.install",
+			      json_pack("{s:I, s:{s:I, s:I}, s:{s:I, s:I}, s:s, s:s}",
+					"freeze_id", (json_int_t)freeze->freezeid,
+					"old_version", "epoch64", (json_int_t)old_vers.epoch64.clunks,
+						       "counter", (json_int_t)old_vers.counter64,
+					"new_version", "epoch64", (json_int_t)version.epoch64.clunks,
+						       "counter", (json_int_t)version.counter64,
+					"new_suffix", suffix,
+					"backup_suffix", backup_suffix),
+			      NULL);
+    if (code != 0) {
+	goto done;
+    }
+
+ done:
+    free(suffix);
+    return code;
+}
+
+/**
+ * Distribute a newly-installed db to other ubik sites.
+ *
+ * This may return an error if the server fails to distribute the db to one or
+ * more sites, but the freeze can still be ultimately successful even if that
+ * happens. It is up to the caller to decide whether an error in distribution
+ * constitutes an error for the entire freeze.
+ *
+ * However, note that if the db has been succesfully distributed to at least
+ * one site, a newly-installed db will not be reverted, even if the freeze is
+ * aborted.
+ *
+ * @param[in] freeze	Freeze context.
+ * @return ubik error codes
+ */
+int
+ubik_FreezeDistribute(struct ubik_freeze_client *freeze)
+{
+    return afsctl_client_call(&freeze->ctl_cinfo, "ufreeze.dist",
+			      json_pack("{s:I}",
+					"freeze_id", (json_int_t)freeze->freezeid),
+			      NULL);
+}
+
 #else /* AFS_CTL_ENV */
 
 int
@@ -707,6 +920,19 @@ ubik_FreezeAbortId(struct ubik_freeze_client *freeze, afs_uint64 freezeid,
 
 int
 ubik_FreezeAbortForce(struct ubik_freeze_client *freeze, char *message)
+{
+    return UINTERNAL;
+}
+
+int
+ubik_FreezeInstall(struct ubik_freeze_client *freeze, char *path,
+		   char *backup_suffix)
+{
+    return UINTERNAL;
+}
+
+int
+ubik_FreezeDistribute(struct ubik_freeze_client *freeze)
 {
     return UINTERNAL;
 }

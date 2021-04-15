@@ -36,15 +36,26 @@ static struct frztest_ops vldb4_ops = {
     .freeze_envname = "VL",
 
     .use_db = "vldb4",
+    .blankdb = { .flat_path = "tests/vlserver/db.blank/vldb4.DB0", },
 };
 
 int
 main(int argc, char **argv)
 {
+    char *vos = NULL;
+
     afstest_SkipTestsIfNoCtl();
     vltest_init(argv);
 
-    plan(24);
+    plan(246);
+
+    vos = afstest_obj_path("src/volser/vos");
+
+    vldb4_ops.blank_cmd =
+	afstest_asprintf("%s listvldb -noresolv -noauth -nosort", vos);
+
+    vldb4_ops.blank_cmd_stdout =
+	"VLDB entries for all servers \n\nTotal entries: 0\n";
 
     frztest_runtests(&vlsmall, &vldb4_ops);
 

@@ -71,6 +71,10 @@ struct afstest_cmdinfo {
     FILE *pipe_fh;	/**< pipe from child (after started) */
 };
 
+extern void afstest_command_start(struct afstest_cmdinfo *cmdinfo);
+extern int afstest_command_end(struct afstest_cmdinfo *cmdinfo,
+			       const char *format, ...)
+	AFS_ATTRIBUTE_FORMAT(__printf__, 2, 3);
 extern int is_command(struct afstest_cmdinfo *cmdinfo,
 		      const char *format, ...)
 	AFS_ATTRIBUTE_FORMAT(__printf__, 2, 3);
@@ -286,6 +290,17 @@ struct frztest_ops {
 		     *   server process. */
     char **server_argv;
 		    /**< args to pass to server process */
+
+    struct ubiktest_dbdef blankdb;
+			/**< db definition for a 'blank' db. That is, a db that
+			 *   the relevant server would create on startup
+			 *   without an existing db (not literally a db full of
+			 *   zeroes). */
+
+    /* When 'blankdb' is installed on the server, running 'blank_cmd' should
+     * result in printing 'blank_cmd_stdout' to stdout. */
+    char *blank_cmd;
+    char *blank_cmd_stdout;
 };
 extern void frztest_runtests(struct ubiktest_dataset *ds,
 			     struct frztest_ops *ops);

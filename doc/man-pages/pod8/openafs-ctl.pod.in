@@ -39,8 +39,10 @@ will need to be the local superuser C<root> in order to run any commands.
 
 L<openafs-ctl_vldb-dump(8)>,
 L<openafs-ctl_vldb-freeze-abort(8)>,
+L<openafs-ctl_vldb-freeze-dist(8)>,
 L<openafs-ctl_vldb-freeze-run(8)>,
-L<openafs-ctl_vldb-info(8)>
+L<openafs-ctl_vldb-info(8)>,
+L<openafs-ctl_vldb-restore(8)>
 
 =head1 COPYRIGHT
 

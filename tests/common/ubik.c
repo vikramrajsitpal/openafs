@@ -719,8 +719,22 @@ urectest_runtests(struct ubiktest_dataset *ds, char *use_db)
 
 struct freeze_test {
     struct frztest_ops *ops;
+    int backup_db;	/**< frztest_restore: if set, test backing up the
+			 *   original db when restoring. */
 
-    char *db_path;  /**< path to the ops->use_db dbase */
+    int revert_exit;	/**< frztest_revert: get the freeze to fail by exiting
+			 *   with an error. */
+    int revert_abort;	/**< frztest_revert: get the freeze to fail by running
+			 *   vldb-freeze-abort. */
+    int revert_abort_force;
+			/**< frztest_revert: get the freeze to fail by running
+			 *   vldb-freeze-abort -force. */
+    int revert_abort_id;/**< frztest_revert: get the freeze to fail by running
+			 *   vldb-freeze-abort -freezeid. */
+    int revert_timeout;	/**< frztest_revert: get the freeze to fail by timeout. */
+
+    char *db_path;	/**< path to the ops->use_db dbase */
+    char *blankdb_path;	/**< path to the ops->blankdb dbase */
 };
 
 static char *ctl_path;
@@ -742,6 +756,18 @@ ctl_cmd_v(char *confdir, char *suite, char *subcmd, char *fmt, va_list ap)
 			       args);
     free(args);
 
+    return cmdline;
+}
+
+static char *
+AFS_ATTRIBUTE_FORMAT(__printf__, 4, 5)
+ctl_cmd(char *confdir, char *suite, char *subcmd, char *fmt, ...)
+{
+    va_list ap;
+    char *cmdline;
+    va_start(ap, fmt);
+    cmdline = ctl_cmd_v(confdir, suite, subcmd, fmt, ap);
+    va_end(ap);
     return cmdline;
 }
 
@@ -803,13 +829,300 @@ frztest_dump(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
     free(dump_path);
 }
 
+static void
+frztest_restore(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
+{
+    struct freeze_test *test = ops->rock;
+    struct frztest_ops *frzops = test->ops;
+    char *blankdb_path = NULL;
+    char *bak_path = NULL;
+    char *args;
+
+    /*
+     * Start the server with a blank db (that is, tell ubiktest to not use an
+     * existing db). Then restore the normal db to the vlserver, and verify
+     * that .DB0 matches the normal db.
+     *
+     * If ->backup_db is set, dump the existing (blank) db before restoring.
+     * When we restore, tell the server to backup the existing (blank) vldb,
+     * and afterwards check that the backup matches the dumped blank db.
+     */
+
+    if (test->backup_db) {
+	blankdb_path = afstest_asprintf("%s/blank.DB0", info->confdir);
+	bak_path = afstest_asprintf("%s.BAK", info->db_path);
+
+	ctl_run(info->confdir, frzops->suite, "db-dump", "-output %s", blankdb_path);
+
+	args = "-backup-suffix .BAK";
+
+    } else {
+	args = "-no-backup";
+    }
+
+    ctl_run(info->confdir, frzops->suite, "db-restore",
+	    "-input %s %s", test->db_path, args);
+
+    ok(db_equal(test->db_path, info->db_path), "restored db matches");
+
+    if (test->backup_db) {
+	ok(db_equal(blankdb_path, bak_path), "db backup matches");
+    }
+
+    free(blankdb_path);
+    free(bak_path);
+}
+
+static void
+frztest_install(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
+{
+    struct freeze_test *test = ops->rock;
+    struct frztest_ops *frzops = test->ops;
+    char *new_path;
+    int code;
+    int errno_save;
+
+    /*
+     * Start the server with a blank db. Then copy the src db to a tmp path,
+     * install it, and then verify the installed db matches.
+     */
+
+    new_path = afstest_asprintf("%s.NEW", info->db_path);
+    opr_Verify(ubik_CopyDB(test->db_path, new_path) == 0);
+
+    ctl_run(info->confdir, frzops->suite, "db-install",
+	    "-input %s -no-backup", new_path);
+
+    ok(db_equal(test->db_path, info->db_path), "restored db matches");
+
+    code = access(new_path, F_OK);
+    errno_save = errno;
+
+    is_int(-1, code, "post-install access(%s) fails", new_path);
+    is_int(ENOENT, errno_save, "post-install access(%s) fails with ENOENT", new_path);
+
+    free(new_path);
+}
+
+static void
+frztest_revert(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
+{
+    struct freeze_test *test = ops->rock;
+    struct frztest_ops *frzops = test->ops;
+    struct afstest_cmdinfo cmdinfo;
+    struct afstest_cmdinfo cmdinfo_abort;
+    char *fifo_start = NULL;
+    char *fifo_end = NULL;
+    char *db_restore = NULL;
+    char *frz_abort = NULL;
+    char *abort_cmd = NULL;
+    char *cmd = NULL;
+
+    memset(&cmdinfo, 0, sizeof(cmdinfo));
+    memset(&cmdinfo_abort, 0, sizeof(cmdinfo_abort));
+
+    opr_Assert(test->blankdb_path != NULL);
+    opr_Assert(frzops->blank_cmd != NULL);
+    opr_Assert(frzops->blank_cmd_stdout != NULL);
+
+    /*
+     * server is started with populated db. Inside a 'db-freeze-run', we
+     * restore a blank db, then fail. The db should then revert back to the
+     * original, populated db.
+     */
+
+    /* Restore the blank db to the running server */
+    db_restore = ctl_cmd(info->confdir, frzops->suite, "db-restore",
+			 "-input %s -no-backup -dist skip", test->blankdb_path);
+
+    /*
+     * ... but do the restore inside a db-freeze-run that fails, so the blank
+     * db gets reverted. But before it fails, run e.g. 'vos listvldb' to make
+     * sure the blank db is actually loaded and running on the server
+     */
+
+    if (test->revert_abort) {
+	/* Cause the freeze to fail by running db-freeze-abort. */
+	cmdinfo.exit_code = 255;
+	frz_abort = ctl_cmd(info->confdir, frzops->suite, "db-freeze-abort", " ");
+	cmd = ctl_cmd(info->confdir, frzops->suite,
+		      "db-freeze-run", "-rw -cmd -- sh -c '"
+			"%s && "
+			"%s -config %s && "
+			"%s"
+		       "'",
+		      db_restore, frzops->blank_cmd, info->confdir, frz_abort);
+
+    } else if (test->revert_abort_force || test->revert_abort_id) {
+	/*
+	 * Cause the freeze to fail by running 'db-freeze-abort -force' (or
+	 * 'db-freeze-abort -freezeid'). This is like the regular revert_abort
+	 * case above, but we run 'db-freeze-abort' with those extra arguments.
+	 * To make sure we're not getting the freeze information from the
+	 * environment, we run 'db-freeze-abort' from outside the
+	 * 'db-freeze-run' context.
+	 *
+	 * To run the abort outside of the freeze context, we have a couple of
+	 * FIFOs (fifo_start, fifo_end) so we can start the abort (and wait for
+	 * it to finish) from inside db-freeze-run.
+	 *
+	 * This looks a bit complex, so here's some pseudocode to try to help
+	 * illustrate what we're doing here:
+	 *
+	 * cmdinfo_abort runs this in the background:
+	 * read < abort_start.fifo && openafs-ctl vl db-freeze-abort -force ; e_code=$? ; echo > abort_end.fifo ; exit $e_code
+	 *
+	 * And cmdinfo runs this:
+	 * openafs-ctl vl db-freeze-run -- \
+	 *	sh -c 'openafs-ctl vl db-restore &&
+	 *	       vos listvldb &&
+	 *	       echo > abort_start.fifo &&
+	 *	       read < abort_end.fifo'
+	 */
+
+	fifo_start = afstest_asprintf("%s/abort_start.fifo", info->confdir);
+	fifo_end = afstest_asprintf("%s/abort_end.fifo", info->confdir);
+	opr_Verify(mkfifo(fifo_start, 0700) == 0);
+	opr_Verify(mkfifo(fifo_end, 0700) == 0);
+
+	if (test->revert_abort_force) {
+	    frz_abort = ctl_cmd(info->confdir, frzops->suite,
+				"db-freeze-abort", "-force");
+	} else {
+	    opr_Assert(test->revert_abort_id);
+	    frz_abort = ctl_cmd(info->confdir, frzops->suite,
+				"db-freeze-abort", "-freezeid $freezeid");
+	}
+	abort_cmd = afstest_asprintf("read freezeid < %s && "
+				     "%s ; e_code=$? ; "
+				     "echo > %s ; exit $e_code",
+				     fifo_start, frz_abort, fifo_end);
+
+	cmdinfo_abort.output = "";
+	cmdinfo_abort.fd = STDOUT_FILENO;
+	cmdinfo_abort.command = abort_cmd;
+	afstest_command_start(&cmdinfo_abort);
+
+	cmdinfo.exit_code = 255;
+	cmd = ctl_cmd(info->confdir, frzops->suite,
+		      "db-freeze-run", "-rw -cmd -- sh -c ' "
+			"%s && "
+			"%s -config %s && "
+			"echo $OPENAFS_%s_FREEZE_ID > %s && read line < %s"
+		       " ' ",
+		      db_restore, frzops->blank_cmd, info->confdir,
+		      frzops->freeze_envname, fifo_start, fifo_end);
+
+    } else if (test->revert_timeout) {
+	/*
+	 * Cause the freeze to fail by timeout. Set the free to timeout after
+	 * 200ms, and sleep inside the freeze for 210ms.
+	 *
+	 * Use perl for sleeping, since sub-second sleep(1) is not portable.
+	 */
+	cmdinfo.exit_code = 255;
+
+	cmd = ctl_cmd(info->confdir, frzops->suite,
+		      "db-freeze-run", "-rw -timeout-ms 200 -cmd -- sh -c ' "
+			"%s && "
+			"%s -config %s && "
+			"perl -MTime::HiRes=usleep -e \"usleep(210000)\""
+		       " ' ",
+		      db_restore, frzops->blank_cmd, info->confdir);
+
+    } else if (test->revert_exit) {
+	/* Cause the freeze to fail because the underlying command exits with a
+	 * non-zero exit code. */
+	cmdinfo.exit_code = 1;
+	cmd = ctl_cmd(info->confdir, frzops->suite,
+		      "db-freeze-run", "-rw -cmd -- sh -c ' "
+			"%s && "
+			"%s -config %s && "
+			"exit 1"
+		       " ' ",
+		      db_restore, frzops->blank_cmd, info->confdir);
+    } else {
+	opr_Assert(0);
+    }
+
+    cmdinfo.output = frzops->blank_cmd_stdout;
+    cmdinfo.fd = STDOUT_FILENO;
+    cmdinfo.command = cmd;
+
+    if (!is_command(&cmdinfo, "nested db-restore fails correctly")) {
+	if (cmdinfo_abort.child != 0) {
+	    /* Kill out cmdinfo_abort command, since it may be hanging waiting
+	     * on a fifo. */
+	    kill(cmdinfo_abort.child, SIGTERM);
+	}
+    }
+
+    if (cmdinfo_abort.command != NULL) {
+	afstest_command_end(&cmdinfo_abort,
+			    "separate db-freeze-abort command runs successfully");
+    }
+
+    ok(db_equal(test->db_path, info->db_path), "reverted db matches");
+
+    free(fifo_start);
+    free(fifo_end);
+    free(db_restore);
+    free(frz_abort);
+    free(abort_cmd);
+    free(cmd);
+}
+
+static void
+frztest_dist(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
+{
+    struct freeze_test *test = ops->rock;
+    struct frztest_ops *frzops = test->ops;
+    char *db_restore = NULL;
+    char *frz_dist = NULL;
+    char *cmd = NULL;
+    struct afstest_cmdinfo cmdinfo;
+
+    memset(&cmdinfo, 0, sizeof(cmdinfo));
+
+    /*
+     * server is started without a db. We install a db with a nested
+     * 'db-restore -dist skip' that eventually fails like in frztest_revert,
+     * but we also run db-freeze-dist, so the db never gets reverted.
+     */
+
+    db_restore = ctl_cmd(info->confdir, frzops->suite, "db-restore",
+			 "-input %s -no-backup -dist skip", test->db_path);
+    frz_dist = ctl_cmd(info->confdir, frzops->suite, "db-freeze-dist", " ");
+
+    cmd = ctl_cmd(info->confdir, frzops->suite,
+		  "db-freeze-run", "-rw -cmd -- sh -c '"
+		    "%s && %s && exit 1"
+		   "'",
+		  db_restore, frz_dist);
+
+    cmdinfo.output = "";
+    cmdinfo.fd = STDOUT_FILENO;
+    cmdinfo.command = cmd;
+    cmdinfo.exit_code = 1;
+
+    is_command(&cmdinfo, "nested db-restore/dist fails correctly");
+
+    ok(db_equal(test->db_path, info->db_path), "db matches");
+
+    free(db_restore);
+    free(frz_dist);
+    free(cmd);
+}
+
 void
 frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 {
     char *src_db = NULL;
+    char *blankdb_path = NULL;
     struct ubiktest_dbdef *dbdef;
     struct ubiktest_ops utest;
     struct freeze_test frztest;
+    int pass;
 
     memset(&utest, 0, sizeof(utest));
     memset(&frztest, 0, sizeof(frztest));
@@ -823,9 +1136,11 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
     if (dbdef != NULL) {
 	src_db = get_dbpath(dbdef);
     }
+    blankdb_path = get_dbpath(&ops->blankdb);
 
     frztest.ops = ops;
     frztest.db_path = src_db;
+    frztest.blankdb_path = blankdb_path;
 
     {
 	utest.rock = &frztest;
@@ -839,8 +1154,91 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 	free(utest.descr);
 	memset(&utest, 0, sizeof(utest));
     }
+    for (pass = 1; pass <= 2; pass++) {
+	utest.rock = &frztest;
+	utest.use_db = "none";
+	utest.post_start = frztest_restore;
+	utest.server_argv = ops->server_argv;
+
+	if (pass == 1) {
+	    utest.descr = afstest_asprintf("restore %s", ops->use_db);
+	} else {
+	    frztest.backup_db = 1;
+	    utest.descr = afstest_asprintf("restore %s with backup", ops->use_db);
+	}
+	ubiktest_runtest(ds, &utest);
+
+	frztest.backup_db = 0;
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
+    }
+    {
+	utest.rock = &frztest;
+	utest.descr = afstest_asprintf("install %s", ops->use_db);
+	utest.use_db = "none";
+	utest.post_start = frztest_install;
+	utest.server_argv = ops->server_argv;
+
+	ubiktest_runtest(ds, &utest);
+
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
+    }
+    for (pass = 1; pass <= 5; pass++) {
+	utest.rock = &frztest;
+	if (pass == 1) {
+	    utest.descr = afstest_asprintf("db-freeze-run revert-exit %s",
+					   ops->use_db);
+	    frztest.revert_exit = 1;
+	} else if (pass == 2) {
+	    utest.descr = afstest_asprintf("db-freeze-run revert-abort %s",
+					   ops->use_db);
+	    frztest.revert_abort = 1;
+	} else if (pass == 3) {
+	    utest.descr = afstest_asprintf("db-freeze-run revert-abort-force %s",
+					   ops->use_db);
+	    frztest.revert_abort_force = 1;
+	} else if (pass == 4) {
+	    utest.descr = afstest_asprintf("db-freeze-run revert-abort-id %s",
+					   ops->use_db);
+	    frztest.revert_abort_id = 1;
+	} else if (pass == 5) {
+	    utest.descr = afstest_asprintf("db-freeze-run revert-timeout %s",
+					   ops->use_db);
+	    frztest.revert_timeout = 1;
+	} else {
+	    opr_Assert(0);
+	}
+
+	utest.use_db = ops->use_db;
+	utest.post_start = frztest_revert;
+	utest.server_argv = ops->server_argv;
+
+	ubiktest_runtest(ds, &utest);
+
+	frztest.revert_exit = 0;
+	frztest.revert_abort = 0;
+	frztest.revert_abort_force = 0;
+	frztest.revert_abort_id = 0;
+	frztest.revert_timeout = 0;
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
+    }
+    {
+	utest.rock = &frztest;
+	utest.descr = afstest_asprintf("db-freeze-dist %s", ops->use_db);
+	utest.use_db = "none",
+	utest.post_start = frztest_dist;
+	utest.server_argv = ops->server_argv;
+
+	ubiktest_runtest(ds, &utest);
+
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
+    }
 
     free(src_db);
+    free(blankdb_path);
 
     free(ctl_path);
     ctl_path = NULL;

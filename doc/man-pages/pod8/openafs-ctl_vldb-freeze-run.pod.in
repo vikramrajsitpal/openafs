@@ -8,14 +8,14 @@ openafs-ctl_vldb-freeze-run, openafs-ctl_ptdb-freeze-run - Freeze a ubik db
 <div class="synopsis">
 
 B<openafs-ctl vldb-freeze-run> S<<< [B<-cmd>] <I<cmd>+> >>>
-    [B<-require-sync>] S<<< [B<-timeout-ms> <I<timeout>>] >>>
-    [B<-quiet>] S<<< [B<-reason> <I<message>>] >>>
-    S<<< [B<-ctl-socket> <I<path>>] >>> [B<-help>]
+    [B<-rw>] [B<-require-sync>] S<<< [B<-timeout-ms> <I<timeout>>] >>>
+    S<<< [B<-reason> <I<message>>] >>> S<<< [B<-ctl-socket> <I<path>>] >>>
+    [B<-quiet>] [B<-progress>] [B<-no-progress>] [B<-help>]
 
 B<openafs-ctl ptdb-freeze-run> S<<< [B<-cmd>] <I<cmd>+> >>>
-    [B<-require-sync>] S<<< [B<-timeout-ms> <I<timeout>>] >>>
-    [B<-quiet>] S<<< [B<-reason> <I<message>>] >>>
-    S<<< [B<-ctl-socket> <I<path>>] >>> [B<-help>]
+    [B<-rw>] [B<-require-sync>] S<<< [B<-timeout-ms> <I<timeout>>] >>>
+    S<<< [B<-reason> <I<message>>] >>> S<<< [B<-ctl-socket> <I<path>>] >>>
+    [B<-quiet>] [B<-progress>] [B<-no-progress>] [B<-help>]
 
 =for html
 </div>
@@ -34,6 +34,7 @@ specified command can read the VLDB directly from disk with the guarantee that
 the VLDB is not changing underneath it. That is, as long as the parent
 B<openafs-ctl vldb-freeze-run> command exits successfully, it is guaranteed
 that the B<vlserver> never modified the VLDB while I<cmd> was running.
+(However, I<cmd> may install a new database if the B<-rw> option is given.)
 
 Specifically, B<openafs-ctl vldb-freeze-run> performs the following steps:
 
@@ -78,6 +79,17 @@ If the I<cmd> exited non-successfully.
 
 =back
 
+If the freeze was aborted, and a new database was installed during the freeze,
+it is assumed that something went wrong during the freeze, so the database is
+reverted back to how it was when the freeze started (and the newly installed
+database is removed). However, there is an exception to this:
+
+If we installed a new database, and the new database was distributed to at
+least one other dbserver, then we do not revert the database, even if the
+freeze was aborted. This is done to avoid distributing the database multiple
+times. For more information about distributing the database during a freeze,
+see L<openafs-ctl_vldb-freeze-dist(8)>.
+
 =head1 OPTIONS
 
 =over 4
@@ -94,6 +106,21 @@ L</ENVIRONMENT>.
 
 The given command can read the database data directly, but it B<must not>
 modify or write to the database. See L</CAUTIONS>.
+
+=item B<-rw>
+
+If this flag is given, the I<cmd> may install a new database during the freeze,
+using a command like B<openafs-ctl vldb-restore>. By default, a freeze is
+considered "read only", and so a new database may not be installed in such a
+way.
+
+Regardless of whether B<-rw> is given, the I<cmd> B<must NOT> directly write to
+the database file (see L</CAUTIONS>). With B<-rw>, the I<cmd> can only install
+a new database all at once using commands like B<openafs-ctl vldb-restore>. If
+I<cmd> needs to modify the existing database, it must make a copy of the
+database, then modify the copy, and install the modified copy.
+
+This flag implies B<-require-sync>.
 
 =item B<-require-sync>
 
@@ -168,7 +195,7 @@ some freeze-related info:
     # Do _NOT_ run with -fix!
     exec vldb_check "$OPENAFS_VL_FREEZE_DB_PATH" -uheader
 
-    % openafs-ctl vldb-freeze-run runcheck.sh
+    % openafs-ctl vldb-freeze-run ./runcheck.sh
     Freezing database... done (freezeid 8, db 15895059090000000.1).
     Freeze id: 8
     VLDB version: 15895059090000000.1
@@ -184,11 +211,67 @@ some freeze-related info:
     openafs-ctl: Command exited with status 0
     Ending freeze... done.
 
+This will restore a new VLDB, and check that the B<vlserver> seems to be
+handling the new VLDB correctly. We only distribute the new VLDB if the
+B<vlserver> responds with valid data. If anything goes wrong, the script will
+exit with an error, and the database will be reverted back to the original
+version.
+
+    % cat do_restore.sh
+    #!/bin/sh
+
+    set -xe
+
+    # The new vldb.DB0 to restore
+    NEW_VLDB=
+
+    # A config dir with only the local dbserver in it, forcing vos to run
+    # against the local vlserver
+    LOCAL_CONFIG=
+
+    # A file containing the expected output of 'vos listvldb vol.important',
+    # below.
+    VOS_OUTPUT=
+
+    # tmp workspace
+    tmp=/tmp/restore
+    mkdir $tmp
+
+    # Only install the new vldb locally
+    openafs-ctl vldb-restore "$NEW_VLDB" -dist skip -backup-suffix .bak
+
+    # Check that the new vldb looks ok
+    vos listvldb vol.important -noresolv -config "$LOCAL_CONFIG" > $tmp/vos.out
+    diff -u $tmp/vos.out "$VOS_OUTPUT"
+
+    # vldb looks ok, so distribute the new db to other sites
+    openafs-ctl vldb-freeze-dist
+
+
+    % openafs-ctl vldb-freeze-run -rw -cmd ./do_restore.sh
+    Freezing database... done (freezeid 1, 16213700780000000.2).
+    [...]
+    + openafs-ctl vldb-restore NEW_VLDB -dist skip -backup-suffix .bak
+    Freezing database... done (freezeid 1, 16213700780000000.2).
+    Making copy of NEW_VLDB... done.
+    Installing db /usr/afs/db/vldb.DB0.TMP... done.
+    Ending freeze... done.
+
+    Restored ubik database from NEW_VLDB
+    Existing database backed up to suffix .bak
+    + vos listvldb vol.important -noresolv -config LOCAL_CONFIG
+    + diff -u /tmp/restore/vos.out VOS_OUTPUT
+    + openafs-ctl vldb-freeze-dist
+    Distributing restored database (may take a while)... done.
+
+    openafs-ctl: Command exited with status 0
+    Ending freeze... done.
+
 =head1 CAUTIONS
 
 The given I<cmd> B<must NOT> write to or modify the database on disk in any
-way. Doing so can cause corruption in the database, and inconsistent behavior
-between dbservers.
+way (even if the B<-rw> option is given). Doing so can cause corruption in the
+database, and inconsistent behavior between dbservers.
 
 =head1 PRIVILEGE REQUIRED
 
@@ -199,7 +282,8 @@ be the local superuser C<root>.
 =head1 SEE ALSO
 
 L<openafs-ctl(8)>,
-L<openafs-ctl_vldb-freeze-abort(8)>
+L<openafs-ctl_vldb-freeze-abort(8)>,
+L<openafs-ctl_vldb-freeze-dist(8)>
 
 =head1 COPYRIGHT
 

@@ -10,12 +10,12 @@ openafs-ctl_vldb-dump, openafs-ctl_ptdb-dump - Dump a ubik db
 B<openafs-ctl vldb-dump> S<<< [B<-output>] <I<path>> >>>
     [B<-require-sync>] S<<< [B<-timeout-ms> <I<timeout>>] >>>
     S<<< [B<-reason> <I<message>>] >>> S<<< [B<-ctl-socket> <I<path>>] >>>
-    [B<-quiet>] [B<-help>]
+    [B<-quiet>] [B<-progress>] [B<-no-progress>] [B<-help>]
 
 B<openafs-ctl ptdb-dump> S<<< [B<-output>] <I<path>> >>>
     [B<-require-sync>] S<<< [B<-timeout-ms> <I<timeout>>] >>>
     S<<< [B<-reason> <I<message>>] >>> S<<< [B<-ctl-socket> <I<path>>] >>>
-    [B<-quiet>] [B<-help>]
+    [B<-quiet>] [B<-progress>] [B<-no-progress>] [B<-help>]
 
 =for html
 </div>

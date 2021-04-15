@@ -95,6 +95,43 @@ udb_path(struct ubik_dbase *dbase, char *suffix, char **apath)
     return 0;
 }
 
+static int
+udb_dbinfo(char *path, int *a_exists)
+{
+    struct stat st;
+    int code;
+
+    memset(&st, 0, sizeof(st));
+
+    *a_exists = 0;
+
+    code = stat(path, &st);
+    if (code != 0) {
+	if (errno == ENOENT) {
+	    return 0;
+	}
+	ViceLog(0, ("ubik: Failed to stat %s (errno %d)\n", path, errno));
+	return UIOERROR;
+    }
+
+    *a_exists = 1;
+
+    if (S_ISREG(st.st_mode)) {
+	/* Good, db file looks like a normal db. */
+
+    } else {
+	/*
+	 * The given db file isn't a regular file? So it's a dir or
+	 * socket or something weird like that; bail out.
+	 */
+	ViceLog(0, ("ubik: Error, weird file mode 0x%x for db %s.\n",
+		    st.st_mode, path));
+	return UIOERROR;
+    }
+
+    return 0;
+}
+
 int
 udb_delpath(char *path)
 {
@@ -161,19 +198,41 @@ udb_install_prep(struct ubik_dbase *dbase, char *suffix_new,
  * and transactions etc is handled by the caller.
  *
  * For now, things are pretty simple: we can simply rename() the new .DB0 into
- * place and clobber the old .DB0.
+ * place and clobber the old .DB0. If we need to retain the old database, then
+ * we create a link() for it first (named .DB0.OLD), so we don't lose the file
+ * when it gets clobbered.
  *
  * @param[in] dbase	    The ubik database
  * @param[in] suffix_new    The suffix of the dbase file to install (e.g.
  *			    ".TMP")
+ * @param[in] keep_old	    If set to nonzero, make sure we don't delete the
+ *			    old database (e.g. by clobbering the file via a
+ *			    rename()). If set to nonzero and there is no
+ *			    existing dbase file, UINTERNAL is returned.
+ * @param[out] a_path_old   If NULL, the existing dbase file must not exist (or
+ *			    UINTERNAL is returned). Otherwise, this is set to
+ *			    the path of the existing database on return. If
+ *			    'keep_old' is 0, this may be set to NULL, if the
+ *			    existing dbase file doesn't exist, or it was
+ *			    deleted via rename(). The caller may delete the
+ *			    given file (if the old dbase doesn't need to be
+ *			    saved), or can move it to another permanent path.
  * @return ubik error codes
  */
 static int
-udb_install_finish(struct ubik_dbase *dbase, char *suffix_new)
+udb_install_finish(struct ubik_dbase *dbase, char *suffix_new,
+		   int keep_old, char **a_path_old)
 {
     char *path_db = NULL;
     char *path_new = NULL;
+    char *path_old = NULL;
+    int exists_db = 0;
+    int exists_new = 0;
     int code;
+
+    if (a_path_old != NULL) {
+	*a_path_old = NULL;
+    }
 
     code = udb_path(dbase, NULL, &path_db);
     if (code != 0) {
@@ -183,6 +242,63 @@ udb_install_finish(struct ubik_dbase *dbase, char *suffix_new)
     code = udb_path(dbase, suffix_new, &path_new);
     if (code != 0) {
 	goto done;
+    }
+
+    code = udb_dbinfo(path_db, &exists_db);
+    if (code != 0) {
+	goto done;
+    }
+
+    code = udb_dbinfo(path_new, &exists_new);
+    if (code != 0) {
+	goto done;
+    }
+
+    if (!exists_new) {
+	ViceLog(0, ("ubik: Error, tried to install db %s, but it doesn't "
+		    "exist.\n", path_new));
+	code = UINTERNAL;
+	goto done;
+    }
+
+    if (keep_old && !exists_db) {
+	ViceLog(0, ("ubik: Error, cannot install new db %s and save existing "
+		"db; existing db doesn't exist.\n", suffix_new));
+	code = UINTERNAL;
+	goto done;
+    }
+
+    if (exists_db && a_path_old == NULL) {
+	ViceLog(0, ("ubik: Internal error: dbase exists, but a_path_old "
+		"unset\n"));
+	code = UINTERNAL;
+	goto done;
+    }
+
+    if (keep_old) {
+	/*
+	 * If we need to keep the old db, we can't just rename() over it, since
+	 * then we'll lose it. So before we rename() over it, make a hard link
+	 * to .OLD, so the old db is still accessible via the .OLD suffix
+	 * afterwards. Don't simply rename the db into the .OLD file, since
+	 * that leaves open a window of time where no .DB0 exists at all.
+	 */
+	code = udb_path(dbase, ".OLD", &path_old);
+	if (code != 0) {
+	    goto done;
+	}
+
+	code = link(path_db, path_old);
+	if (code != 0) {
+	    ViceLog(0, ("ubik: Failed to link %s -> %s (errno %d)\n", path_db,
+		    path_old, errno));
+	    code = UIOERROR;
+	    goto done;
+	}
+
+	/* Give the old db path to our caller to handle. */
+	*a_path_old = path_old;
+	path_old = NULL;
     }
 
     /* Now we rename() .DB0.TMP into .DB0.  */
@@ -197,6 +313,7 @@ udb_install_finish(struct ubik_dbase *dbase, char *suffix_new)
  done:
     free(path_db);
     free(path_new);
+    free(path_old);
     return code;
 }
 
@@ -205,16 +322,24 @@ udb_install_finish(struct ubik_dbase *dbase, char *suffix_new)
  *
  * @param[in] dbase ubik db
  * @param[in] suffix_new    The db suffix for the new db file to install (e.g. ".TMP")
+ * @param[in] suffix_old    The db suffix to move the existing db to (e.g.
+ *			    ".OLD"), or NULL to delete the existing db
  * @param[in] new_vers	    Version of the db in 'suffix_new'
  *
  * @return ubik error codes
  */
 int
 udb_install(struct ubik_dbase *dbase, char *suffix_new,
-	    struct ubik_version *new_vers)
+	    char *suffix_old, struct ubik_version *new_vers)
 {
     int code;
     int file = 0;
+    char *old_path_orig = NULL;
+    int keep_old = 0;
+
+    if (suffix_old != NULL) {
+	keep_old = 1;
+    }
 
     code = udb_install_prep(dbase, suffix_new, new_vers);
     if (code != 0) {
@@ -227,7 +352,7 @@ udb_install(struct ubik_dbase *dbase, char *suffix_new,
 
     UBIK_VERSION_LOCK;
 
-    code = udb_install_finish(dbase, suffix_new);
+    code = udb_install_finish(dbase, suffix_new, keep_old, &old_path_orig);
     if (code != 0) {
 	goto done_locked;
     }
@@ -240,7 +365,35 @@ udb_install(struct ubik_dbase *dbase, char *suffix_new,
     UBIK_VERSION_UNLOCK;
     DBRELE(dbase);
 
+    if (old_path_orig != NULL) {
+	/* Move the old db file to the given suffix (or delete it, if no suffix
+	 * was given). */
+	if (suffix_old != NULL) {
+	    char *old_path = NULL;
+	    code = udb_path(dbase, suffix_old, &old_path);
+	    if (code == 0) {
+		code = rename(old_path_orig, old_path);
+	    }
+	    if (code != 0) {
+		ViceLog(0, ("ubik: Error, failed to move old db %s (code "
+			"%d/%d).\n", old_path_orig, code, errno));
+	    }
+	    free(old_path);
+
+	} else {
+	    code = udb_delpath(old_path_orig);
+	    if (code != 0) {
+		ViceLog(0, ("ubik: Warning, failed to cleanup old db %s "
+			"(code %d). Ignoring error, but beware disk space "
+			"being used up by the lingering files.\n",
+			old_path_orig, code));
+		code = 0;
+	    }
+	}
+    }
+
  done:
+    free(old_path_orig);
     return code;
 
  done_locked:

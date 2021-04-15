@@ -569,7 +569,7 @@ urecovery_receive_db(struct ubik_dbase *dbase,
 
     /* Pivot our .TMP database (already labelled with 'version') into place, to
      * start using it. */
-    code = udb_install(dbase, ".TMP", &version);
+    code = udb_install(dbase, ".TMP", NULL, &version);
     if (code != 0) {
 	goto done;
     }
@@ -838,12 +838,13 @@ dist_dbase_to(struct ubik_dbase *dbase, struct ubik_server *ts,
 }
 
 int
-urecovery_distribute_db(struct ubik_dbase *dbase)
+urecovery_distribute_db(struct ubik_dbase *dbase, int *a_nsent)
 {
     struct ubik_server *ts;
     struct in_addr inAddr;
     char hoststr[16];
     afs_int32 code;
+    int n_sent = 0;
     int dbok;
 
     memset(&inAddr, 0, sizeof(inAddr));
@@ -876,6 +877,8 @@ urecovery_distribute_db(struct ubik_dbase *dbase)
 	    code = dist_dbase_to(dbase, ts, inAddr.s_addr);
 	    if (code != 0) {
 		dbok = 0;
+	    } else {
+		n_sent++;
 	    }
 	} else {
 	    /* mark file up to date */
@@ -883,6 +886,9 @@ urecovery_distribute_db(struct ubik_dbase *dbase)
 	}
     }
 
+    if (a_nsent != NULL) {
+	*a_nsent = n_sent;
+    }
     if (!dbok) {
 	return -1;
     }
@@ -1118,7 +1124,7 @@ urecovery_Interact(void *dummy)
 	    }
 	    ubik_set_db_flags(ubik_dbase, DBSENDING);
 
-	    code = urecovery_distribute_db(ubik_dbase);
+	    code = urecovery_distribute_db(ubik_dbase, NULL);
 
 	    ubik_clear_db_flags(ubik_dbase, DBSENDING);
 

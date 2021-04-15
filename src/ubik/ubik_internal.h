@@ -387,7 +387,7 @@ int urecovery_send_db(struct ubik_dbase *dbase,
 		      struct ubik_version *version)
 		      AFS_NONNULL((1,2,3));
 
-int urecovery_distribute_db(struct ubik_dbase *dbase);
+int urecovery_distribute_db(struct ubik_dbase *dbase, int *a_nsent);
 /*\}*/
 
 /*! \name ubik.c */
@@ -466,7 +466,7 @@ int udb_delpath(char *path);
 int udb_del_suffixes(struct ubik_dbase *dbase, char *suffix_new,
 		     char *suffix_spare);
 int udb_install(struct ubik_dbase *dbase, char *suffix_new,
-		struct ubik_version *new_vers);
+		char *suffix_old, struct ubik_version *new_vers);
 
 /* freeze_server.c */
 

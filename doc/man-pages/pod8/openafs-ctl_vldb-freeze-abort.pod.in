@@ -9,11 +9,13 @@ openafs-ctl_vldb-freeze-abort, openafs-ctl_freeze-abort - Abort a freeze
 
 B<openafs-ctl vldb-freeze-abort> S<<< [B<-freezeid> <I<freezeid>>] >>>
     [B<-force>] S<<< [B<-reason> <I<message>>] >>>
-    S<<< [B<-ctl-socket> <I<path>>] >>> [B<-quiet>] [B<-help>]
+    S<<< [B<-ctl-socket> <I<path>>] >>> [B<-quiet>] [B<-progress>]
+    [B<-no-progress>] [B<-help>]
 
 B<openafs-ctl ptdb-freeze-abort> S<<< [B<-freezeid> <I<freezeid>>] >>>
     [B<-force>] S<<< [B<-reason> <I<message>>] >>>
-    S<<< [B<-ctl-socket> <I<path>>] >>> [B<-quiet>] [B<-help>]
+    S<<< [B<-ctl-socket> <I<path>>] >>> [B<-quiet>] [B<-progress>]
+    [B<-no-progress>] [B<-help>]
 
 =for html
 </div>

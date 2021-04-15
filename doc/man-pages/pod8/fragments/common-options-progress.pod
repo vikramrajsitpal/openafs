@@ -1,3 +1,13 @@
 =item B<-quiet>
 
 Don't print informational or progress-related messages.
+
+=item B<-progress>
+
+Force progress reporting to be enabled. This is the default if stderr is a
+terminal.
+
+=item B<-no-progress>
+
+Force progress reporting to be disabled. This is the default if stderr is not a
+terminal.
