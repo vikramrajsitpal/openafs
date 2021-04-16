@@ -13,6 +13,7 @@
 #include <roken.h>
 
 #include <afs/afsutil.h>
+#include <afs/okv.h>
 
 #include "ubik_internal.h"
 
@@ -120,10 +121,15 @@ udisk_LogOpcode(struct ubik_dbase *adbase, afs_int32 aopcode, int async)
  * \brief Log a commit, never syncing.
  */
 static int
-udisk_LogEnd(struct ubik_dbase *adbase, struct ubik_version *aversion)
+udisk_LogEnd(struct ubik_trans *trans, struct ubik_version *aversion)
 {
     afs_int32 code;
     afs_int32 data[3];
+    struct ubik_dbase *adbase = trans->dbase;
+
+    if (ubik_KVTrans(trans)) {
+	return ukv_commit(&trans->kv_tx, aversion);
+    }
 
     /* setup data */
     data[0] = htonl(LOGEND);
@@ -149,6 +155,8 @@ udisk_LogWriteData(struct ubik_dbase *adbase, afs_int32 afile, void *abuffer,
 {
     afs_int32 code;
     afs_int32 data[4];
+
+    opr_Assert(!ubik_KVDbase(adbase));
 
     /* setup header */
     data[0] = htonl(LOGDATA);
@@ -436,6 +444,8 @@ DFlush(struct ubik_trans *atrans)
     struct buffer *tb;
     struct ubik_dbase *adbase = atrans->dbase;
 
+    opr_Assert(!ubik_KVTrans(atrans));
+
     tb = Buffers;
     for (i = 0; i < nbuffers; i++, tb++) {
 	if (tb->dirty) {
@@ -457,6 +467,8 @@ DAbort(struct ubik_trans *atrans)
 {
     int i;
     struct buffer *tb;
+
+    opr_Assert(!ubik_KVTrans(atrans));
 
     tb = Buffers;
     for (i = 0; i < nbuffers; i++, tb++) {
@@ -502,6 +514,8 @@ DSync(struct ubik_trans *atrans)
     afs_int32 file;
     afs_int32 rCode;
     struct ubik_dbase *adbase = atrans->dbase;
+
+    opr_Assert(!ubik_KVTrans(atrans));
 
     rCode = 0;
     while (1) {
@@ -554,6 +568,9 @@ udisk_read(struct ubik_trans *atrans, afs_int32 afile, void *abuffer,
 
     if (atrans->flags & TRDONE)
 	return UDONE;
+    if (ubik_KVTrans(atrans)) {
+	return UBADTYPE;
+    }
     while (alen > 0) {
 	bp = DRead(atrans, afile, apos >> UBIK_LOGPAGESIZE);
 	if (!bp)
@@ -585,7 +602,7 @@ udisk_write(struct ubik_trans *atrans, afs_int32 afile, void *abuffer,
 
     if (atrans->flags & TRDONE)
 	return UDONE;
-    if (atrans->type != UBIK_WRITETRANS)
+    if (atrans->type != UBIK_WRITETRANS || ubik_KVTrans(atrans))
 	return UBADTYPE;
 
     /* first write the data to the log */
@@ -621,19 +638,51 @@ udisk_write(struct ubik_trans *atrans, afs_int32 afile, void *abuffer,
 int
 udisk_begin(struct ubik_dbase *adbase, int atype, struct ubik_trans **atrans)
 {
-    afs_int32 code;
+    afs_int32 code = UINTERNAL;
     struct ubik_trans *tt;
+    struct okv_dbhandle *dbh;
 
     *atrans = NULL;
+
+    dbh = okv_dbhandle_ref(adbase->kv_dbh);
+
     if (atype == UBIK_WRITETRANS) {
-	if (adbase->dbFlags & (DBWRITING | DBRECEIVING | DBSENDING))
-	    return USYNC;
-	code = udisk_LogOpcode(adbase, LOGNEW, 0);
-	if (code)
-	    return code;
+	if (adbase->dbFlags & (DBWRITING | DBRECEIVING | DBSENDING)) {
+	    code = USYNC;
+	    goto done;
+	}
+	if (dbh == NULL) {
+	    code = udisk_LogOpcode(adbase, LOGNEW, 0);
+	    if (code)
+		goto done;
+	}
+	if (dbh != NULL && ubik_servers != NULL) {
+	    static int logged;
+	    /*
+	     * If we have other ubik sites, we can't handle write transactions
+	     * for KV, since transmitting KV data to other sites isn't
+	     * implemented yet. Throw an error now, so we don't get confusing
+	     * errors later on.
+	     */
+	    if (!logged) {
+		logged = 1;
+		ViceLog(0, ("ubik: Error, write transactions for KV databases "
+			"with other sites not implemented yet.\n"));
+		code = UINTERNAL;
+		goto done;
+	    }
+	}
     }
+
     tt = calloc(1, sizeof(struct ubik_trans));
     tt->dbase = adbase;
+
+    if (dbh != NULL) {
+	tt->flags |= TRKEYVAL;
+	tt->kv_dbh = dbh;
+	dbh = NULL;
+    }
+
     tt->next = adbase->activeTrans;
     adbase->activeTrans = tt;
     tt->type = atype;
@@ -646,7 +695,11 @@ udisk_begin(struct ubik_dbase *adbase, int atype, struct ubik_trans **atrans)
 	ubik_set_db_flags(adbase, DBWRITING);
     }
     *atrans = tt;
-    return 0;
+    code = 0;
+
+ done:
+    okv_dbhandle_rele(&dbh);
+    return code;
 }
 
 /*!
@@ -680,7 +733,7 @@ udisk_commit(struct ubik_trans *atrans)
 	    newversion.epoch = version_globals.ubik_epochTime;
 	    newversion.counter = 1;
 
-	    code = uphys_setlabel(dbase, 0, &newversion);
+	    code = udb_setlabel_trans(atrans, &newversion);
 	    if (code) {
 		UBIK_VERSION_UNLOCK;
 		return code;
@@ -701,7 +754,7 @@ udisk_commit(struct ubik_trans *atrans)
 
 	UBIK_VERSION_LOCK;
 	dbase->version.counter++;	/* bump commit count */
-	code = udisk_LogEnd(dbase, &dbase->version);
+	code = udisk_LogEnd(atrans, &dbase->version);
 	if (code) {
 	    dbase->version.counter--;
 	    UBIK_VERSION_UNLOCK;
@@ -709,25 +762,30 @@ udisk_commit(struct ubik_trans *atrans)
 	}
 	UBIK_VERSION_UNLOCK;
 
-	/* If we fail anytime after this, then panic and let the
-	 * recovery replay the log.
-	 */
-	code = DFlush(atrans);	/* write dirty pages to respective files */
-	if (code)
-	    panic("Writing Ubik DB modifications\n");
-	code = DSync(atrans);	/* sync the files and mark pages not dirty */
-	if (code)
-	    panic("Synchronizing Ubik DB modifications\n");
+	if (!ubik_KVTrans(atrans)) {
+	    /* If we fail anytime after this, then panic and let the
+	     * recovery replay the log.
+	     */
+	    code = DFlush(atrans);	/* write dirty pages to respective files */
+	    if (code)
+		panic("Writing Ubik DB modifications\n");
+	    code = DSync(atrans);	/* sync the files and mark pages not dirty */
+	    if (code)
+		panic("Synchronizing Ubik DB modifications\n");
 
-	/* label the committed dbase */
-	code = uphys_setlabel(dbase, 0, &dbase->version);
-	if (code)
-	    panic("Truncating Ubik DB\n");
+	    /* label the committed dbase */
+	    code = uphys_setlabel(dbase, 0, &dbase->version);
+	    if (code)
+		panic("Truncating Ubik DB\n");
 
-	code = uphys_truncate(dbase, LOGFILE, 0);	/* discard log (optional) */
-	if (code)
-	    panic("Truncating Ubik logfile\n");
+	    code = uphys_truncate(dbase, LOGFILE, 0);	/* discard log (optional) */
+	    if (code)
+		panic("Truncating Ubik logfile\n");
+	}
 
+    } else {
+	/* We are a read transaction. */
+	okv_abort(&atrans->kv_tx);
     }
 
     /* When the transaction is marked done, it also means the logfile
@@ -757,7 +815,8 @@ udisk_abort(struct ubik_trans *atrans)
      * will do nothing because the abort is there or no LogEnd opcode.
      */
     dbase = atrans->dbase;
-    if (atrans->type == UBIK_WRITETRANS && dbase->dbFlags & DBWRITING) {
+    if (atrans->type == UBIK_WRITETRANS && (dbase->dbFlags & DBWRITING)
+	&& !ubik_KVTrans(atrans)) {
 	udisk_LogOpcode(dbase, LOGABORT, 1);
 	code = uphys_truncate(dbase, LOGFILE, 0);
 	if (code)
@@ -787,6 +846,8 @@ udisk_end(struct ubik_trans *atrans)
 	udisk_abort(atrans);
     dbase = atrans->dbase;
 
+    okv_abort(&atrans->kv_tx);
+    okv_dbhandle_rele(&atrans->kv_dbh);
     ulock_relLock(atrans);
     unthread(atrans);
 

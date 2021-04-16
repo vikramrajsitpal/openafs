@@ -193,7 +193,7 @@ CommandProc(struct cmd_syndesc *a_as, void *arock)
     if (wflag) {
 	ropts.r_rw = 1;
 	if (access(pfile, F_OK) != 0) {
-	    ropts.r_create = 1;
+	    ropts.r_create_flat = 1;
 	}
     }
 

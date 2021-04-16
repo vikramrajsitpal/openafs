@@ -22,6 +22,7 @@
 #include <afs/cellconfig.h>
 #include <afs/com_err.h>
 #include <afs/cmd.h>
+#include <afs/okv.h>
 #include <ubik_np.h>
 
 #include <stdarg.h>
@@ -322,6 +323,9 @@ del_db(char *path)
     }
     if (code == ENOENT) {
 	code = 0;
+    }
+    if (code == EISDIR) {
+	code = okv_unlink(path);
     }
     return code;
 }

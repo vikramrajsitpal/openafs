@@ -344,7 +344,7 @@ SDISK_GetVersion(struct rx_call *rxcall,
 	return UDEADLOCK;
     }
 
-    code = uphys_getlabel(ubik_dbase, 0, aversion);
+    code = udb_getlabel_db(ubik_dbase, aversion);
     DBRELE(ubik_dbase);
     if (code) {
 	/* tell other side there's no dbase */
@@ -615,7 +615,7 @@ SDISK_SetVersion(struct rx_call *rxcall, struct ubik_tid *atid,
 	|| (uvote_eq_dbVersion(*newversionp)
 	    && vcmp(ubik_dbase->version, *oldversionp) == 0)) {
 	UBIK_VERSION_LOCK;
-	code = uphys_setlabel(ubik_dbase, 0, newversionp);
+	code = udb_setlabel_trans(ubik_currentTrans, newversionp);
 	if (!code) {
 	    ubik_dbase->version = *newversionp;
 	    uvote_set_dbVersion(*newversionp);

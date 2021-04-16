@@ -26,7 +26,9 @@
 #define	UBIK_MILESTONE	    1497987403
 
 struct ubik_stat {
+    int kv;
     afs_int32 size;
+    afs_uint64 n_items;
 };
 
 /*!
@@ -37,9 +39,11 @@ struct ubik_stat {
  */
 struct ubik_dbase {
     char *pathName;		/*!< root name for dbase */
+    char *pathBase;             /*!< basename of 'pathName' */
     struct ubik_trans *activeTrans;	/*!< active transaction list */
     struct ubik_version version;	/*!< version number. protected by
 					 *   DBHOLD and UBIK_VERSION_LOCK */
+    struct okv_dbhandle *kv_dbh;	/*!< KV database (if db is KV) */
 #ifdef AFS_PTHREAD_ENV
     pthread_mutex_t versionLock;	/*!< lock on version number */
 #else
@@ -69,6 +73,8 @@ struct ubik_trans {
     struct ubik_trans *next;	/*!< in the list */
     afs_int32 locktype;		/*!< transaction lock */
     struct ubik_tid tid;	/*!< transaction id of this trans (if write trans.) */
+    struct okv_dbhandle *kv_dbh; /*!< KV database (if any) */
+    struct okv_trans *kv_tx;	/*!< KV transaction (if any) */
     afs_int32 seekFile;		/*!< seek ptr: file number */
     afs_int32 seekPos;		/*!< seek ptr: offset therein */
     short flags;		/*!< trans flag bits */
@@ -100,6 +106,8 @@ struct ubik_trans {
 #define TRREADWRITE	0x40    /*!< read even if there's a conflicting
 				 *   ubik- level write lock */
 #define TRRAW		0x80    /*!< is this a tx for a raw db? */
+#define	TRKEYVAL       0x100	/*!< this trans uses the KV store instead of
+				 *   flat-file access */
 /*\}*/
 
 /*! \name ubik system database numbers */
@@ -460,18 +468,51 @@ extern int uvote_HaveSyncAndVersion(struct ubik_version);
 /* udb.c */
 
 void udb_v32to64(struct ubik_version *from, struct ubik_version64 *to);
+int udb_v64to32(char *descr, struct ubik_version64 *from,
+		struct ubik_version *to);
 int udb_vcmp64(struct ubik_version64 *vers_a,
 	       struct ubik_version64 *vers_b);
+
 int udb_path(struct ubik_dbase *dbase, char *suffix, char **apath);
+int udb_dbinfo(char *path, int *a_exists, int *a_iskv, int *a_islink);
+int udb_stat(char *path, struct ubik_stat *astat);
 int udb_delpath(char *path);
 int udb_del_suffixes(struct ubik_dbase *dbase, char *suffix_new,
 		     char *suffix_spare);
 int udb_check_contents(struct ubik_dbase *dbase, char *path);
+int udb_install_simple(struct ubik_dbase *dbase, char *suffix_new,
+		       struct ubik_version *vers_new);
 int udb_install(struct ubik_dbase *dbase, char *suffix_new,
 		char *suffix_old, struct ubik_version *new_vers);
+int udb_getlabel_path(char *path, struct ubik_version *version);
+int udb_getlabel_db(struct ubik_dbase *dbase, struct ubik_version *version);
+int udb_setlabel_path(char *path, struct ubik_version *version);
+int udb_setlabel_trans(struct ubik_trans *trans, struct ubik_version *version);
+int udb_setlabel_db(struct ubik_dbase *dbase, struct ubik_version *version);
 
 /* freeze_server.c */
 
 void ufreeze_Init(struct ubik_serverinit_opts *opts);
+
+/* ukv.c */
+
+int ukv_next(struct okv_trans *tx, struct rx_opaque *key,
+	     struct rx_opaque *value, int *a_eof);
+int ukv_getlabel(struct okv_trans *tx, struct ubik_version *version);
+int ukv_getlabel_db(struct ubik_dbase *dbase, struct ubik_version *version);
+int ukv_setlabel(struct okv_trans *tx, struct ubik_version *version);
+int ukv_setlabel_db(struct ubik_dbase *dbase, struct ubik_version *version);
+int ukv_setlabel_path(char *path, struct ubik_version *version);
+int ukv_begin(struct ubik_trans *atrans, struct okv_trans **a_tx);
+int ukv_commit(struct okv_trans **a_tx, struct ubik_version *version);
+int ukv_stat(char *path, struct ubik_stat *astat);
+int ukv_create(char *kvdir, char *okv_engine, struct okv_dbhandle **a_dbh);
+int ukv_open(char *kvdir, struct okv_dbhandle **a_dbh,
+	     struct ubik_version *version);
+int ukv_init(struct ubik_dbase *dbase, int create_db);
+int ukv_copydb(char *src_path, char *dest_path);
+int ukv_db_readlink(struct ubik_dbase *dbase, char *path_db, char **a_path);
+int ukv_db_prepinstall(struct ubik_dbase *dbase, char *path_orig);
+void ukv_cleanup_unused(struct ubik_dbase *dbase);
 
 #endif /* OPENAFS_UBIK_INTERNAL_H */

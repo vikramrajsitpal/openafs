@@ -34,6 +34,7 @@
  */
 
 #include <ubik.h>
+#include <afs/okv.h>
 
 /*** ubik.c ***/
 
@@ -69,6 +70,10 @@ struct ubik_serverinit_opts {
 
     /* Function to call to check if a new dbase looks valid. */
     ubik_dbcheck_func dbcheck_func;
+
+    /* If nonzero, when creating a new db, create a KV db instead of a
+     * flat-file db. */
+    int default_kv;
 };
 
 int ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
@@ -77,13 +82,15 @@ int ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
 int ubik_CopyDB(char *src_path, char *dest_path);
 
 struct ubik_rawinit_opts {
-    int r_create;
+    int r_create_flat;
+    int r_create_kv;
     int r_rw;
 };
 
 int ubik_RawDbase(struct ubik_dbase *dbase);
 int ubik_RawTrans(struct ubik_trans *trans);
-int ubik_RawHandle(struct ubik_trans *trans, FILE **a_fh);
+int ubik_RawHandle(struct ubik_trans *trans, FILE **a_fh,
+		   struct okv_trans **a_kvtx);
 
 int ubik_RawInit(char *path, struct ubik_rawinit_opts *ropts,
 		 struct ubik_dbase **dbase);
@@ -127,5 +134,24 @@ int ubik_FreezeAbortForce(struct ubik_freeze_client *freeze, char *message);
 int ubik_FreezeInstall(struct ubik_freeze_client *freeze, char *path,
 		       char *backup_suffix);
 int ubik_FreezeDistribute(struct ubik_freeze_client *freeze);
+
+/*** ukv.c ***/
+
+int ubik_KVDbase(struct ubik_dbase *adbase);
+int ubik_KVTrans(struct ubik_trans *atrans);
+
+int ubik_KVGet(struct ubik_trans *atrans, struct rx_opaque *key,
+	       struct rx_opaque *value, int *a_noent);
+int ubik_KVGetCopy(struct ubik_trans *atrans, struct rx_opaque *key,
+		   void *dest, size_t len, int *a_noent);
+int ubik_KVNext(struct ubik_trans *atrans, struct rx_opaque *key,
+		struct rx_opaque *value, int *a_eof);
+
+int ubik_KVPut(struct ubik_trans *atrans, struct rx_opaque *key,
+	       struct rx_opaque *value);
+int ubik_KVReplace(struct ubik_trans *atrans, struct rx_opaque *key,
+		   struct rx_opaque *value);
+int ubik_KVDelete(struct ubik_trans *atrans, struct rx_opaque *key,
+		  int *a_noent);
 
 #endif /* OPENAFS_UBIK_UBIK_NP_H */

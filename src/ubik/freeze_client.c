@@ -453,7 +453,7 @@ check_version(char *db_path, struct ubik_version64 *version)
     memset(&disk_vers32, 0, sizeof(disk_vers32));
     memset(&disk_vers, 0, sizeof(disk_vers));
 
-    code = uphys_getlabel_path(db_path, &disk_vers32);
+    code = udb_getlabel_path(db_path, &disk_vers32);
     if (code != 0) {
 	printerr("ubik: Cannot access db %s (code %d)\n", db_path, code);
 	return code;
@@ -748,7 +748,7 @@ ubik_FreezeInstall(struct ubik_freeze_client *freeze, char *path,
 	goto done;
     }
 
-    code = uphys_getlabel_path(path, &vers32);
+    code = udb_getlabel_path(path, &vers32);
     if (code != 0) {
 	goto done;
     }
@@ -803,7 +803,7 @@ ubik_FreezeInstall(struct ubik_freeze_client *freeze, char *path,
 	printerr("\nnote: Relabelling %s as %d.%d\n",
 		 path, vers32.epoch, vers32.counter);
 
-	code = uphys_setlabel_path(path, &vers32);
+	code = udb_setlabel_path(path, &vers32);
 	if (code != 0) {
 	    printerr("ubik: Cannot label new db, error %d\n", code);
 	    code = UIOERROR;

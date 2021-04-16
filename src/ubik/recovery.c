@@ -206,6 +206,10 @@ ReplayLog(struct ubik_dbase *adbase)
     afs_int32 syncFile = -1;
     afs_int32 data[1024];
 
+    if (ubik_KVDbase(adbase)) {
+	return 0;
+    }
+
     /* read the lock twice, once to see whether we have a transaction to deal
      * with that committed, (theoretically, we should support more than one
      * trans in the log at once, but not yet), and once replaying the
@@ -340,18 +344,18 @@ InitializeDB(struct ubik_dbase *adbase)
 {
     afs_int32 code;
 
-    code = uphys_getlabel(adbase, 0, &adbase->version);
+    code = udb_getlabel_db(adbase, &adbase->version);
     if (code) {
 	/* try setting the label to a new value */
 	UBIK_VERSION_LOCK;
 	adbase->version.epoch = 1;	/* value for newly-initialized db */
 	adbase->version.counter = 1;
-	code = uphys_setlabel(adbase, 0, &adbase->version);
+	code = udb_setlabel_db(adbase, &adbase->version);
 	if (code) {
 	    /* failed, try to set it back */
 	    adbase->version.epoch = 0;
 	    adbase->version.counter = 0;
-	    uphys_setlabel(adbase, 0, &adbase->version);
+	    udb_setlabel_db(adbase, &adbase->version);
 	}
 	UBIK_VERSION_UNLOCK;
     }
@@ -732,7 +736,24 @@ urecovery_send_db(struct ubik_dbase *dbase,
 	ubik_set_db_flags(dbase, DBSENDING);
     }
 
-    code = uphys_getlabel(dbase, 0, &version);
+    if (ubik_KVDbase(dbase)) {
+	static int logged;
+	/*
+	 * Distributing KV data to other sites is not implemented yet. Bail out
+	 * and log a warning if we have any other sites, to clearly log why
+	 * we're failing; otherwise, we'll just fail later on more confusingly
+	 * when we try to send the KV dbase as a flatfile dbase.
+	 */
+	if (!logged) {
+	    logged = 1;
+	    ViceLog(0, ("ubik: Error, cannot send db to other sites: KV "
+		    "recovery not implemented yet.\n"));
+	    code = UINTERNAL;
+	    goto done_locked;
+	}
+    }
+
+    code = udb_getlabel_db(dbase, &version);
     if (code != 0) {
 	goto done_locked;
     }
@@ -848,6 +869,22 @@ urecovery_distribute_db(struct ubik_dbase *dbase, int *a_nsent)
     int dbok;
 
     memset(&inAddr, 0, sizeof(inAddr));
+
+    if (ubik_servers != NULL && ubik_KVDbase(dbase)) {
+	static int logged;
+	/*
+	 * Distributing KV data to other sites is not implemented yet. Bail out
+	 * and log a warning if we have any other sites, to clearly log why
+	 * we're failing; otherwise, we'll just fail later on more confusingly
+	 * when we try to send the KV dbase as a flatfile dbase.
+	 */
+	if (!logged) {
+	    logged = 1;
+	    ViceLog(0, ("ubik: Error, cannot distribute db to other sites: KV "
+		    "recovery not implemented yet.\n"));
+	    return UINTERNAL;
+	}
+    }
 
     dbok = 1;		/* start off assuming they all worked */
 
@@ -1096,7 +1133,7 @@ urecovery_Interact(void *dummy)
 	    UBIK_VERSION_LOCK;
 	    ubik_dbase->version.epoch = 2;
 	    ubik_dbase->version.counter = 1;
-	    code = uphys_setlabel(ubik_dbase, 0, &ubik_dbase->version);
+	    code = udb_setlabel_db(ubik_dbase, &ubik_dbase->version);
 	    UBIK_VERSION_UNLOCK;
 	    udisk_Invalidate(ubik_dbase, 0);	/* data may have changed */
 	}

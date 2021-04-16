@@ -14,6 +14,7 @@
 
 #include <lock.h>
 #include <afs/afsutil.h>
+#include <afs/okv.h>
 
 #include "ubik_internal.h"
 
@@ -66,6 +67,7 @@ extern int
 ulock_getLock(struct ubik_trans *atrans, int atype, int await)
 {
     struct ubik_dbase *dbase = atrans->dbase;
+    int code = 0;
 
     if ((atype != LOCKREAD) && (atype != LOCKWRITE))
 	return EINVAL;
@@ -111,8 +113,24 @@ ulock_getLock(struct ubik_trans *atrans, int atype, int await)
     } else {
 	ObtainWriteLock(&rwlock);
     }
+
+    if (ubik_KVTrans(atrans)) {
+	/*
+	 * Make sure to not create our KV transaction until after we get
+	 * 'rwlock' (which we just did). The point at which we grab 'rwlock' is
+	 * when we have locked out others from hitting the database (for write
+	 * txes), or frozen our view of the db, etc.
+	 */
+	code = ukv_begin(atrans, &atrans->kv_tx);
+    }
+
     DBHOLD(dbase);
     atrans->locktype = atype;
+
+    if (code != 0) {
+	ulock_relLock(atrans);
+	return code;
+    }
 
 /*
  *ViceLog(0, ("Ubik: DEBUG: Thread 0x%x took %s lock\n", lwp_cpptr,
@@ -132,6 +150,8 @@ ulock_relLock(struct ubik_trans *atrans)
 	           "TRREADWRITE?\n"));
 	abort();
     }
+
+    okv_abort(&atrans->kv_tx);
 
     if (atrans->flags & TRREADWRITE) {
 	/* noop, TRREADWRITE means we don't actually lock anything */

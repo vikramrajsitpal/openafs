@@ -16,7 +16,7 @@ LT_authent_objs = uinit.lo ubikclient.lo uerrors.lo ubik_int.cs.lo \
 LT_objs =   $(LT_authent_objs) \
 	    disk.lo remote.lo beacon.lo recovery.lo ubik.lo vote.lo lock.lo \
 	    phys.lo ubik_int.ss.lo ubikcmd.lo udb.lo freeze_client.lo \
-	    freeze_server.lo
+	    freeze_server.lo ukv.lo
 
 LT_deps =   $(top_builddir)/src/auth/liboafs_auth.la \
 	    $(top_builddir)/src/opr/liboafs_opr.la \
@@ -24,6 +24,7 @@ LT_deps =   $(top_builddir)/src/auth/liboafs_auth.la \
 	    $(top_builddir)/src/lwp/liboafs_lwpcompat.la \
 	    $(top_builddir)/src/rx/liboafs_rx.la \
 	    $(top_builddir)/src/ctl/liboafs_ctl.la \
+	    $(top_builddir)/src/okv/liboafs_okv.la \
 	    $(top_builddir)/src/util/liboafs_util.la
 
 LT_libs = $(JANSSON_LIBS)
