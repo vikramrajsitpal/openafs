@@ -185,15 +185,29 @@ run_testlist(struct ubiktest_dataset *ds, struct ubiktest_dbtest *testlist,
 /* Return the path to the database specified in 'dbdef'. Caller must free the
  * returned string. */
 static char *
-get_dbpath(struct ubiktest_dbdef *dbdef)
+get_dbpath_optional(struct ubiktest_dbdef *dbdef, int *a_present)
 {
     char *path;
 
-    opr_Assert(dbdef->flat_path != NULL);
-    path = afstest_src_path(dbdef->flat_path);
-    opr_Assert(path != NULL);
+    *a_present = 1;
+
+    if (dbdef->flat_path != NULL) {
+	path = afstest_src_path(dbdef->flat_path);
+	opr_Assert(path != NULL);
+
+    } else {
+	path = NULL;
+	*a_present = 0;
+    }
 
     return path;
+}
+
+static char *
+get_dbpath(struct ubiktest_dbdef *dbdef)
+{
+    int present;
+    return get_dbpath_optional(dbdef, &present);
 }
 
 /*
@@ -735,6 +749,7 @@ struct freeze_test {
 
     char *db_path;	/**< path to the ops->use_db dbase */
     char *blankdb_path;	/**< path to the ops->blankdb dbase */
+    char *baddb_path;	/**< path to the ops->baddb dbase */
 };
 
 static char *ctl_path;
@@ -871,6 +886,36 @@ frztest_restore(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
 
     free(blankdb_path);
     free(bak_path);
+}
+
+static void
+frztest_restore_invalid(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
+{
+    struct freeze_test *test = ops->rock;
+    struct frztest_ops *frzops = test->ops;
+    char *cmd;
+    struct afstest_cmdinfo cmdinfo;
+
+    memset(&cmdinfo, 0, sizeof(cmdinfo));
+
+    /*
+     * Start the server with a normal db, then try to restore an invalid db.
+     * Verify that the restore failed, and afterwards ubiktest will check that
+     * the db contents are still as normal.
+     */
+
+    cmd = ctl_cmd(info->confdir, frzops->suite,
+		  "db-restore", "-input %s -no-backup", test->baddb_path);
+
+    cmdinfo.output = "\nopenafs-ctl: Failed to install db: I/O error writing dbase or log\n";
+    cmdinfo.fd = STDERR_FILENO;
+    cmdinfo.exit_code = 255;
+    cmdinfo.command = cmd;
+
+    is_command(&cmdinfo, "openafs-ctl %sdb-restore with invalid db fails",
+	       frzops->suite);
+
+    free(cmd);
 }
 
 static void
@@ -1119,9 +1164,11 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 {
     char *src_db = NULL;
     char *blankdb_path = NULL;
+    char *baddb_path = NULL;
     struct ubiktest_dbdef *dbdef;
     struct ubiktest_ops utest;
     struct freeze_test frztest;
+    int have_baddb = 0;
     int pass;
 
     memset(&utest, 0, sizeof(utest));
@@ -1137,10 +1184,12 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 	src_db = get_dbpath(dbdef);
     }
     blankdb_path = get_dbpath(&ops->blankdb);
+    baddb_path = get_dbpath_optional(&ops->baddb, &have_baddb);
 
     frztest.ops = ops;
     frztest.db_path = src_db;
     frztest.blankdb_path = blankdb_path;
+    frztest.baddb_path = baddb_path;
 
     {
 	utest.rock = &frztest;
@@ -1169,6 +1218,17 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 	ubiktest_runtest(ds, &utest);
 
 	frztest.backup_db = 0;
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
+    }
+    if (have_baddb) {
+	utest.rock = &frztest;
+	utest.descr = afstest_asprintf("restore invalid db over %s", ops->use_db);
+	utest.use_db = ops->use_db;
+	utest.post_start = frztest_restore_invalid;
+
+	ubiktest_runtest(ds, &utest);
+
 	free(utest.descr);
 	memset(&utest, 0, sizeof(utest));
     }
@@ -1239,6 +1299,7 @@ frztest_runtests(struct ubiktest_dataset *ds, struct frztest_ops *ops)
 
     free(src_db);
     free(blankdb_path);
+    free(baddb_path);
 
     free(ctl_path);
     ctl_path = NULL;

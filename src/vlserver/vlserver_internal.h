@@ -77,4 +77,5 @@ extern afs_int32 NextEntry(struct vl_ctx *ctx, afs_int32 blockindex,
 			   struct nvlentry *tentry, afs_int32 *remaining);
 extern int FreeBlock(struct vl_ctx *ctx, afs_int32 blockindex);
 extern int vlsynccache(void);
+extern int vl_checkdb(struct ubik_trans *trans);
 #endif

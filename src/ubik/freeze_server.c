@@ -879,6 +879,15 @@ ufreeze_install(struct afsctl_call *ctl,
 	goto done;
     }
 
+    code = udb_check_contents(dbase, path);
+    if (code != 0) {
+	ViceLog(0, ("ubik: Cannot install new db for freezeid %llu: db does not "
+		    "look valid (code %d)\n",
+		    frz->freezeid, code));
+	code = UIOERROR;
+	goto done;
+    }
+
     ViceLog(0, ("ubik: Installing new database %d.%d for freezeid %llu\n",
 	    disk_vers32.epoch,
 	    disk_vers32.counter,

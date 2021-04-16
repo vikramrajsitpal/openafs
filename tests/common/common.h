@@ -297,6 +297,12 @@ struct frztest_ops {
 			 *   without an existing db (not literally a db full of
 			 *   zeroes). */
 
+    struct ubiktest_dbdef baddb;
+			/**< db definition for an invalid db, that the server
+			 *   will not be able to use at all (specifically,
+			 *   'dbcheck_func' in struct ubik_serverinit_opts
+			 *   needs to return an error for it). */
+
     /* When 'blankdb' is installed on the server, running 'blank_cmd' should
      * result in printing 'blank_cmd_stdout' to stdout. */
     char *blank_cmd;

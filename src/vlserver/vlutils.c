@@ -357,14 +357,19 @@ UpdateCache(struct ubik_trans *trans, void *rock)
 {
     struct vl_ctx *ctx = rock;
     int builddb = ctx->builddb;
-    struct vl_cache *cache = &rd_vlcache;
+    struct vl_cache *cache;
     afs_int32 error = 0, i, code, ubcode;
     int force_cache = 0;
+    struct vlheader *cheader;
+    afs_uint32 *hostaddress;
 
-    struct vlheader *cheader = &cache->cheader;
-    afs_uint32 *hostaddress = cache->hostaddress;
+    if (ctx->cache == NULL) {
+	ctx->cache = &rd_vlcache;
+    }
+    cache = ctx->cache;
 
-    ctx->cache = cache;
+    cheader = &cache->cheader;
+    hostaddress = cache->hostaddress;
 
     /* if version changed (or first call), read the header */
     ubcode = vlread_cheader(ctx, cheader);
@@ -1302,4 +1307,35 @@ int
 vlsynccache(void)
 {
     return vlcache_copy(&rd_vlcache, &wr_vlcache);
+}
+
+/* dbcheck_func callback; just checks if the database sesms usable. */
+int
+vl_checkdb(struct ubik_trans *trans)
+{
+    struct vl_ctx ctx_s;
+    struct vl_ctx *ctx = &ctx_s;
+    struct vl_cache *cache;
+    int code;
+    int ex_i;
+
+    memset(ctx, 0, sizeof(*ctx));
+
+    cache = calloc(1, sizeof(*cache));
+    if (cache == NULL) {
+	return UNOMEM;
+    }
+
+    ctx->trans = trans;
+    ctx->cache = cache;
+
+    code = UpdateCache(trans, ctx);
+
+    for (ex_i = 0; ex_i < VL_MAX_ADDREXTBLKS; ex_i++) {
+	free(cache->ex_addr[ex_i]);
+	cache->ex_addr[ex_i] = NULL;
+    }
+    free(cache);
+
+    return code;
 }

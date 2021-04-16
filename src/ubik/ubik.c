@@ -466,6 +466,7 @@ ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
 
     tdb = calloc(1, sizeof(*tdb));
     tdb->pathName = strdup(opts->pathName);
+    tdb->dbcheck_func = opts->dbcheck_func;
     init_locks(tdb);
 #ifdef AFS_PTHREAD_ENV
     opr_mutex_init(&beacon_globals.beacon_lock);

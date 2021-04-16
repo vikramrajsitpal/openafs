@@ -54,6 +54,7 @@ struct ubik_dbase {
 #ifdef AFS_PTHREAD_ENV
     pthread_cond_t flags_cond;      /*!< condition variable to manage changes to flags */
 #endif
+    ubik_dbcheck_func dbcheck_func; /*!< app hook to check if a new dbase is sane */
 
     int is_raw;	    /*!< is this a raw db handle? */
     int raw_rw;	    /*!< for raw dbs, can we write to the db? */
@@ -465,6 +466,7 @@ int udb_path(struct ubik_dbase *dbase, char *suffix, char **apath);
 int udb_delpath(char *path);
 int udb_del_suffixes(struct ubik_dbase *dbase, char *suffix_new,
 		     char *suffix_spare);
+int udb_check_contents(struct ubik_dbase *dbase, char *path);
 int udb_install(struct ubik_dbase *dbase, char *suffix_new,
 		char *suffix_old, struct ubik_version *new_vers);
 

@@ -441,3 +441,49 @@ udb_del_suffixes(struct ubik_dbase *dbase, char *suffix_new,
 
     return 0;
 }
+
+/**
+ * Check if a db path looks like a valid db.
+ *
+ * If the application has registered a dbcheck_func callback, create a raw
+ * transaction for the given path, and call dbcheck_func with that transaction.
+ *
+ * @param[in] dbase ubik db
+ * @param[in] path  Path to the database file to check
+ *
+ * @return ubik error codes
+ */
+int
+udb_check_contents(struct ubik_dbase *dbase, char *path)
+{
+    int code;
+    struct ubik_dbase *rawdb = NULL;
+    struct ubik_trans *trans = NULL;
+
+    if (dbase->dbcheck_func == NULL) {
+	code = 0;
+	goto done;
+    }
+
+    code = ubik_RawInit(path, NULL, &rawdb);
+    if (code != 0) {
+	goto done;
+    }
+
+    code = ubik_BeginTrans(rawdb, UBIK_READTRANS, &trans);
+    if (code != 0) {
+	goto done;
+    }
+
+    code = (*dbase->dbcheck_func)(trans);
+    if (code != 0) {
+	goto done;
+    }
+
+ done:
+    if (trans != NULL) {
+	ubik_AbortTrans(trans);
+    }
+    ubik_RawClose(&rawdb);
+    return code;
+}

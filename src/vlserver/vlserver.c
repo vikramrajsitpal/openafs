@@ -554,6 +554,7 @@ main(int argc, char **argv)
     u_opts.clones = clones;
     u_opts.pathName = vl_dbaseName;
     u_opts.configDir = configDirExplicit;
+    u_opts.dbcheck_func = vl_checkdb;
 
     code = ubik_ServerInitByOpts(&u_opts, &VL_dbase);
     if (code) {

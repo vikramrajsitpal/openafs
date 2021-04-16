@@ -37,6 +37,8 @@
 
 /*** ubik.c ***/
 
+typedef int (*ubik_dbcheck_func)(struct ubik_trans *trans);
+
 struct ubik_serverinit_opts {
     /* IP addr of this host. */
     afs_uint32 myHost;
@@ -64,6 +66,9 @@ struct ubik_serverinit_opts {
 
     /* ctl server instance to register our ubik ctl ops (optional) */
     struct afsctl_server *ctl_server;
+
+    /* Function to call to check if a new dbase looks valid. */
+    ubik_dbcheck_func dbcheck_func;
 };
 
 int ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,

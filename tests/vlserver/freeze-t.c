@@ -37,6 +37,7 @@ static struct frztest_ops vldb4_ops = {
 
     .use_db = "vldb4",
     .blankdb = { .flat_path = "tests/vlserver/db.blank/vldb4.DB0", },
+    .baddb = { .flat_path = "tests/vlserver/db.invalid/flat.DB0", },
 };
 
 int
@@ -47,7 +48,7 @@ main(int argc, char **argv)
     afstest_SkipTestsIfNoCtl();
     vltest_init(argv);
 
-    plan(246);
+    plan(269);
 
     vos = afstest_obj_path("src/volser/vos");
 
