@@ -213,9 +213,11 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
     struct ubiktest_dbtest *testlist;
     struct stat st;
     struct ubiktest_cbinfo cbinfo;
+    struct afstest_server_opts opts;
     const char *progname = getprogname();
 
     memset(&cbinfo, 0, sizeof(cbinfo));
+    memset(&opts, 0, sizeof(opts));
 
     opr_Assert(progname != NULL);
 
@@ -259,7 +261,12 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 	(*ops->pre_start)(&cbinfo, ops);
     }
 
-    code = afstest_StartServer(server, dirname, &pid);
+    opts.server = server;
+    opts.dirname = dirname;
+    opts.serverPid = &pid;
+    opts.extra_argv = ops->server_argv;
+
+    code = afstest_StartServerOpts(&opts);
     if (code != 0) {
 	afs_com_err(progname, code, "while starting server");
 	goto error;

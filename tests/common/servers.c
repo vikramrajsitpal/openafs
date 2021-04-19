@@ -97,13 +97,12 @@ check_startup(struct afstest_server_type *server, pid_t pid, char *log,
     }
 }
 
-/*
- * Start up the given server, using the configuration in dirname, and putting
- * our logs there too.
- */
 int
-afstest_StartServer(struct afstest_server_type *server, char *dirname, pid_t *serverPid)
+afstest_StartServerOpts(struct afstest_server_opts *opts)
 {
+    char *dirname = opts->dirname;
+    pid_t *serverPid = opts->serverPid;
+    struct afstest_server_type *server = opts->server;
     pid_t pid;
     char *logPath;
     int started = 0;
@@ -124,17 +123,41 @@ afstest_StartServer(struct afstest_server_type *server, char *dirname, pid_t *se
     if (pid == -1) {
 	exit(1);
 	/* Argggggghhhhh */
-    } else if (pid == 0) {
-	char *binPath, *dbPath;
 
+    } else if (pid == 0) {
 	/* Child */
+
+	#define MAX_ARGS 16
+	char *binPath, *dbPath;
+	char *argv[MAX_ARGS];
+	int argc = 0;
+	char **x_arg;
+
+	memset(argv, 0, sizeof(argv));
+
 	binPath = afstest_obj_path(server->bin_path);
 	dbPath = afstest_asprintf("%s/%s", dirname, server->db_name);
 
-	execl(binPath, server->exec_name,
-	      "-logfile", logPath, "-database", dbPath, "-config", dirname, NULL);
+	argv[argc++] = server->exec_name;
+	argv[argc++] = "-logfile";
+	argv[argc++] = logPath;
+	argv[argc++] = "-database";
+	argv[argc++] = dbPath;
+	argv[argc++] = "-config";
+	argv[argc++] = dirname;
+
+	if (opts->extra_argv != NULL) {
+	    for (x_arg = opts->extra_argv; x_arg[0] != NULL; x_arg++) {
+		argv[argc++] = x_arg[0];
+		opr_Assert(argc < MAX_ARGS);
+	    }
+	}
+
+	execv(binPath, argv);
 	fprintf(stderr, "Running %s failed\n", binPath);
 	exit(1);
+
+	#undef MAX_ARGS
     }
 
     /*
@@ -174,6 +197,20 @@ afstest_StartServer(struct afstest_server_type *server, char *dirname, pid_t *se
     free(logPath);
 
     return code;
+}
+
+int
+afstest_StartServer(struct afstest_server_type *server, char *dirname,
+		    pid_t *serverPid)
+{
+    struct afstest_server_opts opts;
+    memset(&opts, 0, sizeof(opts));
+
+    opts.server = server;
+    opts.dirname = dirname;
+    opts.serverPid = serverPid;
+
+    return afstest_StartServerOpts(&opts);
 }
 
 int
