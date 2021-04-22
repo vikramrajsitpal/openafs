@@ -69,21 +69,19 @@ uphys_pwrite(int fd, void *buf, size_t nbyte, off_t offset)
 }
 #endif /* !HAVE_PIO */
 
-/*!
- * \warning Beware, when using this function, of the header in front of most files.
+/*
+ * Make sure our globals are initialized (currently just 'fdcache'). All
+ * callers already hold DBHOLD, so we don't need any locking or pthread_once
+ * behavior here.
  */
-static int
-uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
+static void
+uphys_init(void)
 {
-    int fd;
     static int initd;
-    int i;
+
     struct fdcache *tfd;
-    struct fdcache *bestfd;
+    int i;
 
-    opr_Assert(!ubik_RawDbase(adbase));
-
-    /* initialize package */
     if (!initd) {
 	initd = 1;
 	tfd = fdcache;
@@ -93,6 +91,22 @@ uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
 	    tfd->refCount = 0;
 	}
     }
+}
+
+/*!
+ * \warning Beware, when using this function, of the header in front of most files.
+ */
+static int
+uphys_open(struct ubik_dbase *adbase, afs_int32 afid)
+{
+    int fd;
+    int i;
+    struct fdcache *tfd;
+    struct fdcache *bestfd;
+
+    opr_Assert(!ubik_RawDbase(adbase));
+
+    uphys_init();
 
     /* scan file descr cache */
     for (tfd = fdcache, i = 0; i < MAXFDCACHE; i++, tfd++) {
@@ -152,6 +166,8 @@ uphys_close(int afd)
 {
     int i;
     struct fdcache *tfd;
+
+    uphys_init();
 
     if (afd < 0)
 	return EBADF;
@@ -333,6 +349,8 @@ uphys_invalidate(struct ubik_dbase *adbase, afs_int32 afid)
 {
     int i;
     struct fdcache *tfd;
+
+    uphys_init();
 
     /* scan file descr cache */
     for (tfd = fdcache, i = 0; i < MAXFDCACHE; i++, tfd++) {
