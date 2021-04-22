@@ -165,6 +165,7 @@ struct ubiktest_dbdef {
 			 *   source tree. */
     char *kv_path;	/**< Path to a KV ubik dbase. */
     char *getfile_path; /**< Path to file containing a DISK_GetFile blob. */
+    char *getfile2_path;/**< Path to file containing a DISK_GetFile2 blob. */
 };
 
 /*

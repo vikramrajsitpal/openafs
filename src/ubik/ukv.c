@@ -1437,3 +1437,154 @@ ukv_db_prepinstall(struct ubik_dbase *dbase, char *path_orig)
     code = UNOMEM;
     goto done;
 }
+
+int
+ukv_senddb(char *path, struct rx_call *rxcall, struct ubik_version *version)
+{
+    int code;
+    struct ubik_dbstream_kvitem kvitem;
+    struct ubik_version disk_vers;
+    struct okv_dbhandle *dbh = NULL;
+    struct okv_trans *tx = NULL;
+    XDR xdrs;
+    int eof;
+
+    memset(&kvitem, 0, sizeof(kvitem));
+    memset(&disk_vers, 0, sizeof(disk_vers));
+
+    code = ukv_open(path, &dbh, NULL);
+    if (code != 0) {
+	goto done;
+    }
+
+    code = okv_begin(dbh, OKV_BEGIN_RO, &tx);
+    if (code != 0) {
+	code = UIOERROR;
+	goto done;
+    }
+
+    code = ukv_getlabel(tx, &disk_vers);
+    if (code != 0) {
+	goto done;
+    }
+
+    if (vcmp(disk_vers, *version) != 0) {
+	ViceLog(0, ("ubik: Internal error: kv database version mismatch while "
+		"sending db: %d.%d != %d.%d\n",
+		disk_vers.epoch, disk_vers.counter,
+		version->epoch, version->counter));
+	code = UINTERNAL;
+	goto done;
+    }
+
+    xdrrx_create(&xdrs, rxcall, XDR_ENCODE);
+
+    eof = 0;
+    while (!eof) {
+	int success;
+
+	/*
+	 * Note that we use ukv_next here, not okv_next. That means we skip
+	 * ubik-private keys; this function just sends the application-visible
+	 * db data. Ubik-private data (such as the ubik version) is not sent here.
+	 */
+	code = ukv_next(tx, &kvitem.key, &kvitem.value, &eof);
+	if (code != 0) {
+	    code = UIOERROR;
+	    goto done;
+	}
+
+	if (eof) {
+	    /* For eof, just send a blank key/value item. */
+	    memset(&kvitem, 0, sizeof(kvitem));
+	}
+
+	success = xdr_ubik_dbstream_kvitem(&xdrs, &kvitem);
+	if (!success) {
+	    code = UIOERROR;
+	    goto done;
+	}
+    }
+
+ done:
+    okv_abort(&tx);
+    okv_close(&dbh);
+    return code;
+}
+
+int
+ukv_recvdb(struct rx_call *rxcall, char *path, struct ubik_version *version)
+{
+    struct ubik_dbstream_kvitem kvitem;
+    struct okv_dbhandle *dbh = NULL;
+    struct okv_trans *tx = NULL;
+    afs_int32 code;
+    int success;
+    XDR xdrs;
+
+    memset(&kvitem, 0, sizeof(kvitem));
+
+    code = ukv_create(path, NULL, &dbh);
+    if (code != 0) {
+	goto done;
+    }
+
+    code = okv_begin(dbh, OKV_BEGIN_RW, &tx);
+    if (code != 0) {
+	code = UIOERROR;
+	goto done;
+    }
+
+    xdrrx_create(&xdrs, rxcall, XDR_DECODE);
+
+    for (;;) {
+	success = xdr_ubik_dbstream_kvitem(&xdrs, &kvitem);
+	if (!success) {
+	    code = UIOERROR;
+	    goto done;
+	}
+
+	if (kvitem.key.len == 0 && kvitem.value.len == 0) {
+	    /* EOF */
+	    break;
+	}
+
+	if (check_key_app(&kvitem.key) != 0 || check_value(&kvitem.value) != 0) {
+	    struct rx_opaque_stringbuf keybuf, valbuf;
+	    /*
+	     * We got an invalid key/value, or a ubik-private key in the stream
+	     * of KV data. This shouldn't happen; this portion of the dbase
+	     * stream should only contain application-visible data
+	     * (ubik-private data, such as the db version, is handled
+	     * elsewhere, such as in RPC arguments or the db stream header,
+	     * etc). And of course, all of our keys and values should be valid.
+	     */
+	    ViceLog(0, ("ubik-kv: Internal error: invalid data in dbase stream "
+		    "of KV data: key %s val %s.\n",
+		    rx_opaque_stringify(&kvitem.key, &keybuf),
+		    rx_opaque_stringify(&kvitem.value, &valbuf)));
+	    code = UINTERNAL;
+	    goto done;
+	}
+
+	code = okv_put(tx, &kvitem.key, &kvitem.value, OKV_PUT_BULKSORT);
+	if (code != 0) {
+	    code = UIOERROR;
+	    goto done;
+	}
+
+	xdrfree_ubik_dbstream_kvitem(&kvitem);
+    }
+
+    code = ukv_commit(&tx, version);
+    if (code != 0) {
+	goto done;
+    }
+
+ done:
+    xdrfree_ubik_dbstream_kvitem(&kvitem);
+    okv_abort(&tx);
+    okv_close(&dbh);
+
+    return code;
+}

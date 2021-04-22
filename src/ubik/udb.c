@@ -817,3 +817,171 @@ udb_check_contents(struct ubik_dbase *dbase, char *path)
     ubik_RawClose(&rawdb);
     return code;
 }
+
+/**
+ * Receive a database stream via an rx call.
+ *
+ * @param[in] rxcall	rx call to receive db stream from
+ * @param[in] path	path to store the db data
+ * @param[out] version	set to the version of the db we received
+ *
+ * @return ubik error codes
+ */
+int
+udb_recvdb_stream(struct rx_call *rxcall, char *path,
+		  struct ubik_version *version)
+{
+    int code;
+    XDR xdrs;
+    int success;
+    struct ubik_dbstream_header header;
+    struct ubik_dbstream_footer footer;
+    enum ubik_dbstream_type type;
+
+    memset(&header, 0, sizeof(header));
+    memset(&footer, 0, sizeof(footer));
+
+    xdrrx_create(&xdrs, rxcall, XDR_DECODE);
+    success = xdr_ubik_dbstream_header(&xdrs, &header);
+    xdr_destroy(&xdrs);
+    if (!success) {
+	code = UIOERROR;
+	goto done;
+    }
+
+    if (header.magic != UBIK_DBSTREAM_HEADER_MAGIC) {
+	ViceLog(0, ("ubik: Bad dbstream header (0x%x != 0x%x)\n",
+		header.magic, UBIK_DBSTREAM_HEADER_MAGIC));
+	code = UINTERNAL;
+	goto done;
+    }
+
+    code = udb_v64to32("receiving db", &header.version, version);
+    if (code != 0) {
+	goto done;
+    }
+
+    type = header.typeheader.type;
+    if (type == UBIK_DBSTREAM_FLATFILE) {
+	code = uphys_recvdb(rxcall, path, version, header.typeheader.u.length);
+
+    } else if (type == UBIK_DBSTREAM_KVSORTED) {
+	code = ukv_recvdb(rxcall, path, version);
+
+    } else {
+	ViceLog(0, ("ubik: Error, encountered unknown db stream type 0x%x; "
+		    "we possibly need to upgrade.\n",
+		    (unsigned)type));
+	code = UBADTYPE;
+    }
+    if (code != 0) {
+	goto done;
+    }
+
+    xdrrx_create(&xdrs, rxcall, XDR_DECODE);
+    success = xdr_ubik_dbstream_footer(&xdrs, &footer);
+    xdr_destroy(&xdrs);
+    if (!success) {
+	code = UIOERROR;
+	goto done;
+    }
+
+    if (footer.magic != UBIK_DBSTREAM_FOOTER_MAGIC) {
+	ViceLog(0, ("ubik: Bad dbstream footer (0x%x != 0x%x)\n",
+		footer.magic, UBIK_DBSTREAM_FOOTER_MAGIC));
+	code = UINTERNAL;
+	goto done;
+    }
+
+ done:
+    return code;
+}
+
+/**
+ * Send a database stream to an rx call.
+ *
+ * @param[in] path	path of the db to send
+ * @param[in] rxcall	rx call to send the db stream to
+ * @param[in] version	optional; if not NULL, the version of the database
+ *			we're sending, otherwise we'll get the version from the
+ *			db and send that
+ * @return ubik error codes
+ */
+int
+udb_senddb_stream(char *path, struct rx_call *rxcall,
+		  struct ubik_version *version)
+{
+    int code;
+    afs_int64 flat_length = -1;
+    struct ubik_dbstream_header header;
+    struct ubik_dbstream_footer footer;
+    struct ubik_version version_s;
+    enum ubik_dbstream_type type;
+    int success;
+    XDR xdrs;
+    struct ubik_stat ustat;
+
+    memset(&header, 0, sizeof(header));
+    memset(&footer, 0, sizeof(footer));
+    memset(&version_s, 0, sizeof(version_s));
+    memset(&ustat, 0, sizeof(ustat));
+
+    if (version == NULL) {
+	version = &version_s;
+	code = udb_getlabel_path(path, version);
+	if (code != 0) {
+	    goto done;
+	}
+    }
+
+    code = udb_stat(path, &ustat);
+    if (code != 0) {
+	goto done;
+    }
+
+    if (ustat.kv) {
+	header.typeheader.type = UBIK_DBSTREAM_KVSORTED;
+	header.typeheader.u.nitems_approx = ustat.n_items;
+
+    } else {
+	header.typeheader.type = UBIK_DBSTREAM_FLATFILE;
+	header.typeheader.u.length = ustat.size;
+	flat_length = ustat.size;
+    }
+
+    header.magic = UBIK_DBSTREAM_HEADER_MAGIC;
+    udb_v32to64(version, &header.version);
+
+    xdrrx_create(&xdrs, rxcall, XDR_ENCODE);
+    success = xdr_ubik_dbstream_header(&xdrs, &header);
+    xdr_destroy(&xdrs);
+    if (!success) {
+	code = UIOERROR;
+	goto done;
+    }
+
+    type = header.typeheader.type;
+    if (type == UBIK_DBSTREAM_FLATFILE) {
+	opr_Assert(flat_length >= 0);
+	code = uphys_senddb(path, rxcall, version, flat_length);
+    } else {
+	opr_Assert(type == UBIK_DBSTREAM_KVSORTED);
+	code = ukv_senddb(path, rxcall, version);
+    }
+    if (code != 0) {
+	goto done;
+    }
+
+    footer.magic = UBIK_DBSTREAM_FOOTER_MAGIC;
+
+    xdrrx_create(&xdrs, rxcall, XDR_ENCODE);
+    success = xdr_ubik_dbstream_footer(&xdrs, &footer);
+    xdr_destroy(&xdrs);
+    if (!success) {
+	code = UIOERROR;
+	goto done;
+    }
+
+ done:
+    return code;
+}

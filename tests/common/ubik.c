@@ -774,6 +774,59 @@ run_sendfile(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
     is_int(0, code, "DISK_SendFile call succeeded");
 }
 
+static void
+run_getfile2(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
+{
+    struct rx_call *rxcall = rx_NewCall(info->disk_conn);
+    char *tmp_path = NULL;
+    char *v2_path = ops->rock;
+    int code;
+
+    tmp_path = afstest_asprintf("%s/getfile2.dmp", info->confdir);
+
+    code = StartDISK_GetFile2(rxcall);
+    opr_Assert(code == 0);
+
+    rx_recv_file(rxcall, tmp_path);
+
+    code = rx_EndCall(rxcall, 0);
+    is_int(0, code, "DISK_GetFile2 call succeeded");
+
+    ok(afstest_file_equal(v2_path, tmp_path, 0),
+       "DISK_GetFile2 returns expected contents");
+
+    free(tmp_path);
+}
+
+static void
+run_sendfile2(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
+{
+    char *v2_path = ops->rock;
+    struct stat st;
+    int code;
+    struct rx_call *rxcall = rx_NewCall(info->disk_conn);
+
+    memset(&st, 0, sizeof(st));
+
+    /*
+     * Since DISK_GetFile2 and DISK_SendFile2 use the same dbase stream format,
+     * we can just write the 'v2_path' file to DISK_SendFile2.
+     */
+
+    code = stat(v2_path, &st);
+    if (code < 0) {
+	sysbail("fstat");
+    }
+
+    code = StartDISK_SendFile2(rxcall);
+    opr_Assert(code == 0);
+
+    code = rx_send_file(rxcall, v2_path, 0, st.st_size);
+
+    code = rx_EndCall(rxcall, code);
+    is_int(0, code, "DISK_SendFile2 call succeeded");
+}
+
 void
 urectest_runtests(struct ubiktest_dataset *ds, char *use_db)
 {
@@ -781,14 +834,21 @@ urectest_runtests(struct ubiktest_dataset *ds, char *use_db)
     struct ubiktest_dbdef *dbdef;
     char *db_path = NULL;
     char *skip_reason = NULL;
+    int db_kv = 0;
+    char *v2_path;
 
     dbdef = find_dbdef(ds, use_db);
     opr_Assert(dbdef != NULL);
     db_path = get_dbpath(dbdef, &skip_reason);
+    if (dbdef->kv_path != NULL) {
+	db_kv = 1;
+    }
+
+    v2_path = afstest_src_path(dbdef->getfile2_path);
 
     memset(&utest, 0, sizeof(utest));
 
-    {
+    if (!db_kv) {
 	utest.rock = db_path;
 	utest.descr = afstest_asprintf("run DISK_GetFile for %s", use_db);
 	utest.skip_reason = skip_reason;
@@ -800,8 +860,8 @@ urectest_runtests(struct ubiktest_dataset *ds, char *use_db)
 
 	free(utest.descr);
 	memset(&utest, 0, sizeof(utest));
-    }
-    {
+
+
 	utest.rock = db_path;
 	utest.descr = afstest_asprintf("run DISK_SendFile for %s", use_db);
 	utest.skip_reason = skip_reason;
@@ -814,6 +874,36 @@ urectest_runtests(struct ubiktest_dataset *ds, char *use_db)
 	free(utest.descr);
 	memset(&utest, 0, sizeof(utest));
     }
+    {
+	utest.rock = v2_path;
+	utest.descr = afstest_asprintf("run DISK_GetFile2 for %s", use_db);
+	utest.skip_reason = skip_reason;
+	utest.use_db = use_db;
+	utest.post_start = run_getfile2;
+	utest.result_kv = db_kv;
+	utest.n_tests = 2;
+
+	ubiktest_runtest(ds, &utest);
+
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
+    }
+    {
+	utest.rock = v2_path;
+	utest.descr = afstest_asprintf("run DISK_SendFile2 for %s", use_db);
+	utest.skip_reason = skip_reason;
+	utest.use_db = "none";
+	utest.post_start = run_sendfile2;
+	utest.result_kv = db_kv;
+	utest.n_tests = 1;
+
+	ubiktest_runtest(ds, &utest);
+
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
+    }
+
+    free(v2_path);
 }
 
 struct freeze_test {

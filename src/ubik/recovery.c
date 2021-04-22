@@ -411,9 +411,9 @@ do_StartDISK_GetFile(struct rx_call *rxcall,
 }
 
 static int
-recvdb_v1(struct urecovery_recvdb_type *rtype,
-	  struct urecovery_recvdb_info *rinfo, struct rx_call *rxcall,
-	  char *path, struct ubik_version *a_version)
+recvdb_oldstyle(struct urecovery_recvdb_type *rtype,
+		struct urecovery_recvdb_info *rinfo, struct rx_call *rxcall,
+		char *path, struct ubik_version *a_version)
 {
     int code;
     int client = rtype->client;
@@ -460,13 +460,25 @@ recvdb_v1(struct urecovery_recvdb_type *rtype,
     return code;
 }
 
-struct urecovery_recvdb_type urecovery_recvdb_getfile_v1 = {
+struct urecovery_recvdb_type urecovery_recvdb_getfile_old = {
     .descr = "DISK_GetFile",
     .client = 1,
+    .old_rpc = 1,
 };
-struct urecovery_recvdb_type urecovery_recvdb_ssendfile_v1 = {
+struct urecovery_recvdb_type urecovery_recvdb_ssendfile_old = {
     .descr = "SDISK_SendFile",
     .client = 0,
+    .old_rpc = 1,
+};
+struct urecovery_recvdb_type urecovery_recvdb_getfile2 = {
+    .descr = "DISK_GetFile2",
+    .client = 1,
+    .old_rpc = 0,
+};
+struct urecovery_recvdb_type urecovery_recvdb_ssendfile2 = {
+    .descr = "SDISK_SendFile2",
+    .client = 0,
+    .old_rpc = 0,
 };
 
 /**
@@ -493,6 +505,7 @@ urecovery_receive_db(struct ubik_dbase *dbase,
     char hoststr[16];
     struct ubik_version version;
     int client = rtype->client;
+    int old_rpc = rtype->old_rpc;
     char *descr = rtype->descr;
     struct rx_call *rxcall = NULL;
     char *path_tmp = NULL;
@@ -558,9 +571,31 @@ urecovery_receive_db(struct ubik_dbase *dbase,
     /* Receive the database data from the wire into a .TMP database, and label
      * it with the received version. */
 
-    code = recvdb_v1(rtype, rinfo, rxcall, path_tmp, &version);
-    if (code != 0) {
-	goto done;
+    if (old_rpc) {
+	code = recvdb_oldstyle(rtype, rinfo, rxcall, path_tmp, &version);
+	if (code != 0) {
+	    goto done;
+	}
+
+    } else {
+	if (client) {
+	    code = StartDISK_GetFile2(rxcall);
+	    if (code != 0) {
+		goto done;
+	    }
+	}
+
+	code = udb_recvdb_stream(rxcall, path_tmp, &version);
+	if (code != 0) {
+	    goto done;
+	}
+
+	if (client) {
+	    code = EndDISK_GetFile2(rxcall);
+	    if (code != 0) {
+		goto done;
+	    }
+	}
     }
 
     if (client) {
@@ -614,6 +649,7 @@ fetch_db(struct ubik_dbase *dbase, struct ubik_server *ts)
 {
     struct urecovery_recvdb_info rinfo;
     afs_int32 code;
+    char hoststr[16];
 
     memset(&rinfo, 0, sizeof(rinfo));
 
@@ -623,8 +659,29 @@ fetch_db(struct ubik_dbase *dbase, struct ubik_server *ts)
     rx_GetConnection(rinfo.rxconn);
     UBIK_ADDR_UNLOCK;
 
-    code = urecovery_receive_db(dbase, &urecovery_recvdb_getfile_v1,
-				&rinfo, NULL);
+    code = urecovery_receive_db(dbase, &urecovery_recvdb_getfile2, &rinfo,
+				NULL);
+    if (code == RXGEN_OPCODE) {
+	static int warned;
+
+	/*
+	 * If we got an RXGEN_OPCODE error, the remote server probably doesn't
+	 * understand the DISK_GetFile2 RPC; try again with the old-style
+	 * DISK_GetFile RPC.
+	 */
+	if (!warned) {
+	    warned = 1;
+	    afs_inet_ntoa_r(rinfo.otherHost, hoststr);
+	    ViceLog(0, ("ubik: Warning: %s doesn't seem to support the "
+			"DISK_GetFile2 RPC. Retrying with DISK_GetFile, but %s "
+			"should perhaps be upgraded. "
+			"(This message is only logged once.)\n",
+			hoststr, hoststr));
+	}
+
+	code = urecovery_receive_db(dbase, &urecovery_recvdb_getfile_old,
+				    &rinfo, NULL);
+    }
 
     rx_PutConnection(rinfo.rxconn);
 
@@ -632,8 +689,8 @@ fetch_db(struct ubik_dbase *dbase, struct ubik_server *ts)
 }
 
 static int
-senddb_v1(struct urecovery_senddb_type *stype, char *path,
-	  struct rx_call *rxcall, struct ubik_version *version)
+senddb_oldstyle(struct urecovery_senddb_type *stype, char *path,
+		struct rx_call *rxcall, struct ubik_version *version)
 {
     int code;
     int client = stype->client;
@@ -684,13 +741,25 @@ senddb_v1(struct urecovery_senddb_type *stype, char *path,
     return code;
 }
 
-struct urecovery_senddb_type urecovery_senddb_sendfile_v1 = {
+struct urecovery_senddb_type urecovery_senddb_sendfile_old = {
     .descr = "DISK_SendFile",
     .client = 1,
+    .old_rpc = 1,
 };
-struct urecovery_senddb_type urecovery_senddb_sgetfile_v1 = {
+struct urecovery_senddb_type urecovery_senddb_sgetfile_old = {
     .descr = "SDISK_GetFile",
     .client = 0,
+    .old_rpc = 1,
+};
+struct urecovery_senddb_type urecovery_senddb_sendfile2 = {
+    .descr = "DISK_SendFile2",
+    .client = 1,
+    .old_rpc = 0,
+};
+struct urecovery_senddb_type urecovery_senddb_sgetfile2 = {
+    .descr = "SDISK_GetFile2",
+    .client = 0,
+    .old_rpc = 0,
 };
 
 /**
@@ -719,6 +788,7 @@ urecovery_send_db(struct ubik_dbase *dbase,
     struct ubik_version version;
     char *descr = stype->descr;
     int client = stype->client;
+    int old_rpc = stype->old_rpc;
     int nosetflags = sinfo->nosetflags;
     struct rx_call *rxcall = NULL;
     int start_logged = 0;
@@ -736,21 +806,11 @@ urecovery_send_db(struct ubik_dbase *dbase,
 	ubik_set_db_flags(dbase, DBSENDING);
     }
 
-    if (ubik_KVDbase(dbase)) {
-	static int logged;
-	/*
-	 * Distributing KV data to other sites is not implemented yet. Bail out
-	 * and log a warning if we have any other sites, to clearly log why
-	 * we're failing; otherwise, we'll just fail later on more confusingly
-	 * when we try to send the KV dbase as a flatfile dbase.
-	 */
-	if (!logged) {
-	    logged = 1;
-	    ViceLog(0, ("ubik: Error, cannot send db to other sites: KV "
-		    "recovery not implemented yet.\n"));
-	    code = UINTERNAL;
-	    goto done_locked;
-	}
+    if (ubik_KVDbase(dbase) && old_rpc) {
+	ViceLog(0, ("ubik: Cannot send KV db to %s via %s\n",
+		afs_inet_ntoa_r(sinfo->otherHost, hoststr), descr));
+	code = UBADTYPE;
+	goto done_locked;
     }
 
     code = udb_getlabel_db(dbase, &version);
@@ -784,9 +844,31 @@ urecovery_send_db(struct ubik_dbase *dbase,
     }
     opr_Assert(rxcall != NULL);
 
-    code = senddb_v1(stype, path, rxcall, &version);
-    if (code != 0) {
-	goto done;
+    if (old_rpc) {
+	code = senddb_oldstyle(stype, path, rxcall, &version);
+	if (code != 0) {
+	    goto done;
+	}
+
+    } else {
+	if (client) {
+	    code = StartDISK_SendFile2(rxcall);
+	    if (code != 0) {
+		goto done;
+	    }
+	}
+
+	code = udb_senddb_stream(path, rxcall, &version);
+	if (code != 0) {
+	    goto done;
+	}
+
+	if (client) {
+	    code = EndDISK_SendFile2(rxcall);
+	    if (code != 0) {
+		goto done;
+	    }
+	}
     }
 
     if (a_version != NULL) {
@@ -845,8 +927,33 @@ dist_dbase_to(struct ubik_dbase *dbase, struct ubik_server *ts,
     rx_GetConnection(sinfo.rxconn);
     UBIK_ADDR_UNLOCK;
 
-    code = urecovery_send_db(dbase, &urecovery_senddb_sendfile_v1, &sinfo,
+    code = urecovery_send_db(dbase, &urecovery_senddb_sendfile2, &sinfo,
 			     &version);
+    if (code == RXGEN_OPCODE && !ubik_KVDbase(dbase)) {
+	static int warned;
+	char hoststr[16];
+
+	/*
+	 * If we got an RXGEN_OPCODE error, the remote server probably doesn't
+	 * understand the DISK_SendFile2 RPC. If we have a non-KV database, try
+	 * again with the old-style DISK_SendFile RPC. If we have a KV
+	 * database, we can't use the old-style RPC, so there's nothing to
+	 * retry.
+	 */
+	if (!warned) {
+	    warned = 1;
+	    afs_inet_ntoa_r(otherHost, hoststr);
+	    ViceLog(0, ("ubik: Warning: %s doesn't seem to support the "
+			"DISK_SendFile2 RPC. Retrying with DISK_SendFile, but "
+			"%s should perhaps be upgraded. "
+			"(This message is only logged once.)\n",
+			hoststr, hoststr));
+	}
+
+	code = urecovery_send_db(dbase, &urecovery_senddb_sendfile_old, &sinfo,
+				 &version);
+    }
+
     if (code == 0) {
 	/* we set a new file */
 	ts->version = version;
@@ -869,22 +976,6 @@ urecovery_distribute_db(struct ubik_dbase *dbase, int *a_nsent)
     int dbok;
 
     memset(&inAddr, 0, sizeof(inAddr));
-
-    if (ubik_servers != NULL && ubik_KVDbase(dbase)) {
-	static int logged;
-	/*
-	 * Distributing KV data to other sites is not implemented yet. Bail out
-	 * and log a warning if we have any other sites, to clearly log why
-	 * we're failing; otherwise, we'll just fail later on more confusingly
-	 * when we try to send the KV dbase as a flatfile dbase.
-	 */
-	if (!logged) {
-	    logged = 1;
-	    ViceLog(0, ("ubik: Error, cannot distribute db to other sites: KV "
-		    "recovery not implemented yet.\n"));
-	    return UINTERNAL;
-	}
-    }
 
     dbok = 1;		/* start off assuming they all worked */
 

@@ -339,9 +339,12 @@ extern int ubik_wait_db_flags(struct ubik_dbase *dbase, int flags);
 struct urecovery_recvdb_type {
     char *descr;
     int client;
+    int old_rpc;
 };
-extern struct urecovery_recvdb_type urecovery_recvdb_getfile_v1;
-extern struct urecovery_recvdb_type urecovery_recvdb_ssendfile_v1;
+extern struct urecovery_recvdb_type urecovery_recvdb_getfile_old;
+extern struct urecovery_recvdb_type urecovery_recvdb_ssendfile_old;
+extern struct urecovery_recvdb_type urecovery_recvdb_getfile2;
+extern struct urecovery_recvdb_type urecovery_recvdb_ssendfile2;
 
 struct urecovery_recvdb_info {
     /* remote server IP */
@@ -368,9 +371,12 @@ int urecovery_receive_db(struct ubik_dbase *dbase,
 struct urecovery_senddb_type {
     char *descr;
     int client;
+    int old_rpc;
 };
-extern struct urecovery_senddb_type urecovery_senddb_sendfile_v1;
-extern struct urecovery_senddb_type urecovery_senddb_sgetfile_v1;
+extern struct urecovery_senddb_type urecovery_senddb_sendfile_old;
+extern struct urecovery_senddb_type urecovery_senddb_sgetfile_old;
+extern struct urecovery_senddb_type urecovery_senddb_sendfile2;
+extern struct urecovery_senddb_type urecovery_senddb_sgetfile2;
 
 struct urecovery_senddb_info {
     /* remote server IP */
@@ -489,6 +495,10 @@ int udb_getlabel_db(struct ubik_dbase *dbase, struct ubik_version *version);
 int udb_setlabel_path(char *path, struct ubik_version *version);
 int udb_setlabel_trans(struct ubik_trans *trans, struct ubik_version *version);
 int udb_setlabel_db(struct ubik_dbase *dbase, struct ubik_version *version);
+int udb_recvdb_stream(struct rx_call *rxcall, char *path,
+		      struct ubik_version *version);
+int udb_senddb_stream(char *path, struct rx_call *rxcall,
+		      struct ubik_version *version);
 
 /* freeze_server.c */
 
@@ -514,5 +524,9 @@ int ukv_copydb(char *src_path, char *dest_path);
 int ukv_db_readlink(struct ubik_dbase *dbase, char *path_db, char **a_path);
 int ukv_db_prepinstall(struct ubik_dbase *dbase, char *path_orig);
 void ukv_cleanup_unused(struct ubik_dbase *dbase);
+int ukv_recvdb(struct rx_call *rxcall, char *path,
+	       struct ubik_version *version);
+int ukv_senddb(char *path, struct rx_call *rxcall,
+	       struct ubik_version *version);
 
 #endif /* OPENAFS_UBIK_INTERNAL_H */

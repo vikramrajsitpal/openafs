@@ -36,9 +36,10 @@ main(int argc, char **argv)
 {
     vltest_init(argv);
 
-    plan(47);
+    plan(141);
 
     urectest_runtests(&vlsmall, "vldb4");
+    urectest_runtests(&vlsmall, "vldb4-kv");
 
     return 0;
 }

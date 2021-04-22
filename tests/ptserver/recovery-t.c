@@ -36,7 +36,7 @@ main(int argc, char **argv)
 {
     prtest_init(argv);
 
-    plan(61);
+    plan(122);
 
     urectest_runtests(&prtiny, "prdb0");
 
