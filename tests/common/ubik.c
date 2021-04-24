@@ -26,6 +26,7 @@
 #include <afs/param.h>
 
 #include <roken.h>
+#include <sys/mman.h>
 
 #include <afs/cellconfig.h>
 #include <ubik_internal.h>
@@ -242,6 +243,7 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
     if (dbdef != NULL) {
 	src_db = get_dbpath(dbdef);
     }
+    cbinfo.src_dbdef = dbdef;
 
     /* Copy the sample db into place. */
     if (src_db != NULL) {
@@ -263,13 +265,18 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 	goto error;
     }
 
-    if (ds->uclientp != NULL) {
-	code = afsconf_ClientAuthSecure(dir, &secClass, &secIndex);
-	if (code != 0) {
-	    afs_com_err(progname, code, "while building security class");
-	    goto error;
-	}
+    code = afsconf_ClientAuthSecure(dir, &secClass, &secIndex);
+    if (code != 0) {
+	afs_com_err(progname, code, "while building security class");
+	goto error;
+    }
 
+    cbinfo.disk_conn = rx_NewConnection(afstest_MyHostAddr(),
+					htons(ds->server_type->port),
+					DISK_SERVICE_ID, secClass, secIndex);
+    opr_Assert(cbinfo.disk_conn != NULL);
+
+    if (ds->uclientp != NULL) {
 	code = afstest_GetUbikClient(dir, server->service_name, USER_SERVICE_ID,
 				     secClass, secIndex, ds->uclientp);
 	if (code != 0) {
@@ -294,6 +301,10 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 	}
 
 	diag("Copy of created db saved in %s", db_copy);
+    }
+
+    if (ops->post_start != NULL) {
+	(*ops->post_start)(&cbinfo, ops);
     }
 
     if (ops->extra_dbtests != NULL) {
@@ -340,6 +351,10 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 	ubik_ClientDestroy(*ds->uclientp);
 	*ds->uclientp = NULL;
     }
+    if (cbinfo.disk_conn != NULL) {
+	rx_DestroyConnection(cbinfo.disk_conn);
+	cbinfo.disk_conn = NULL;
+    }
 
     if (pid != 0) {
 	int stop_code = afstest_StopServer(pid);
@@ -385,5 +400,168 @@ ubiktest_runtest_list(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 {
     for (; ops->descr != NULL; ops++) {
 	ubiktest_runtest(ds, ops);
+    }
+}
+
+static void
+rx_recv_file(struct rx_call *rxcall, char *path)
+{
+    static char buf[1024];
+    FILE *fh;
+    int nbytes;
+
+    fh = fopen(path, "wx");
+    if (fh == NULL) {
+	sysbail("fopen(%s)", path);
+    }
+
+    for (;;) {
+	nbytes = rx_Read(rxcall, buf, sizeof(buf));
+	if (nbytes == 0) {
+	    break;
+	}
+
+	opr_Verify(fwrite(buf, nbytes, 1, fh) == 1);
+    }
+
+    opr_Verify(fclose(fh) == 0);
+}
+
+static int
+rx_send_file(struct rx_call *rxcall, char *path, off_t start_off, off_t length)
+{
+    char *buf;
+    int code = 0;
+    int fd;
+    int nbytes;
+    size_t map_len = start_off + length;
+
+    fd = open(path, O_RDONLY);
+    if (fd < 0) {
+	sysbail("open(%s)", path);
+    }
+
+    buf = mmap(NULL, map_len, PROT_READ, MAP_SHARED, fd, 0);
+    if (buf == NULL) {
+	sysbail("mmap");
+    }
+
+    nbytes = rx_Write(rxcall, &buf[start_off], length);
+    if (nbytes != length) {
+	diag("rx_send_file: wrote %d/%d bytes (call error %d)", nbytes,
+	     (int)length, rx_Error(rxcall));
+	code = RX_PROTOCOL_ERROR;
+    }
+
+    opr_Verify(munmap(buf, map_len) == 0);
+    close(fd);
+
+    return code;
+}
+
+static void
+run_getfile(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
+{
+    struct rx_call *rxcall = rx_NewCall(info->disk_conn);
+    char *tmp_path = NULL;
+    char *expected_path = NULL;
+    int code;
+
+    tmp_path = afstest_asprintf("%s/getfile.dmp", info->confdir);
+    expected_path = afstest_src_path(info->src_dbdef->getfile_path);
+
+    code = StartDISK_GetFile(rxcall, 0);
+    opr_Assert(code == 0);
+
+    rx_recv_file(rxcall, tmp_path);
+
+    code = rx_EndCall(rxcall, 0);
+    is_int(0, code, "DISK_GetFile call succeeded");
+
+    ok(afstest_file_equal(expected_path, tmp_path, 0),
+       "DISK_GetFile returns expected contents");
+
+    free(tmp_path);
+    free(expected_path);
+}
+
+static void
+run_sendfile(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops)
+{
+    char *db_path = ops->rock;
+    struct stat st;
+    struct ubik_hdr uhdr;
+    afs_uint32 length;
+    FILE *fh;
+    int code;
+    struct rx_call *rxcall = rx_NewCall(info->disk_conn);
+
+    memset(&uhdr, 0, sizeof(uhdr));
+    memset(&st, 0, sizeof(st));
+
+    code = stat(db_path, &st);
+    if (code < 0) {
+	sysbail("fstat(%s)", db_path);
+    }
+
+    fh = fopen(db_path, "r");
+    if (fh == NULL) {
+	sysbail("fopen(%s)", db_path);
+    }
+
+    opr_Assert(st.st_size >= HDRSIZE);
+    length = st.st_size - HDRSIZE;
+
+    code = fread(&uhdr, sizeof(uhdr), 1, fh);
+    opr_Assert(code == 1);
+
+    fclose(fh);
+
+    uhdr.version.epoch = ntohl(uhdr.version.epoch);
+    uhdr.version.counter = ntohl(uhdr.version.epoch);
+
+    code = StartDISK_SendFile(rxcall, 0, length, &uhdr.version);
+    opr_Assert(code == 0);
+
+    code = rx_send_file(rxcall, db_path, HDRSIZE, length);
+
+    code = rx_EndCall(rxcall, code);
+    is_int(0, code, "DISK_SendFile call succeeded");
+}
+
+void
+urectest_runtests(struct ubiktest_dataset *ds, char *use_db)
+{
+    struct ubiktest_ops utest;
+    struct ubiktest_dbdef *dbdef;
+    char *db_path = NULL;
+
+    dbdef = find_dbdef(ds, use_db);
+    opr_Assert(dbdef != NULL);
+    db_path = get_dbpath(dbdef);
+
+    memset(&utest, 0, sizeof(utest));
+
+    {
+	utest.rock = db_path;
+	utest.descr = afstest_asprintf("run DISK_GetFile for %s", use_db);
+	utest.use_db = use_db;
+	utest.post_start = run_getfile;
+
+	ubiktest_runtest(ds, &utest);
+
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
+    }
+    {
+	utest.rock = db_path;
+	utest.descr = afstest_asprintf("run DISK_SendFile for %s", use_db);
+	utest.use_db = "none";
+	utest.post_start = run_sendfile;
+
+	ubiktest_runtest(ds, &utest);
+
+	free(utest.descr);
+	memset(&utest, 0, sizeof(utest));
     }
 }

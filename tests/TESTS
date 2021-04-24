@@ -19,10 +19,12 @@ opr/uuid
 ptserver/prdb
 ptserver/pt_util
 ptserver/pts-man
+ptserver/recovery
 rx/event
 rx/perf
 vlserver/badversion
 vlserver/check4
+vlserver/recovery
 vlserver/vldb4
 volser/vos-man
 volser/vos

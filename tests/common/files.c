@@ -202,3 +202,84 @@ afstest_cp(char *src_path, char *dest_path)
     }
     return 0;
 }
+
+/*
+ * Return 1 if the two given files are equal; 0 otherwise. Ignore the first
+ * 'start_off' bytes of the contents of each file.
+ */
+int
+afstest_file_equal(char *path_a, char *path_b, off_t start_off)
+{
+    int equal = 0;
+    FILE *fh_a = NULL, *fh_b = NULL;
+
+    fh_a = fopen(path_a, "r");
+    if (fh_a == NULL) {
+	sysdiag("Failed to open %s", path_a);
+	goto done;
+    }
+    fh_b = fopen(path_b, "r");
+    if (fh_b == NULL) {
+	sysdiag("Failed to open %s", path_b);
+	goto done;
+    }
+
+    if (fseek(fh_a, start_off, SEEK_SET) < 0) {
+	sysdiag("fseek(%s)", path_a);
+	goto done;
+    }
+    if (fseek(fh_b, start_off, SEEK_SET) < 0) {
+	sysdiag("fseek(%s)", path_b);
+	goto done;
+    }
+
+    for (;;) {
+	int cur_a, cur_b;
+	int eof_a, eof_b;
+
+	cur_a = fgetc(fh_a);
+	cur_b = fgetc(fh_b);
+
+	eof_a = feof(fh_a) ? 1 : 0;
+	eof_b = feof(fh_b) ? 1 : 0;
+
+	if (eof_a && eof_b) {
+	    break;
+	}
+
+	if (ferror(fh_a)) {
+	    diag("Failed to read data from %s", path_a);
+	    goto done;
+	}
+	if (ferror(fh_b)) {
+	    diag("Failed to read data from %s", path_b);
+	    goto done;
+	}
+
+	if (eof_a) {
+	    diag("hit eof for %s @ 0x%lx", path_a, ftell(fh_a));
+	    goto done;
+	}
+	if (eof_b) {
+	    diag("hit eof for %s @ 0x%lx", path_b, ftell(fh_b));
+	    goto done;
+	}
+
+	if (cur_a != cur_b) {
+	    diag("contents mismatch @ 0x%lx: 0x%x != 0x%x (%s != %s)",
+		 ftell(fh_a)-1, cur_a, cur_b, path_a, path_b);
+	    goto done;
+	}
+    }
+
+    equal = 1;
+
+ done:
+    if (fh_a != NULL) {
+	fclose(fh_a);
+    }
+    if (fh_b != NULL) {
+	fclose(fh_b);
+    }
+    return equal;
+}

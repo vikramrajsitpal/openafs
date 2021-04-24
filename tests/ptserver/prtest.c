@@ -322,6 +322,7 @@ struct ubiktest_dataset prtiny = {
 	{
 	    .name = "prdb0",
 	    .flat_path = "tests/ptserver/db.prtiny/prdb.DB0",
+	    .getfile_path = "tests/ptserver/db.prtiny/prdb.getfile",
 	},
     },
 };

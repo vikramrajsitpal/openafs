@@ -75,6 +75,7 @@ extern char *afstest_src_path(char *path);
 extern char *afstest_obj_path(char *path);
 extern int afstest_file_contains(char *path, char *target);
 extern int afstest_cp(char *src_path, char *dest_path);
+extern int afstest_file_equal(char *path_a, char *path_b, off_t start_off);
 
 /* rxkad.c */
 
@@ -126,6 +127,7 @@ struct ubiktest_dbdef {
     char *name;		/**< Name to refer to this db in 'use_db'. */
     char *flat_path;	/**< Path to a .DB0 file, relative to the top of the
 			 *   source tree. */
+    char *getfile_path; /**< Path to file containing a DISK_GetFile blob. */
 };
 
 /*
@@ -135,6 +137,9 @@ struct ubiktest_dbdef {
 struct ubiktest_cbinfo {
     char *confdir;  /**< The config dir used by the server process. */
     char *db_path;  /**< abs path to the .DB0 file used by the server process. */
+    struct rx_connection *disk_conn;	/**< Conn to the DISK_ service for the
+					 *   running server. */
+    struct ubiktest_dbdef *src_dbdef;	/**< dbdef struct for the installed db. */
 };
 
 /*
@@ -155,6 +160,11 @@ struct ubiktest_ops {
     void (*pre_start)(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops);
 		    /**< If set, run this right before starting the server
 		     *   process. */
+
+    void (*post_start)(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops);
+		    /**< If set, run this after the server process has started
+		     *   (and the db has been setup, etc), but before running any
+		     *   dataset tests. */
 
     void (*post_stop)(struct ubiktest_cbinfo *info, struct ubiktest_ops *ops);
 		    /**< If set, run this after stopping the server process
@@ -228,6 +238,7 @@ extern void ubiktest_runtest(struct ubiktest_dataset *ds,
 			     struct ubiktest_ops *ops);
 extern void ubiktest_runtest_list(struct ubiktest_dataset *ds,
 				  struct ubiktest_ops *ops);
+extern void urectest_runtests(struct ubiktest_dataset *ds, char *use_db);
 
 /* network.c */
 extern int afstest_IsLoopbackNetworkDefault(void);

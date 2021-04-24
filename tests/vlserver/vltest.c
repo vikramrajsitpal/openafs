@@ -427,6 +427,7 @@ struct ubiktest_dataset vlsmall = {
 	{
 	    .name = "vldb4",
 	    .flat_path = "tests/vlserver/db.vlsmall/vldb4.DB0",
+	    .getfile_path = "tests/vlserver/db.vlsmall/vldb4.getfile",
 	},
     },
 };
