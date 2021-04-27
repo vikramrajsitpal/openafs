@@ -62,8 +62,35 @@ udb_v64to32(char *descr, struct ubik_version64 *from, struct ubik_version *to)
     return 0;
 }
 
+int
+udb_tid64to32(char *descr, struct ubik_tid64 *from, struct ubik_tid *to)
+{
+    afs_int64 epoch = opr_time64_toSecs(&from->epoch64);
+
+    if (epoch > MAX_AFS_INT32 || epoch < MIN_AFS_INT32 ||
+	from->counter64 > MAX_AFS_INT32 || from->counter64 < MIN_AFS_INT32) {
+	ViceLog(0, ("ubik: %s failed: ubik tid %lld.%lld not supported "
+		"(out of range)\n",
+		descr, from->epoch64.clunks, from->counter64));
+	return UINTERNAL;
+    }
+
+    to->epoch = epoch;
+    to->counter = from->counter64;
+    return 0;
+}
+
 void
 udb_v32to64(struct ubik_version *from, struct ubik_version64 *to)
+{
+    /* opr_time64_fromSecs cannot fail here, since we're converting from a
+     * 32-bit time value. */
+    opr_Verify(opr_time64_fromSecs(from->epoch, &to->epoch64) == 0);
+    to->counter64 = from->counter;
+}
+
+void
+udb_tid32to64(struct ubik_tid *from, struct ubik_tid64 *to)
 {
     /* opr_time64_fromSecs cannot fail here, since we're converting from a
      * 32-bit time value. */

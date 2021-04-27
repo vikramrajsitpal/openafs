@@ -23,6 +23,10 @@ struct ubik_tid {
     afs_int32 epoch;
     afs_int32 counter;
 };
+struct ubik_tid64 {
+    struct afs_time64 epoch64;
+    afs_int64 counter64;
+};
 
 const UBIK_MAX_INTERFACE_ADDR =	256; /* max interfaces per server */
 
@@ -273,19 +277,23 @@ statindex 12
 
 #define DISK_GETFILE2		30017 /* XXX nonstandard */
 #define DISK_SENDFILE2		30018 /* XXX nonstandard */
+#define DISK_KVPUT		30020 /* XXX nonstandard */
+#define DISK_KVREPLACE		30021 /* XXX nonstandard */
+#define DISK_KVDELETE		30022 /* XXX nonstandard */
+#define DISK_BULKCALL		30023 /* XXX nonstandard */
 
 /* Disk package interface calls - the order of
  * these declarations is important.
  */
-Begin		(IN ubik_tid *tid) = DISK_BEGIN;
+Begin		(IN ubik_tid *tid) bulk = DISK_BEGIN;
 
-Commit		(IN ubik_tid *tid) = DISK_COMMIT;
+Commit		(IN ubik_tid *tid) bulk = DISK_COMMIT;
 
 Lock		(IN ubik_tid *tid,
 		afs_int32 file,
 		afs_int32 position,
 		afs_int32 length,
-		afs_int32 type) = DISK_LOCK;
+		afs_int32 type) bulk = DISK_LOCK;
 
 Write		(IN ubik_tid *tid,
 		afs_int32 file,
@@ -323,8 +331,21 @@ UpdateInterfaceAddr(IN  UbikInterfaceAddr* inAddr,
 
 SetVersion      (IN ubik_tid     *tid,
                  IN ubik_version *OldVersion,
-                 IN ubik_version *NewVersion) = DISK_SETVERSION;
+                 IN ubik_version *NewVersion) bulk = DISK_SETVERSION;
 
 GetFile2	() split = DISK_GETFILE2;
 
 SendFile2	() split = DISK_SENDFILE2;
+
+KVPut		(IN ubik_tid64 *tid,
+		 ubik_kvbuf *key,
+		 ubik_kvbuf *value) bulk = DISK_KVPUT;
+
+KVReplace	(IN ubik_tid64 *tid,
+		 ubik_kvbuf *key,
+		 ubik_kvbuf *value) bulk = DISK_KVREPLACE;
+
+KVDelete	(IN ubik_tid64 *tid,
+		 ubik_kvbuf *key) bulk = DISK_KVDELETE;
+
+BulkCall	(afs_uint32 flags) bulkhandler = DISK_BULKCALL;

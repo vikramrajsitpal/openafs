@@ -636,7 +636,8 @@ udisk_write(struct ubik_trans *atrans, afs_int32 afile, void *abuffer,
  * \brief Begin a new local transaction.
  */
 int
-udisk_begin(struct ubik_dbase *adbase, int atype, struct ubik_trans **atrans)
+udisk_begin(struct ubik_dbase *adbase, int atype, int flags,
+	    struct ubik_trans **atrans)
 {
     afs_int32 code = UINTERNAL;
     struct ubik_trans *tt;
@@ -656,26 +657,11 @@ udisk_begin(struct ubik_dbase *adbase, int atype, struct ubik_trans **atrans)
 	    if (code)
 		goto done;
 	}
-	if (dbh != NULL && ubik_servers != NULL) {
-	    static int logged;
-	    /*
-	     * If we have other ubik sites, we can't handle write transactions
-	     * for KV, since transmitting KV data to other sites isn't
-	     * implemented yet. Throw an error now, so we don't get confusing
-	     * errors later on.
-	     */
-	    if (!logged) {
-		logged = 1;
-		ViceLog(0, ("ubik: Error, write transactions for KV databases "
-			"with other sites not implemented yet.\n"));
-		code = UINTERNAL;
-		goto done;
-	    }
-	}
     }
 
     tt = calloc(1, sizeof(struct ubik_trans));
     tt->dbase = adbase;
+    tt->flags = flags;
 
     if (dbh != NULL) {
 	tt->flags |= TRKEYVAL;
@@ -748,8 +734,8 @@ udisk_commit(struct ubik_trans *atrans)
 	     * marked down and when we detect it is up again, we will
 	     * send the entire database to it.
 	     */
-	    ContactQuorum_DISK_SetVersion( atrans, 1 /*CStampVersion */ ,
-					   &oldversion, &newversion);
+	    ubik_cq_disk_setversion(atrans, 1 /*CStampVersion */ , &oldversion,
+				    &newversion);
 	}
 
 	UBIK_VERSION_LOCK;
@@ -866,6 +852,7 @@ udisk_end(struct ubik_trans *atrans)
 	free(atrans->iovec_info.val);
     if (atrans->iovec_data.val)
 	free(atrans->iovec_data.val);
+    rxbulk_free(&atrans->bulk_call);
     free(atrans);
 
     /* Wakeup any writers waiting in BeginTrans() */

@@ -18,6 +18,7 @@
 #include <rx/xdr.h>
 #include <rx/rx.h>
 #include <afs/afsutil.h>
+#include <opr/time64.h>
 
 #include "ubik_internal.h"
 
@@ -62,7 +63,7 @@ SDISK_Begin(struct rx_call *rxcall, struct ubik_tid *atid)
 	goto out;
     }
     urecovery_CheckTid(atid, 1);
-    code = udisk_begin(ubik_dbase, UBIK_WRITETRANS, &ubik_currentTrans);
+    code = udisk_begin(ubik_dbase, UBIK_WRITETRANS, TRREMOTE, &ubik_currentTrans);
     if (!code && ubik_currentTrans) {
 	/* label this trans with the right trans id */
 	ubik_currentTrans->tid.epoch = atid->epoch;
@@ -649,4 +650,110 @@ SDISK_SendFile2(struct rx_call *rxcall)
     }
 
     return uremote_ssendfile(rxcall, &urecovery_recvdb_ssendfile2, 0, NULL);
+}
+
+static afs_int32
+uremote_kvput(struct rx_call *rxcall, struct ubik_tid64 *atid,
+	      struct rx_opaque *key, struct rx_opaque *value, int replace,
+	      char *rpcname)
+{
+    afs_int32 code;
+    struct ubik_tid tid;
+
+    memset(&tid, 0, sizeof(tid));
+
+    if ((code = ubik_CheckAuth(rxcall))) {
+	return (code);
+    }
+
+    code = udb_tid64to32(rpcname, atid, &tid);
+    if (code != 0) {
+	return code;
+    }
+
+    DBHOLD(ubik_dbase);
+
+    if (!ubik_currentTrans) {
+	code = USYNC;
+	goto done;
+    }
+
+    if (ubik_currentTrans->type != UBIK_WRITETRANS) {
+	code = UBADTYPE;
+	goto done;
+    }
+
+    urecovery_CheckTid(&tid, 0);
+    if (!ubik_currentTrans) {
+	code = USYNC;
+	goto done;
+    }
+
+    code = ukv_put(ubik_currentTrans, key, value, replace);
+
+ done:
+    DBRELE(ubik_dbase);
+    return code;
+}
+
+afs_int32
+SDISK_KVPut(struct rx_call *rxcall, struct ubik_tid64 *atid,
+	    struct rx_opaque *key, struct rx_opaque *value)
+{
+    return uremote_kvput(rxcall, atid, key, value, 0, "SDISK_KVPut");
+}
+
+afs_int32
+SDISK_KVReplace(struct rx_call *rxcall, struct ubik_tid64 *atid,
+		struct rx_opaque *key, struct rx_opaque *value)
+{
+    return uremote_kvput(rxcall, atid, key, value, 1, "SDISK_KVReplace");
+}
+
+afs_int32
+SDISK_KVDelete(struct rx_call *rxcall, struct ubik_tid64 *atid,
+	       struct rx_opaque *key)
+{
+    afs_int32 code;
+    struct ubik_tid tid;
+
+    memset(&tid, 0, sizeof(tid));
+
+    if ((code = ubik_CheckAuth(rxcall))) {
+	return (code);
+    }
+
+    code = udb_tid64to32("SDISK_KVDelete", atid, &tid);
+    if (code != 0) {
+	return code;
+    }
+
+    DBHOLD(ubik_dbase);
+
+    if (!ubik_currentTrans) {
+	code = USYNC;
+	goto done;
+    }
+
+    if (ubik_currentTrans->type != UBIK_WRITETRANS) {
+	code = UBADTYPE;
+	goto done;
+    }
+
+    urecovery_CheckTid(&tid, 0);
+    if (!ubik_currentTrans) {
+	code = USYNC;
+	goto done;
+    }
+
+    /*
+     * Note that it is an error if the given key doesn't exist (that's why we
+     * pass NULL for a_noent). If the given key doesn't exist, the sync site
+     * should have skipped sending the 'kvdelete' op to us.
+     */
+    code = ukv_delete(ubik_currentTrans, key, NULL);
+
+ done:
+    DBRELE(ubik_dbase);
+    return code;
 }

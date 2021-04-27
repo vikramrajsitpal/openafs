@@ -307,7 +307,7 @@ ContactQuorum_DISK_WriteV(struct ubik_trans *atrans, int aflags,
 }
 
 
-afs_int32
+static afs_int32
 ContactQuorum_DISK_SetVersion(struct ubik_trans *atrans, int aflags,
 			      ubik_version *OldVersion,
 			      ubik_version *NewVersion)
@@ -324,6 +324,72 @@ ContactQuorum_DISK_SetVersion(struct ubik_trans *atrans, int aflags,
 	    code = DISK_SetVersion(conn, &atrans->tid, OldVersion, NewVersion);
 	done = ContactQuorum_iterate(atrans, aflags, &ts, &conn, &rcode, &okcalls, code, procname);
     }
+    return ContactQuorum_rcode(okcalls, rcode);
+}
+
+static afs_int32
+do_bulkcall(struct rx_bulk *bulk, struct rx_connection *rxconn,
+	    char **a_procname, char **a_procname_free)
+{
+    char *procname = NULL;
+    char *procname_free = NULL;
+    int code = -1;
+
+    free(*a_procname_free);
+    *a_procname_free = NULL;
+
+    procname = "DISK_BulkCall";
+
+    if (rxconn != NULL) {
+	struct rxbulk_single_error err;
+	int n_calls = rxbulk_ncalls(bulk);
+
+	memset(&err, 0, sizeof(err));
+
+	code = rxbulk_runall(bulk, rxconn, &err);
+	if (code != 0) {
+	    char *rpc = DISK_TranslateOpCode(err.op);
+	    int nbytes;
+	    /*
+	     * Say which specific RPC failed, if one of the inner RPCs failed
+	     * (or if the whole thing failed, at least this helps identify what
+	     * we were calling).
+	     */
+	    if (rpc == NULL) {
+		rpc = "<null>";
+	    }
+	    nbytes = asprintf(&procname_free, "%s (op %d, DISK_BulkCall idx %d, len %d)",
+			      rpc, err.op, err.idx, n_calls);
+	    procname = procname_free;
+	    if (nbytes < 0) {
+		procname_free = NULL;
+		procname = "DISK_BulkCall (ENOMEM)";
+	    }
+	}
+    }
+    *a_procname = procname;
+    *a_procname_free = procname_free;
+
+    return code;
+}
+
+static afs_int32
+ContactQuorum_BulkFlush(struct ubik_trans *atrans, int aflags)
+{
+    struct ubik_server *ts = NULL;
+    afs_int32 code = 0, rcode, okcalls;
+    struct rx_connection *conn;
+    int done;
+    char *procname = NULL;
+    char *procname_free = NULL;
+
+    done = ContactQuorum_iterate(atrans, aflags, &ts, &conn, &rcode, &okcalls, code, procname);
+    while (!done) {
+	code = do_bulkcall(atrans->bulk_call, conn, &procname, &procname_free);
+	done = ContactQuorum_iterate(atrans, aflags, &ts, &conn, &rcode, &okcalls, code, procname);
+    }
+    rxbulk_reset(atrans->bulk_call);
+    free(procname_free);
     return ContactQuorum_rcode(okcalls, rcode);
 }
 
@@ -655,6 +721,105 @@ ubik_ServerInit(afs_uint32 myHost, short myPort, afs_uint32 serverList[],
 }
 
 static int
+cq_disk_begin(struct ubik_trans *atrans, int flags)
+{
+    int code;
+
+    if (ubik_KVTrans(atrans) && ubik_servers != NULL) {
+	/*
+	 * For KV transactions, send our DISK_* operations in an rxbulk call,
+	 * to reduce latency when talking to our other sites. Only for this for
+	 * KV; for non-KV transactions, other sites may not understand rxbulk.
+	 */
+	static struct rxbulk_rpc disk_bulk = {
+	    .start = StartDISK_BulkCall,
+	    .end = EndDISK_BulkCall
+	};
+	struct rxbulk_init_opts opts = {
+	    .rpc = disk_bulk,
+	};
+
+	code = rxbulk_init(&atrans->bulk_call, &opts);
+	if (code != 0) {
+	    return code;
+	}
+    }
+
+    if (atrans->bulk_call != NULL) {
+	code = rxbulk_DISK_Begin(atrans->bulk_call, &atrans->tid);
+	if (code != 0) {
+	    return code;
+	}
+
+	/*
+	 * Even when using rxbulk, send our DISK_Begin call immediately, so we
+	 * know sooner if a remote site is down. We also don't want to buffer
+	 * the DISK_Begin until commit time; if we do that, there are some
+	 * races around committing and DISK_Begin'ing at around the same time.
+	 * So we might as well DISK_Begin now, since we cannot wait until
+	 * commit time.
+	 */
+	return ContactQuorum_BulkFlush(atrans, flags);
+
+    } else {
+	return ContactQuorum_NoArguments(DISK_Begin, atrans, flags,
+					 "DISK_Begin");
+    }
+}
+
+static int
+cq_disk_lock(struct ubik_trans *atrans)
+{
+    if (atrans->bulk_call != NULL) {
+	return rxbulk_DISK_Lock(atrans->bulk_call, &atrans->tid, 0, 1 /*unused */,
+				1 /*unused */, LOCKWRITE);
+    } else {
+	return ContactQuorum_DISK_Lock(atrans, 0, 0, 1 /*unused */ ,
+				       1 /*unused */ , LOCKWRITE);
+    }
+}
+
+int
+ubik_cq_disk_setversion(struct ubik_trans *atrans, int flags,
+			struct ubik_version *oldversion,
+			struct ubik_version *newversion)
+{
+    if (atrans->bulk_call != NULL) {
+	int code;
+	code = rxbulk_DISK_SetVersion(atrans->bulk_call, &atrans->tid,
+				      oldversion, newversion);
+	if (code != 0) {
+	    return code;
+	}
+
+	return ContactQuorum_BulkFlush(atrans, flags);
+
+    } else {
+	return ContactQuorum_DISK_SetVersion(atrans, flags, oldversion,
+					     newversion);
+    }
+}
+
+static int
+cq_disk_commit(struct ubik_trans *atrans, int flags)
+{
+    if (atrans->bulk_call != NULL) {
+	int code;
+
+	code = rxbulk_DISK_Commit(atrans->bulk_call, &atrans->tid);
+	if (code != 0) {
+	    return code;
+	}
+
+	return ContactQuorum_BulkFlush(atrans, flags);
+
+    } else {
+	return ContactQuorum_NoArguments(DISK_Commit, atrans, flags,
+					 "DISK_Commit");
+    }
+}
+
+static int
 BeginTransRaw(struct ubik_dbase *dbase, afs_int32 transMode,
 	      struct ubik_trans **transPtr, int readAny)
 {
@@ -753,7 +918,7 @@ BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
     }
 
     /* create the transaction */
-    code = udisk_begin(dbase, transMode, &jt);	/* can't take address of register var */
+    code = udisk_begin(dbase, transMode, 0, &jt);	/* can't take address of register var */
     tt = jt;			/* move to a register */
     if (code || tt == NULL) {
 	DBRELE(dbase);
@@ -780,7 +945,7 @@ BeginTrans(struct ubik_dbase *dbase, afs_int32 transMode,
 
     if (transMode == UBIK_WRITETRANS) {
 	/* next try to start transaction on appropriate number of machines */
-	code = ContactQuorum_NoArguments(DISK_Begin, tt, CCheckSyncAdvertised, "DISK_Begin");
+	code = cq_disk_begin(tt, CCheckSyncAdvertised);
 	if (code) {
 	    /* we must abort the operation */
 	    udisk_abort(tt);
@@ -1021,7 +1186,7 @@ ubik_EndTrans(struct ubik_trans *transPtr)
 
 	ReleaseWriteLock(&dbase->cache_lock);
 
-	code = ContactQuorum_NoArguments(DISK_Commit, transPtr, CStampVersion, "DISK_Commit");
+	code = cq_disk_commit(transPtr, CStampVersion);
 
     } else {
 	memset(&dbase->cachedVersion, 0, sizeof(struct ubik_version));
@@ -1417,8 +1582,7 @@ ubik_SetLock(struct ubik_trans *atrans, afs_int32 apos, afs_int32 alen,
 	/* now do the operation locally, and propagate it out */
 	code = ulock_getLock(atrans, atype, 1);
 	if (code == 0) {
-	    code = ContactQuorum_DISK_Lock(atrans, 0, 0, 1 /*unused */ ,
-				 	   1 /*unused */ , LOCKWRITE);
+	    code = cq_disk_lock(atrans);
 	}
 	if (code) {
 	    /* we must abort the operation */
