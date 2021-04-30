@@ -107,4 +107,26 @@ extern int opr_cache_get(struct opr_cache *cache, void *key_buf,
 extern void opr_cache_put(struct opr_cache *cache, void *key_buf,
 			  size_t key_len, void *val_buf, size_t val_len);
 
+/* progress.c */
+
+struct opr_progress;
+struct opr_progress_opts {
+    afs_int64 max_val;
+    afs_int64 start_val;
+
+    int delay_ms;
+    int interval_ms;
+    int quiet;
+    int force_disable;
+    int force_enable;
+    int bkg_spinner;
+};
+
+struct opr_progress *opr_progress_start(struct opr_progress_opts *opts,
+					const char *fmt, ...)
+					AFS_ATTRIBUTE_FORMAT(__printf__, 2, 3);
+void opr_progress_set(struct opr_progress *prog, afs_int64 val);
+void opr_progress_add(struct opr_progress *prog, afs_int64 amount);
+void opr_progress_done(struct opr_progress **a_prog, int error) AFS_NONNULL();
+
 #endif

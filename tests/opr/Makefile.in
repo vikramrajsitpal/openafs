@@ -8,8 +8,8 @@ MODULE_CFLAGS = -I$(TOP_OBJDIR)
 LIBS=	$(abs_top_builddir)/tests/common/libafstest_common.la \
 	$(abs_top_builddir)/src/opr/liboafs_opr.la
 
-BINS = cache-t dict-t fmt-t jhash-t queues-t rbtree-t softsig-helper time64-t \
-       uuid-t
+BINS = cache-t dict-t fmt-t jhash-t progress-helper queues-t rbtree-t \
+       softsig-helper time64-t uuid-t
 
 all: $(BINS)
 
@@ -21,6 +21,9 @@ dict-t: dict-t.o $(LIBS)
 
 fmt-t: fmt-t.o
 	$(LT_LDRULE_static) fmt-t.o $(LIBS) $(XLIBS)
+
+progress-helper: progress-helper.o $(LIBS)
+	$(LT_LDRULE_static) progress-helper.o $(LIBS) $(XLIBS)
 
 queues-t: queues-t.o $(LIBS)
 	$(LT_LDRULE_static) queues-t.o $(LIBS) $(XLIBS)

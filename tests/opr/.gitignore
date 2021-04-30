@@ -9,5 +9,6 @@
 /rbtree-t
 /time64-t
 /uuid-t
+/progress-helper
 /softsig-helper
 /cache-t

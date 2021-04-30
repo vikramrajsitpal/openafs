@@ -12,6 +12,7 @@ opr/cache
 opr/dict
 opr/fmt
 opr/jhash
+opr/progress
 opr/queues
 opr/rbtree
 opr/softsig

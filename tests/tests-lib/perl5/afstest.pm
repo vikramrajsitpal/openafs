@@ -23,7 +23,9 @@
 package afstest;
 require Exporter;
 our @ISA = qw(Exporter);
-our @EXPORT_OK = qw(src_path obj_path);
+our @EXPORT_OK = qw(src_path obj_path is_any);
+
+use Test::More;
 
 sub
 x_path($;$)
@@ -58,4 +60,20 @@ obj_path(;$)
 {
     my $path = $_[0];
     return x_path("C_TAP_BUILD", $path);
+}
+
+# Call like:
+# is_any($val, ["foo", "bar", "baz"], "is val a foobarbaz?");
+# to test if $val is any of the given values
+sub
+is_any($$$)
+{
+    my ($actual, $expected, $name) = @_;
+
+    for my $exp (@$expected) {
+	if ($actual eq $exp) {
+	    return ok(1, $name);
+	}
+    }
+    return is($actual, $expected->[0], $name);
 }

@@ -1,0 +1,157 @@
+#!/usr/bin/env perl
+#
+# Copyright (c) 2021 Sine Nomine Associates. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE AUTHOR `AS IS'' AND ANY EXPRESS OR IMPLIED
+# WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO
+# EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use strict;
+use warnings;
+use Test::More tests => 8;
+use Time::HiRes qw(usleep);
+use File::Temp;
+
+use lib $ENV{C_TAP_SOURCE} . "/tests-lib/perl5";
+use afstest qw(obj_path is_any);
+
+my $prog_helper = obj_path("tests/opr/progress-helper");
+
+my $tmp = File::Temp->new(TEMPLATE => 'progress-t_XXXXXX', TMPDIR => 1, UNLINK => 1)
+    or die;
+
+sub
+run_helper(%) {
+    my %args = @_;
+
+    my %defaults = (
+	descr => "Reticulating splines",
+	max_val => 100,
+	delay => 10,
+	interval => 10,
+	quiet => 0,
+	disable => 0,
+	enable => 1,
+	spinner => 0,
+	error => 0,
+    );
+
+    my $argstr = "";
+    for my $arg (qw(descr max_val delay interval quiet disable enable spinner error)) {
+	if (defined($args{$arg})) {
+	    $argstr = $argstr . " '$args{$arg}'";
+	} else {
+	    $argstr = $argstr . " '$defaults{$arg}'";
+	}
+    }
+    open(my $ph, '|-', "$prog_helper $argstr 2> ".$tmp->filename)
+	or die("Could not run progress-helper");
+    return $ph;
+}
+
+sub
+tmp_contents() {
+    seek($tmp, 0, 0);
+    my $nbytes = -s $tmp;
+    read($tmp, my $data, -s $tmp);
+    return $data;
+}
+
+my $ph;
+
+$ph = run_helper(enable => 0);
+print $ph "5\n";
+close($ph);
+is(tmp_contents(), "Reticulating splines... done.\n",
+   "autodetect to disabled");
+
+$ph = run_helper(disable => 1, enable => 0);
+print $ph "5\n";
+close($ph);
+is(tmp_contents(), "Reticulating splines... done.\n",
+   "force_disable");
+
+$ph = run_helper();
+print $ph "5\n";
+close($ph);
+is(tmp_contents(), "Reticulating splines... \r".
+		   "Reticulating splines... 100% (5 / 5), done.\n",
+   "force_enable");
+
+$ph = run_helper();
+print $ph "1\n";
+usleep(12000);
+print $ph "1\n";
+usleep(12000);
+print $ph "1\n";
+close($ph);
+is(tmp_contents(), "Reticulating splines... \r".
+		   "Reticulating splines...   1% (1 / 100)\r".
+		   "Reticulating splines... 100% (3 / 3), done.\n",
+   "simple progress");
+
+$ph = run_helper(max_val => 0);
+print $ph "1\n";
+usleep(12000);
+print $ph "1\n";
+usleep(12000);
+print $ph "1\n";
+close($ph);
+is(tmp_contents(), "Reticulating splines... \r".
+		   "Reticulating splines... (1)\r".
+		   "Reticulating splines... (3), done.\n",
+   "unknown max");
+
+$ph = run_helper(error => 1);
+print $ph "1\n";
+usleep(12000);
+print $ph "1\n";
+usleep(12000);
+print $ph "1\n";
+close($ph);
+is(tmp_contents(), "Reticulating splines... \r".
+		   "Reticulating splines...   1% (1 / 100)\r".
+		   "\n",
+   "error finish");
+
+$ph = run_helper(quiet => 1);
+print $ph "1\n";
+usleep(12000);
+print $ph "1\n";
+usleep(12000);
+print $ph "1\n";
+close($ph);
+is(tmp_contents(), "",
+   "quiet");
+
+$ph = run_helper(spinner => 1);
+usleep(22000);
+close($ph);
+is_any(tmp_contents(),
+       [
+	"Reticulating splines... \r".
+	"Reticulating splines... /\r".
+	"Reticulating splines... done.\n",
+
+	"Reticulating splines... \r".
+	"Reticulating splines... /\r".
+	"Reticulating splines... -\r".
+	"Reticulating splines... done.\n",
+       ],
+       "background spinner");
