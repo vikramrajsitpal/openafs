@@ -135,8 +135,6 @@
 
 #include <poll.h>
 
-#include <afs/cellconfig.h>
-
 #include "ctl_internal.h"
 
 #ifdef SOCK_CLOEXEC

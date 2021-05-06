@@ -39,6 +39,10 @@
 #include <ubik_np.h>
 #include <afs/afsutil.h>
 
+#ifdef AFS_CTL_ENV
+# include <afs/afsctl.h>
+#endif
+
 #include "vlserver.h"
 #include "vlserver_internal.h"
 
@@ -159,7 +163,8 @@ enum optionsList {
     OPT_dotted,
     OPT_restricted_query,
     OPT_transarc_logs,
-    OPT_s2s_crypt
+    OPT_s2s_crypt,
+    OPT_ctl_socket
 };
 
 int
@@ -193,6 +198,10 @@ main(int argc, char **argv)
     char *auditIface = NULL;
     char *optstring = NULL;
     char *s2s_crypt_behavior = NULL;
+#ifdef AFS_CTL_ENV
+    struct afsctl_serverinfo ctl_sinfo;
+    struct afsctl_server *ctl_server = NULL;
+#endif
 
     char *restricted_query_parameter = NULL;
 
@@ -217,6 +226,10 @@ main(int argc, char **argv)
     memset(&logopts, 0, sizeof(logopts));
     memset(&bsso, 0, sizeof(bsso));
     memset(&u_opts, 0, sizeof(u_opts));
+
+#ifdef AFS_CTL_ENV
+    memset(&ctl_sinfo, 0, sizeof(ctl_sinfo));
+#endif
 
     setprogname(argv[0]);
 
@@ -265,6 +278,11 @@ main(int argc, char **argv)
 #endif
     cmd_AddParmAtOffset(opts, OPT_transarc_logs, "-transarc-logs", CMD_FLAG,
 			CMD_OPTIONAL, "enable Transarc style logging");
+
+#ifdef AFS_CTL_ENV
+    cmd_AddParmAtOffset(opts, OPT_ctl_socket, "-ctl-socket", CMD_SINGLE, CMD_OPTIONAL,
+			"path to ctl socket");
+#endif
 
     /* rx options */
     cmd_AddParmAtOffset(opts, OPT_peer, "-enable_peer_stats", CMD_FLAG,
@@ -325,6 +343,10 @@ main(int argc, char **argv)
     cmd_OptionAsList(opts, OPT_auditlog, &auditLogList);
 
     cmd_OptionAsString(opts, OPT_database, &vl_dbaseName);
+
+#ifdef AFS_CTL_ENV
+    cmd_OptionAsString(opts, OPT_ctl_socket, &ctl_sinfo.sock_path);
+#endif
 
     if (cmd_OptionAsInt(opts, OPT_threads, &lwps) == 0) {
 	if (lwps > MAXLWP) {
@@ -504,6 +526,16 @@ main(int argc, char **argv)
     }
     rx_SetRxDeadTime(50);
 
+#ifdef AFS_CTL_ENV
+    ctl_sinfo.server_type = "vlserver";
+    code = afsctl_server_create(&ctl_sinfo, &ctl_server);
+    if (code != 0) {
+	VLog(0, ("vlserver: afsctl init failed: %d\n", code));
+	exit(1);
+    }
+    u_opts.ctl_server = ctl_server;
+#endif
+
     ubik_nBuffers = 512;
     if (s2s_rxgk) {
 	ubik_SetClientSecurityProcs(afsconf_ClientAuthRXGKCrypt,
@@ -530,6 +562,15 @@ main(int argc, char **argv)
     }
 
     initialize_dstats();
+
+#ifdef AFS_CTL_ENV
+    code = afsctl_server_listen(ctl_server);
+    if (code != 0) {
+	VLog(0, ("vlserver: afsctl listen failed (error %d). Startup will "
+		 "continue, but ctl functionality will be disabled\n", code));
+	code = 0;
+    }
+#endif
 
     bsso.dir = tdir;
     bsso.logger = FSLog;

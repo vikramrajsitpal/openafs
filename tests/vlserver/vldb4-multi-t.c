@@ -31,10 +31,45 @@
 
 #include "vltest.h"
 
+static char *ctl_path;
+
+static void
+run_dbinfo(struct ubiktest_cbinfo *cbinfo, struct ubiktest_ops *ops)
+{
+    struct afstest_cmdinfo cmdinfo;
+
+    memset(&cmdinfo, 0, sizeof(cmdinfo));
+
+    if (cbinfo->ctl_sock == NULL) {
+	skip_block(1, "ctl socket not available");
+	return;
+    }
+
+    cmdinfo.output = "{\"type\":\"flat\","
+		      "\"engine\":{"
+		       "\"name\":\"udisk\","
+		       "\"desc\":\"traditional udisk/uphys storage\""
+		      "},"
+		      "\"size\":141312,"
+		      "\"version\":{"
+		       "\"epoch64\":15947646640000000,"
+		       "\"counter\":8"
+		      "}}";
+    cmdinfo.fd = STDOUT_FILENO;
+    cmdinfo.command = afstest_asprintf("%s vldb-info -ctl-socket %s "
+				       "-format json", ctl_path,
+				       cbinfo->ctl_sock);
+
+    is_command(&cmdinfo, "openafs-ctl vldb-info output matches");
+
+    free(cmdinfo.command);
+}
+
 static struct ubiktest_ops scenarios[] = {
     {
 	.descr = "existing vldb4 (3 servers)",
 	.use_db = "vldb4",
+	.post_start = run_dbinfo,
 	.n_servers = 3,
     },
     {0}
@@ -45,7 +80,9 @@ main(int argc, char **argv)
 {
     vltest_init(argv);
 
-    plan(48);
+    plan(49);
+
+    ctl_path = afstest_obj_path("src/ctl/openafs-ctl");
 
     ubiktest_runtest_list(&vlsmall, scenarios);
 

@@ -1,0 +1,45 @@
+=head1 NAME
+
+openafs-ctl - Introduction to the openafs-ctl command suite
+
+=head1 DESCRIPTION
+
+The B<openafs-ctl> command suite allows for administrative control and
+inspection of OpenAFS daemons. Unlike other command suites such as B<bos> or
+B<vos>, the B<openafs-ctl> command suite does not communicate over the network,
+and only communicates with daemons running on the same host through a unix
+domain socket.
+
+The protocol that the B<openafs-ctl> tool uses to communicate with OpenAFS
+daemons may change over time and may not preserve backwards compatibility. It
+is expected that administrators use the B<openafs-ctl> tool from the same
+release of OpenAFS as the running daemons.
+
+=head1 OPTIONS
+
+The following arguments and flags are available on many commands in the
+B<openafs-ctl> suite.
+
+=over 4
+
+=include fragments/openafs-ctl-options.pod
+
+=back
+
+=head1 PRIVILEGE REQUIRED
+
+Callers do not need any AFS tokens or Kerberos tickets to run B<openafs-ctl>
+commands, but callers must be able to access the unix socket of the relevant
+daemon. By default, these sockets exist in F</usr/afs/local>, and so the caller
+will need to be the local superuser C<root> in order to run any commands.
+
+=head1 SEE ALSO
+
+L<openafs-ctl_vldb-info(8)>
+
+=head1 COPYRIGHT
+
+Copyright 2021 Sine Nomine Associates
+
+This documentation is covered by the BSD License as written in the doc/LICENSE
+file. This man page was written by Andrew Deason for OpenAFS.

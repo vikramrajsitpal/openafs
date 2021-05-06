@@ -17,12 +17,16 @@ LT_objs =   $(LT_authent_objs) \
 	    disk.lo remote.lo beacon.lo recovery.lo ubik.lo vote.lo lock.lo \
 	    phys.lo ubik_int.ss.lo ubikcmd.lo udb.lo
 
+
 LT_deps =   $(top_builddir)/src/auth/liboafs_auth.la \
 	    $(top_builddir)/src/opr/liboafs_opr.la \
 	    $(top_builddir)/src/comerr/liboafs_comerr.la \
 	    $(top_builddir)/src/lwp/liboafs_lwpcompat.la \
 	    $(top_builddir)/src/rx/liboafs_rx.la \
+	    $(top_builddir)/src/ctl/liboafs_ctl.la \
 	    $(top_builddir)/src/util/liboafs_util.la
+
+LT_libs = $(JANSSON_LIBS)
 
 INCLS=${TOP_INCDIR}/lwp.h ${TOP_INCDIR}/lock.h \
 	${TOP_INCDIR}/rx/rx.h ${TOP_INCDIR}/rx/xdr.h \
@@ -129,6 +133,8 @@ uerrors.c: uerrors.et
 
 ubik.h: uerrors.et ubik.p.h
 	${COMPILE_ET_H} -p ${srcdir} uerrors -h ubik
+
+CFLAGS_ubik.lo = $(JANSSON_CFLAGS)
 
 beacon.o beacon.lo: ubik.h
 disk.o disk.lo: ubik.h

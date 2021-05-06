@@ -100,6 +100,7 @@ extern struct rx_securityClass
  */
 struct afstest_server_type {
     char *logname;  /**< Log filename on disk (VLLog) */
+    char *ctl_sock; /**< ctl socket filename (e.g. vl.ctl.sock) */
     char *bin_path; /**< Path to server binary, relative to top of objdir */
     char *db_name;  /**< db filename on disk (e.g. vldb) */
     char *exec_name;	    /**< argv[0] when running server (e.g. vlserver) */
@@ -168,6 +169,7 @@ struct ubiktest_cbinfo {
     struct rx_connection *disk_conn;	/**< Conn to the DISK_ service for the
 					 *   running server. */
     struct ubiktest_dbdef *src_dbdef;	/**< dbdef struct for the installed db. */
+    char *ctl_sock; /**< Path to the ctl socket for the running server. */
 };
 
 /*

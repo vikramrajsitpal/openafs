@@ -32,8 +32,18 @@
 #include <roken.h>
 
 #include <afs/opr.h>
+#include <opr/time64.h>
 #include <afs/afsutil.h>
 #include "ubik_internal.h"
+
+void
+udb_v32to64(struct ubik_version *from, struct ubik_version64 *to)
+{
+    /* opr_time64_fromSecs cannot fail here, since we're converting from a
+     * 32-bit time value. */
+    opr_Verify(opr_time64_fromSecs(from->epoch, &to->epoch64) == 0);
+    to->counter64 = from->counter;
+}
 
 /**
  * Calculate the path on disk for the given databse file.

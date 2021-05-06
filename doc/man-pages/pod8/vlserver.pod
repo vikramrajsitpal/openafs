@@ -24,6 +24,7 @@ vlserver [B<-noauth>] [B<-smallmem>]
     S<<< [B<-audit-interface> <I<interface name>>] >>>
     S<<< [B<-restricted_query> (anyuser | admin)] >>>
     S<< [B<-s2scrypt> (rxgk-crypt | never)] >>
+    S<<< [B<-ctl-socket> <I<path>>] >>>
     [B<-help>]
 
 =for html
@@ -216,6 +217,11 @@ server-to-server (s2s) communication. Specify C<never> to use rxkad connections
 instead, without per-packet encryption ("rxkad_clear").
 
 The default is currently C<never>.
+
+=item B<-ctl-socket> <I<path>>
+
+Specifies the path to use for the ctl unix socket, for use with B<openafs-ctl>
+commands. By default, B<vlserver> uses F</usr/afs/local/vl.ctl.sock>.
 
 =item B<-help>
 

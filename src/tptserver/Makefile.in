@@ -60,7 +60,7 @@ CFLAGS_ptprocs.o = @CFLAGS_NOSTRICT@
 #
 
 ptserver.o: ${PTSERVER}/ptserver.c ${INCLS}
-	$(AFS_CCRULE) $(PTSERVER)/ptserver.c
+	$(AFS_CCRULE) $(PTSERVER)/ptserver.c $(JANSSON_CFLAGS)
 
 ptutils.o: ${PTSERVER}/ptutils.c ${INCLS} pterror.h
 	$(AFS_CCRULE) $(PTSERVER)/ptutils.c

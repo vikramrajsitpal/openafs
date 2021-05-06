@@ -13,7 +13,15 @@ LT_libs = $(LIB_roken) $(JANSSON_LIBS)
 
 HEADERS = $(TOP_INCDIR)/afs/afsctl.h
 
-all: lib
+OAFS_CTL_LIBS = liboafs_ctl.la \
+		$(top_builddir)/src/cmd/liboafs_cmd.la \
+		$(top_builddir)/src/opr/liboafs_opr.la \
+		$(top_builddir)/src/ubik/liboafs_ubik.la \
+		$(LT_libs)
+
+@JANSSON_ONLY@BINS = openafs-ctl
+
+all: $(BINS) lib
 lib: $(HEADERS) liboafs_ctl.la
 
 $(LT_objs): $(HEADERS)
@@ -24,10 +32,17 @@ liboafs_ctl.la: liboafs_ctl.la.sym $(LT_objs) $(LT_deps)
 $(TOP_INCDIR)/afs/afsctl.h: afsctl.h
 	$(INSTALL_DATA) $? $@
 
+openafs-ctl: ctl_main.o lib
+	$(LT_LDRULE_static) ctl_main.o $(OAFS_CTL_LIBS)
+
 clean:
 	$(LT_CLEAN)
-	$(RM) -f *.o
+	$(RM) -f *.o openafs-ctl
 
 install: all
+@JANSSON_ONLY@	$(INSTALL) -d $(DESTDIR)$(sbindir)
+@JANSSON_ONLY@	$(INSTALL_PROGRAM) openafs-ctl $(DESTDIR)$(sbindir)/openafs-ctl
 
 dest: all
+@JANSSON_ONLY@	$(INSTALL) -d $(DEST)/etc
+@JANSSON_ONLY@	$(INSTALL_PROGRAM) openafs-ctl $(DEST)/etc/openafs-ctl

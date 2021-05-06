@@ -22,6 +22,7 @@ ptserver S<<< [B<-database> | B<-db> <I<db path>>] >>>
     S<<< [B<-config> <I<configuration path>>] >>>
     S<<< [B<-rxmaxmtu> <I<bytes>>] >>>
     S<< [B<-s2scrypt> (rxgk-crypt | never)] >>
+    S<<< [B<-ctl-socket> <I<path>>] >>>
     [B<-help>]
 
 =for html
@@ -204,6 +205,11 @@ server-to-server (s2s) communication. Specify C<never> to use rxkad connections
 instead, without per-packet encryption ("rxkad_clear").
 
 The default is currently C<never>.
+
+=item B<-ctl-socket> <I<path>>
+
+Specifies the path to use for the ctl unix socket, for use with B<openafs-ctl>
+commands. By default, B<ptserver> uses F</usr/afs/local/pt.ctl.sock>.
 
 =item B<-help>
 

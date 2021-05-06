@@ -14,6 +14,11 @@ struct ubik_version {
     afs_int32 counter;
 };
 
+struct ubik_version64 {
+    struct afs_time64 epoch64;
+    afs_int64 counter64;
+};
+
 struct ubik_tid {
     afs_int32 epoch;
     afs_int32 counter;

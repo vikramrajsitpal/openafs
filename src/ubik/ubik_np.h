@@ -61,6 +61,9 @@ struct ubik_serverinit_opts {
     /* If non-NULL, use this config dir for locating some files (such as
      * NetInfo). */
     char *configDir;
+
+    /* ctl server instance to register our ubik ctl ops (optional) */
+    struct afsctl_server *ctl_server;
 };
 
 int ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,

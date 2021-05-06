@@ -32,6 +32,53 @@
 #include "common.h"
 #include "prtest.h"
 
+static char *ctl_path;
+
+static void
+run_dbinfo(struct ubiktest_cbinfo *cbinfo, struct ubiktest_ops *ops)
+{
+    struct afstest_cmdinfo cmdinfo;
+
+    memset(&cmdinfo, 0, sizeof(cmdinfo));
+
+    if (cbinfo->ctl_sock == NULL) {
+	skip_block(2, "ctl socket not available");
+	return;
+    }
+
+    cmdinfo.output = "ptdb database info:\n"
+		     "  type: flat\n"
+		     "  engine: udisk (traditional udisk/uphys storage)\n"
+		     "  version: 16168939430000000.2\n"
+		     "  size: 66944\n";
+    cmdinfo.fd = STDOUT_FILENO;
+    cmdinfo.command = afstest_asprintf("%s ptdb-info -ctl-socket %s", ctl_path,
+				       cbinfo->ctl_sock);
+    is_command(&cmdinfo, "openafs-ctl ptdb-info output matches [text]");
+
+    free(cmdinfo.command);
+
+    memset(&cmdinfo, 0, sizeof(cmdinfo));
+
+    cmdinfo.output = "{\"type\":\"flat\","
+		      "\"engine\":{"
+		       "\"name\":\"udisk\","
+		       "\"desc\":\"traditional udisk/uphys storage\""
+		      "},"
+		      "\"size\":66944,"
+		      "\"version\":{"
+		       "\"epoch64\":16168939430000000,"
+		       "\"counter\":2"
+		     "}}";
+    cmdinfo.fd = STDOUT_FILENO;
+    cmdinfo.command = afstest_asprintf("%s ptdb-info -ctl-socket %s "
+				       "--format json", ctl_path,
+				       cbinfo->ctl_sock);
+    is_command(&cmdinfo, "openafs-ctl ptdb-info output matches [json]");
+
+    free(cmdinfo.command);
+}
+
 static struct ubiktest_ops scenarios[] = {
     {
 	.descr = "created prdb",
@@ -40,6 +87,7 @@ static struct ubiktest_ops scenarios[] = {
     {
 	.descr = "existing prdb",
 	.use_db = "prdb0",
+	.post_start = run_dbinfo,
     },
     {0}
 };
@@ -49,7 +97,9 @@ main(int argc, char **argv)
 {
     prtest_init(argv);
 
-    plan(60);
+    plan(62);
+
+    ctl_path = afstest_obj_path("src/ctl/openafs-ctl");
 
     ubiktest_runtest_list(&prtiny, scenarios);
 

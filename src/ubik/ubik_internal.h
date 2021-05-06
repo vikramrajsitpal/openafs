@@ -457,6 +457,8 @@ extern int uvote_HaveSyncAndVersion(struct ubik_version);
 
 /* udb.c */
 
+void udb_v32to64(struct ubik_version *from, struct ubik_version64 *to);
+
 int udb_path(struct ubik_dbase *dbase, char *suffix, char **apath);
 int udb_del_suffixes(struct ubik_dbase *dbase, char *suffix_new,
 		     char *suffix_spare);

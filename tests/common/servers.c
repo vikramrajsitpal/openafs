@@ -20,6 +20,9 @@
 
 struct afstest_server_type afstest_server_pt = {
     .logname = "PtLog",
+#ifdef AFS_CTL_ENV
+    .ctl_sock = "pt.ctl.sock",
+#endif
     .bin_path = "src/tptserver/ptserver",
     .db_name = "prdb",
     .exec_name = "ptserver",
@@ -30,6 +33,9 @@ struct afstest_server_type afstest_server_pt = {
 
 struct afstest_server_type afstest_server_vl = {
     .logname = "VLLog",
+#ifdef AFS_CTL_ENV
+    .ctl_sock = "vl.ctl.sock",
+#endif
     .bin_path = "src/tvlserver/vlserver",
     .db_name = "vldb",
     .exec_name = "vlserver",
@@ -166,6 +172,7 @@ afstest_StartServerOpts(struct afstest_server_opts *opts)
     struct afstest_server_type *server = opts->server;
     pid_t pid;
     char *logPath;
+    char *sock_path = NULL;
     int started = 0;
     int stopped = 0;
     int try;
@@ -177,6 +184,10 @@ afstest_StartServerOpts(struct afstest_server_opts *opts)
     int forked = 0;
 
     logPath = afstest_asprintf("%s/%s", dirname, server->logname);
+    if (server->ctl_sock != NULL) {
+	sock_path = afstest_asprintf("%s/%s", dirname, server->ctl_sock);
+	opr_Assert(sock_path != NULL);
+    }
 
     if (*serverPid != 0) {
 	/* server has already started from a previous call. */
@@ -217,6 +228,10 @@ afstest_StartServerOpts(struct afstest_server_opts *opts)
 	    argv[argc++] = dbPath;
 	    argv[argc++] = "-config";
 	    argv[argc++] = dirname;
+	    if (sock_path != NULL) {
+		argv[argc++] = "-ctl-socket";
+		argv[argc++] = sock_path;
+	    }
 	    if (opts->rxbind) {
 		argv[argc++] = "-rxbind";
 	    }
@@ -290,6 +305,7 @@ afstest_StartServerOpts(struct afstest_server_opts *opts)
     *serverPid = pid;
 
     free(logPath);
+    free(sock_path);
 
     return code;
 }

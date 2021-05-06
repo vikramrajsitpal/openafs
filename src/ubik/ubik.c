@@ -16,6 +16,9 @@
 #include <rx/rx.h>
 #include <afs/cellconfig.h>
 #include <afs/afsutil.h>
+#ifdef AFS_CTL_ENV
+# include <afs/afsctl.h>
+#endif
 
 
 #include "ubik_internal.h"
@@ -323,6 +326,90 @@ ContactQuorum_DISK_SetVersion(struct ubik_trans *atrans, int aflags,
     return ContactQuorum_rcode(okcalls, rcode);
 }
 
+#ifdef AFS_CTL_ENV
+static int
+uctl_dbinfo(struct afsctl_call *ctl, json_t *in_args, json_t **out_args)
+{
+    struct ubik_dbase *dbase = ubik_dbase;
+    char *dbtype = "flat";
+    char *engine = "udisk";
+    char *desc = "traditional udisk/uphys storage";
+    char *path = NULL;
+    struct ubik_version disk_vers32;
+    struct ubik_version64 version;
+    struct ubik_stat ustat;
+    json_error_t jerror;
+    int code;
+
+    memset(&disk_vers32, 0, sizeof(disk_vers32));
+    memset(&version, 0, sizeof(version));
+    memset(&ustat, 0, sizeof(ustat));
+
+    DBHOLD(dbase);
+
+    code = udb_path(dbase, NULL, &path);
+    if (code != 0) {
+	goto done_locked;
+    }
+
+    code = uphys_getlabel_path(path, &disk_vers32);
+    if (code != 0) {
+	ViceLog(0, ("uctl_dbinfo: Error %d getting db label\n", code));
+	goto done_locked;
+    }
+
+    udb_v32to64(&disk_vers32, &version);
+
+    code = uphys_stat_path(path, &ustat);
+    if (code != 0) {
+	ViceLog(0, ("uctl_dbinfo: Error %d stating db\n", code));
+	goto done_locked;
+    }
+
+    DBRELE(dbase);
+
+    *out_args = json_pack_ex(&jerror, 0,
+			     "{s:s, s:{s:s, s:s}, s:I, s:{s:I, s:I}}",
+			     "type", dbtype,
+			     "engine", "name", engine,
+				       "desc", desc,
+			     "size", (json_int_t)ustat.size,
+			     "version", "epoch64", (json_int_t)version.epoch64.clunks,
+					"counter", (json_int_t)version.counter64);
+    if (*out_args == NULL) {
+	ViceLog(0, ("uctl_dbinfo: Error json_pack_ex failed: %s\n", jerror.text));
+	code = EIO;
+	goto done;
+    }
+
+ done:
+    free(path);
+    return code;
+
+ done_locked:
+    DBRELE(dbase);
+    goto done;
+}
+
+static struct afsctl_server_method uctl_methods[] = {
+    { .name = "ubik.dbinfo", .func = uctl_dbinfo },
+    {0}
+};
+
+static void
+uctl_Init(struct ubik_serverinit_opts *opts)
+{
+    int code;
+    if (opts->ctl_server != NULL) {
+	code = afsctl_server_reg(opts->ctl_server, uctl_methods);
+	if (code != 0) {
+	    ViceLog(0, ("ubik: Failed to register ubik ctl ops (error %d); ctl "
+		    "functionality will be unavailable.\n", code));
+	}
+    }
+}
+#endif /* AFS_CTL_ENV */
+
 #if defined(AFS_PTHREAD_ENV)
 static int
 ubik_thread_create(pthread_attr_t *tattr, pthread_t *thread, void *proc) {
@@ -488,14 +575,19 @@ ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
 #ifdef AFS_PTHREAD_ENV
     ubik_thread_create(&urecovery_Interact_tattr, &urecovery_InteractThread,
 		(void *)urecovery_Interact);
-    return 0;  /* is this correct?  - klm */
 #else
     code = LWP_CreateProcess(urecovery_Interact, 16384 /*8192 */ ,
 			     LWP_MAX_PRIORITY - 1, (void *)0, "recovery",
 			     &junk);
-    return code;
+    if (code)
+	return code;
 #endif
 
+#ifdef AFS_CTL_ENV
+    uctl_Init(opts);
+#endif
+
+    return 0;
 }
 
 /*!

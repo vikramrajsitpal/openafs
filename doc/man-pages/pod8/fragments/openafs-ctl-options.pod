@@ -1,0 +1,10 @@
+=item B<-ctl-socket> <I<path>>
+
+Specifies the path to the unix domain socket to use to communicate with the
+relevant daemon process. The default socket is daemon-specific, but will be
+somewhere inside F</usr/afs/local>.
+
+=item B<-reason> <I<message string>>
+
+Specifies a message that may be logged by the relevant server for the
+operation.

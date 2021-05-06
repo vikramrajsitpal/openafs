@@ -38,6 +38,7 @@ struct ubiktest_serverinfo {
     struct afsconf_dir *dir;
 
     char *db_path;
+    char *ctl_sock;
 
     pid_t pid;
     int stop_code;
@@ -278,6 +279,12 @@ init_serverinfo(struct ubiktest_serverinfo **a_serverinfo, int n_servers,
 	sinfo->db_path = afstest_asprintf("%s/%s.DB0", sinfo->dirname,
 					  server->db_name);
 
+	if (server->ctl_sock != NULL) {
+	    sinfo->ctl_sock = afstest_asprintf("%s/%s", sinfo->dirname,
+					       server->ctl_sock);
+	    opr_Assert(sinfo->ctl_sock != NULL);
+	}
+
 	if (src_db != NULL) {
 	    /* Copy the sample db into place (if any). */
 	    code = afstest_cp(src_db, sinfo->db_path);
@@ -356,6 +363,7 @@ ubiktest_runtest(struct ubiktest_dataset *ds, struct ubiktest_ops *ops)
 
     cbinfo.confdir = syncsite->dirname;
     cbinfo.db_path = syncsite->db_path;
+    cbinfo.ctl_sock = syncsite->ctl_sock;
 
     if (ops->pre_start != NULL) {
 	(*ops->pre_start)(&cbinfo, ops);

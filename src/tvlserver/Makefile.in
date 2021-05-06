@@ -72,7 +72,7 @@ vlserver: vlserver.o vlutils.o vlprocs.o vldbint.ss.o vldbint.xdr.o $(LIBS_serve
 		$(LIBS_server) $(LIB_hcrypto) $(LIB_roken) ${MT_LIBS}
 
 vlserver.o: ${VLSERVER}/vlserver.c ${INCLS} AFS_component_version_number.o
-	$(AFS_CCRULE) $(VLSERVER)/vlserver.c
+	$(AFS_CCRULE) $(VLSERVER)/vlserver.c $(JANSSON_CFLAGS)
 
 vlutils.o: ${VLSERVER}/vlutils.c ${INCLS}
 	$(AFS_CCRULE) $(VLSERVER)/vlutils.c
