@@ -294,6 +294,8 @@ CreateEntry(struct rx_call *rxcall, struct vldbentry *newentry)
     struct nvlentry tentry;
     char rxstr[AFS_RXINFO_LEN];
 
+    memset(&ctx, 0, sizeof(ctx));
+
     countRequest(this_op);
     if (!afsconf_SuperUser(vldb_confdir, rxcall, NULL)) {
 	return VL_PERM;
@@ -372,6 +374,8 @@ CreateEntryN(struct rx_call *rxcall, struct nvldbentry *newentry)
     struct nvlentry tentry;
     char rxstr[AFS_RXINFO_LEN];
 
+    memset(&ctx, 0, sizeof(ctx));
+
     countRequest(this_op);
     if (!afsconf_SuperUser(vldb_confdir, rxcall, NULL)) {
 	return VL_PERM;
@@ -449,6 +453,8 @@ ChangeAddr(struct rx_call *rxcall, afs_uint32 ip1, afs_uint32 ip2)
     afs_int32 code;
     char rxstr[AFS_RXINFO_LEN];
 
+    memset(&ctx, 0, sizeof(ctx));
+
     countRequest(this_op);
     if (!afsconf_SuperUser(vldb_confdir, rxcall, NULL)) {
 	return VL_PERM;
@@ -491,6 +497,8 @@ DeleteEntry(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype)
     afs_int32 blockindex, code;
     struct nvlentry tentry;
     char rxstr[AFS_RXINFO_LEN];
+
+    memset(&ctx, 0, sizeof(ctx));
 
     countRequest(this_op);
     if (!afsconf_SuperUser(vldb_confdir, rxcall, NULL))
@@ -549,6 +557,8 @@ GetEntryByID(struct rx_call *rxcall,
     afs_int32 blockindex, code;
     struct nvlentry tentry;
     char rxstr[AFS_RXINFO_LEN];
+
+    memset(&ctx, 0, sizeof(ctx));
 
     countRequest(this_op);
 
@@ -652,6 +662,8 @@ GetEntryByName(struct rx_call *rxcall,
     struct nvlentry tentry;
     char rxstr[AFS_RXINFO_LEN];
 
+    memset(&ctx, 0, sizeof(ctx));
+
     if (NameIsId(volname)) {
 	return GetEntryByID(rxcall, strtoul(volname, NULL, 10), -1, aentry, new, this_op);
     }
@@ -739,6 +751,8 @@ getNewVolumeId(struct rx_call *rxcall, afs_uint32 Maxvolidbump,
     struct vlheader *cheader;
     char rxstr[AFS_RXINFO_LEN];
 
+    memset(&ctx, 0, sizeof(ctx));
+
     countRequest(this_op);
     if (!afsconf_SuperUser(vldb_confdir, rxcall, NULL))
 	return VL_PERM;
@@ -798,6 +812,8 @@ ReplaceEntry(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype,
     struct nvlentry tentry;
     afs_uint32 checkids[MAXTYPES];
     char rxstr[AFS_RXINFO_LEN];
+
+    memset(&ctx, 0, sizeof(ctx));
 
     countRequest(this_op);
     for (typeindex = 0; typeindex < MAXTYPES; typeindex++)
@@ -931,6 +947,8 @@ ReplaceEntryN(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype,
     struct nvlentry tentry;
     char rxstr[AFS_RXINFO_LEN];
 
+    memset(&ctx, 0, sizeof(ctx));
+
     countRequest(this_op);
     for (typeindex = 0; typeindex < MAXTYPES; typeindex++)
 	hashVol[typeindex] = 0;
@@ -1047,6 +1065,8 @@ UpdateEntry(struct rx_call *rxcall,
     struct nvlentry tentry;
     char rxstr[AFS_RXINFO_LEN];
 
+    memset(&ctx, 0, sizeof(ctx));
+
     countRequest(this_op);
     if (!afsconf_SuperUser(vldb_confdir, rxcall, NULL))
 	return VL_PERM;
@@ -1108,6 +1128,8 @@ UpdateEntryByName(struct rx_call *rxcall,
     afs_int32 blockindex, code;
     struct nvlentry tentry;
 
+    memset(&ctx, 0, sizeof(ctx));
+
     countRequest(this_op);
     if (!afsconf_SuperUser(vldb_confdir, rxcall, NULL))
 	return VL_PERM;
@@ -1164,6 +1186,8 @@ SetLock(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype,
     struct vl_ctx ctx;
     struct nvlentry tentry;
     char rxstr[AFS_RXINFO_LEN];
+
+    memset(&ctx, 0, sizeof(ctx));
 
     countRequest(this_op);
     if (!afsconf_SuperUser(vldb_confdir, rxcall, NULL))
@@ -1240,6 +1264,8 @@ ReleaseLock(struct rx_call *rxcall, afs_uint32 volid, afs_int32 voltype,
     struct nvlentry tentry;
     char rxstr[AFS_RXINFO_LEN];
 
+    memset(&ctx, 0, sizeof(ctx));
+
     countRequest(this_op);
     if (!afsconf_SuperUser(vldb_confdir, rxcall, NULL))
 	return VL_PERM;
@@ -1299,6 +1325,8 @@ ListEntry(struct rx_call *rxcall, afs_int32 previous_index,
     struct nvlentry tentry;
     char rxstr[AFS_RXINFO_LEN];
 
+    memset(&ctx, 0, sizeof(ctx));
+
     countRequest(this_op);
 
     if (!afsconf_CheckRestrictedQuery(vldb_confdir, rxcall,
@@ -1347,6 +1375,8 @@ ListEntryN(struct rx_call *rxcall, afs_int32 previous_index,
     struct vl_ctx ctx;
     struct nvlentry tentry;
     char rxstr[AFS_RXINFO_LEN];
+
+    memset(&ctx, 0, sizeof(ctx));
 
     countRequest(this_op);
 
@@ -1401,6 +1431,8 @@ ListAttributes(struct rx_call *rxcall,
     struct vldbentry *Vldbentry = 0, *VldbentryFirst = 0, *VldbentryLast = 0;
     int pollcount = 0;
     char rxstr[AFS_RXINFO_LEN];
+
+    memset(&ctx, 0, sizeof(ctx));
 
     countRequest(this_op);
 
@@ -1548,6 +1580,8 @@ ListAttributesN(struct rx_call *rxcall,
     struct nvldbentry *Vldbentry = 0, *VldbentryFirst = 0, *VldbentryLast = 0;
     int pollcount = 0;
     char rxstr[AFS_RXINFO_LEN];
+
+    memset(&ctx, 0, sizeof(ctx));
 
     countRequest(this_op);
 
@@ -1712,6 +1746,8 @@ ListAttributesN2(struct rx_call *rxcall,
 #else
     char *t;
 #endif
+
+    memset(&ctx, 0, sizeof(ctx));
 
     countRequest(this_op);
 
@@ -2021,6 +2057,8 @@ LinkedList(struct rx_call *rxcall,
     int serverindex;
     int pollcount = 0;
 
+    memset(&ctx, 0, sizeof(ctx));
+
     countRequest(this_op);
 
     if (!afsconf_CheckRestrictedQuery(vldb_confdir, rxcall,
@@ -2175,6 +2213,8 @@ LinkedListN(struct rx_call *rxcall,
     int serverindex;
     int pollcount = 0;
 
+    memset(&ctx, 0, sizeof(ctx));
+
     countRequest(this_op);
 
     if (!afsconf_CheckRestrictedQuery(vldb_confdir, rxcall,
@@ -2328,6 +2368,8 @@ GetStats(struct rx_call *rxcall,
     struct vlheader *cheader;
     char rxstr[AFS_RXINFO_LEN];
 
+    memset(&ctx, 0, sizeof(ctx));
+
     countRequest(this_op);
 
     if (!afsconf_CheckRestrictedQuery(vldb_confdir, rxcall,
@@ -2374,6 +2416,8 @@ SVL_GetAddrs(struct rx_call *rxcall,
     struct vlheader *cheader;
     int nservers, i;
     afs_uint32 *taddrp;
+
+    memset(&ctx, 0, sizeof(ctx));
 
     countRequest(this_op);
     addrsp->bulkaddrs_len = *nentries = 0;
@@ -2441,6 +2485,8 @@ SVL_RegisterAddrs(struct rx_call *rxcall, afsUUID *uuidp, afs_int32 spare1,
     int FoundUuid = 0;
     int ReplaceEntry = 0;
     int srvidx, mhidx;
+
+    memset(&ctx, 0, sizeof(ctx));
 
     countRequest(this_op);
     if (!afsconf_SuperUser(vldb_confdir, rxcall, NULL))
@@ -2802,6 +2848,8 @@ SVL_GetAddrsU(struct rx_call *rxcall,
     afsUUID tuuid;
     afs_uint32 *taddrp, taddr;
     char rxstr[AFS_RXINFO_LEN];
+
+    memset(&ctx, 0, sizeof(ctx));
 
     countRequest(this_op);
     addrsp->bulkaddrs_len = *nentries = 0;

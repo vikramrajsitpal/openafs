@@ -78,6 +78,8 @@ CheckSignal(void *unused)
     int i, errorcode;
     struct vl_ctx ctx;
 
+    memset(&ctx, 0, sizeof(ctx));
+
     if ((errorcode =
 	Init_VLdbase(&ctx, LOCKREAD, VLGETSTATS - VL_LOWEST_OPCODE)))
 	return (void *)(intptr_t)errorcode;
