@@ -477,6 +477,7 @@ static struct vlmod vlsmall_mods[] = {
 		.descr = "remove vol.tmp",
 		.cmd_args = "delentry -id vol.tmp",
 		.cmd_auth = 1,
+		.cmd_sync = 1,
 		.cmd_stdout = "Deleted 1 VLDB entries\n",
 	    },
 	    {
@@ -495,6 +496,7 @@ static struct vlmod vlsmall_mods[] = {
 		.descr = "remove vol.tmp",
 		.cmd_args = "delentry -id vol.tmp",
 		.cmd_auth = 1,
+		.cmd_sync = 1,
 		.cmd_stdout = "Deleted 1 VLDB entries\n",
 	    },
 	    {
@@ -635,6 +637,7 @@ static struct vlmod vlsmall_mods[] = {
 		.descr = "changeaddr -remove 10.0.0.100 yields VL_IO",
 		.cmd_args = "changeaddr -oldaddr 10.0.0.100 -remove",
 		.cmd_auth = 1,
+		.cmd_sync = 1,
 		.cmd_exitcode = 255,
 		.cmd_stderr =
 		    "Could not remove server 10.0.0.100 from the VLDB\n"
@@ -661,6 +664,7 @@ static struct vlmod vlsmall_mods[] = {
 		.descr = "changeaddr -remove 10.0.0.100 yields VL_IO",
 		.cmd_args = "changeaddr -oldaddr 10.0.0.100 -remove",
 		.cmd_auth = 1,
+		.cmd_sync = 1,
 		.cmd_exitcode = 255,
 		.cmd_stderr =
 		    "Could not remove server 10.0.0.100 from the VLDB\n"
@@ -687,6 +691,7 @@ static struct vlmod vlsmall_mods[] = {
 		.descr = "changeaddr -remove 10.0.0.100 yields VL_IO",
 		.cmd_args = "changeaddr -oldaddr 10.0.0.100 -remove",
 		.cmd_auth = 1,
+		.cmd_sync = 1,
 		.cmd_exitcode = 255,
 		.cmd_stderr =
 		    "Could not remove server 10.0.0.100 from the VLDB\n"
@@ -950,6 +955,7 @@ static struct vlmod vlsmall_mods[] = {
 		.descr = "locking root.afs fails",
 		.cmd_args = "lock -id root.afs",
 		.cmd_auth = 1,
+		.cmd_sync = 1,
 		.cmd_exitcode = 1,
 		.cmd_stderr =
 		    "Could not lock VLDB entry for volume root.afs\n"
@@ -974,6 +980,7 @@ static struct vlmod vlsmall_mods[] = {
 		.descr = "locking root.afs fails",
 		.cmd_args = "lock -id root.afs",
 		.cmd_auth = 1,
+		.cmd_sync = 1,
 		.cmd_exitcode = 1,
 		.cmd_stderr =
 		    "Could not lock VLDB entry for volume root.afs\n"
@@ -983,6 +990,7 @@ static struct vlmod vlsmall_mods[] = {
 		.descr = "unlocking root.afs succeeds",
 		.cmd_args = "unlock -id root.afs",
 		.cmd_auth = 1,
+		.cmd_sync = 1,
 		.cmd_stdout =
 		    "Released lock on vldb entry for volume root.afs\n",
 	    },

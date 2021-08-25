@@ -41,6 +41,14 @@
 struct afstest_configinfo {
     /* Skip adding keys to the created conf dir. */
     int skipkeys;
+
+    /* If not NULL, create a NetInfo file specifying this host, forcing servers
+     * to use that ip. */
+    char *force_host;
+
+    /* List of IP addresses to use for dbservers for the cell. */
+    struct sockaddr_storage *dbserver_addrs;
+    int dbserver_addrs_len;
 };
 extern char *afstest_BuildTestConfig(struct afstest_configinfo *info);
 
@@ -112,8 +120,15 @@ struct afstest_server_opts {
     char *dirname;	/**< the config dir to use */
     pid_t *serverPid;	/**< set to the server's pid, after it's successfuly
 			 *   been started. */
+    afs_uint32 addr;	/**< IP to contact the server */
+    int multi_server;	/**< if set, we're starting up multiple servers (so
+			 *   ubik startup takes much longer). */
+    int rxbind;		/**< if set, pass -rxbind to server. */
     char **extra_argv;	/**< if not NULL, extra arguments passed to the server
 			 *   process */
+    int nowait;		/**< if set, do not wait for server to finish startup
+			 *   (call again with this unset to wait for started
+			 *   server). */
 };
 extern int afstest_StartServerOpts(struct afstest_server_opts *opts);
 extern int afstest_StartServer(struct afstest_server_type *server,
@@ -193,6 +208,8 @@ struct ubiktest_ops {
     struct ubiktest_dbtest *extra_dbtests;
 		    /**< If set, run this list of tests in addition to the
 		     *   normal dataset tests. */
+
+    int n_servers;  /**< How many dbserver sites to run in the test cell. */
 };
 
 /*
@@ -208,6 +225,8 @@ struct ubiktest_dbtest {
 			 *   calling 'dbtest_func'). */
     int cmd_exitcode;	/**< Command should exit with this exit code. */
     int cmd_auth;	/**< If non-zero, run command with -localauh. */
+    int cmd_sync;	/**< If non-zero, run command against the sync site
+			 *   only. */
     char *cmd_stdout;   /**< Command's stdout should match this. */
     char *cmd_stderr;	/**< Command's stderr should match this. */
 };
@@ -235,7 +254,8 @@ struct ubiktest_dataset {
 				     *   the running server responds with the
 				     *   correct data for the dataset. */
 
-    void (*dbtest_func)(char *dirname, struct ubiktest_dbtest *test);
+    void (*dbtest_func)(char *dirname, char *server,
+			struct ubiktest_dbtest *test);
 				    /**< The function to call to run the
 				     *   commands specified in 'tests'. */
 

@@ -49,6 +49,12 @@ openConfigFile(char *dirname, char *filename) {
     return file;
 }
 
+static struct sockaddr *
+storage2sa(struct sockaddr_storage *storage)
+{
+    return (struct sockaddr *)storage;
+}
+
 /*!
  * Build a test configuration directory, containing a CellServDB and ThisCell
  * file for the "example.org" cell. Also populates the KeyFile unless
@@ -67,11 +73,14 @@ afstest_BuildTestConfig(struct afstest_configinfo *info)
     FILE *file;
     struct afsconf_dir *confdir = NULL;
     struct afstest_configinfo info_defaults;
-    struct in_addr iaddr;
+    struct sockaddr_storage default_addr;
+    struct sockaddr_storage *dbserver_addrs = NULL;
+    int n_addrs;
+    int addr_i;
     int code;
 
     memset(&info_defaults, 0, sizeof(info_defaults));
-    memset(&iaddr, 0, sizeof(iaddr));
+    memset(&default_addr, 0, sizeof(default_addr));
 
     if (info == NULL) {
 	info = &info_defaults;
@@ -82,14 +91,39 @@ afstest_BuildTestConfig(struct afstest_configinfo *info)
 	goto error;
     }
 
-    /* Work out which IP address to use in our CellServDB. We figure this out
-     * according to the IP address which ubik is most likely to pick for one of
-     * our db servers */
-    iaddr.s_addr = afstest_MyHostAddr();
+    if (info->dbserver_addrs == NULL) {
+	struct sockaddr_in *sin = (struct sockaddr_in *)&default_addr;
+	/*
+	 * Work out which IP address to use in our CellServDB. We figure this out
+	 * according to the IP address which ubik is most likely to pick for one of
+	 * our db servers
+	 */
+	sin->sin_family = AF_INET;
+	sin->sin_addr.s_addr = afstest_MyHostAddr();
+	dbserver_addrs = &default_addr;
+	n_addrs = 1;
+
+    } else {
+	/* Use the given dbserver IPs. */
+	dbserver_addrs = info->dbserver_addrs;
+	n_addrs = info->dbserver_addrs_len;
+    }
 
     file = openConfigFile(dir, "CellServDB");
     fprintf(file, ">example.org # An example cell\n");
-    fprintf(file, "%s #test.example.org\n", inet_ntoa(iaddr));
+    for (addr_i = 0; addr_i < n_addrs; addr_i++) {
+	char hoststr[64];
+
+	code = getnameinfo(storage2sa(&dbserver_addrs[addr_i]),
+			   sizeof(dbserver_addrs[addr_i]),
+			   hoststr, sizeof(hoststr), NULL, 0,
+			   NI_NUMERICHOST);
+	if (code != 0) {
+	    bail("getnameinfo returned %d", code);
+	}
+
+	fprintf(file, "%s #test%d.example.org\n", hoststr, addr_i);
+    }
     fclose(file);
 
     /* Create a ThisCell file */
@@ -110,6 +144,12 @@ afstest_BuildTestConfig(struct afstest_configinfo *info)
 
 	afsconf_Close(confdir);
 	confdir = NULL;
+    }
+
+    if (info->force_host != NULL) {
+	file = openConfigFile(dir, "NetInfo");
+	fprintf(file, "f %s\n", info->force_host);
+	fclose(file);
     }
 
     return dir;

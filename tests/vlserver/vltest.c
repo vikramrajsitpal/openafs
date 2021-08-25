@@ -42,10 +42,11 @@ vltest_init(char **argv)
 }
 
 static void
-vltest_dbtest(char *dirname, struct ubiktest_dbtest *test)
+vltest_dbtest(char *dirname, char *server, struct ubiktest_dbtest *test)
 {
     char *cmd = NULL;
     const char *auth;
+    const char *server_flag;
     struct afstest_cmdinfo cmdinfo;
 
     auth = "-noauth";
@@ -53,9 +54,16 @@ vltest_dbtest(char *dirname, struct ubiktest_dbtest *test)
 	auth = "-localauth";
     }
 
+    server_flag = "-vlserver";
+    if (server == NULL) {
+	server_flag = "";
+	server = "";
+    }
+
     opr_Assert(vos != NULL);
-    cmd = afstest_asprintf("%s %s -noresolve -config %s %s",
-			   vos, test->cmd_args, dirname, auth);
+    cmd = afstest_asprintf("%s %s -noresolve -config %s %s %s %s",
+			   vos, test->cmd_args, dirname, auth, server_flag,
+			   server);
 
     memset(&cmdinfo, 0, sizeof(cmdinfo));
     cmdinfo.command = cmd;
@@ -278,6 +286,7 @@ static struct ubiktest_dbtest vlsmall_tests[] = {
 	.descr = "remove RO site from root.cell",
 	.cmd_args = "remsite -server 10.0.0.1 -partition vicepa -id root.cell",
 	.cmd_auth = 1,
+	.cmd_sync = 1,
 	.cmd_stdout = "Deleting the replication site for volume 536870915 ... done\n"
 		      "Removed replication site 10.0.0.1 /vicepa for volume root.cell\n",
     },
@@ -296,6 +305,7 @@ static struct ubiktest_dbtest vlsmall_tests[] = {
 	.descr = "remove vol.bigid",
 	.cmd_args = "delentry -id vol.bigid",
 	.cmd_auth = 1,
+	.cmd_sync = 1,
 	.cmd_stdout = "Deleted 1 VLDB entries\n",
     },
 
@@ -311,6 +321,7 @@ static struct ubiktest_dbtest vlsmall_tests[] = {
 	.cmd_args = "setaddrs -uuid 5dafb2eb-77d0-4b42-ac-cb-e54c3b6db53a "
 		    "-host 10.0.0.3",
 	.cmd_auth = 1,
+	.cmd_sync = 1,
 	.cmd_stdout = "",
     },
     {
@@ -370,6 +381,7 @@ vlsmall_create(char *dirname)
 	    .cmd_args = "setaddrs -uuid 5dafb2eb-77d0-4b42-ac-cb-e54c3b6db53a "
 			"-host 10.0.0.1",
 	    .cmd_auth = 1,
+	    .cmd_sync = 1,
 	    .cmd_stdout = "",
 	},
 	{
@@ -377,6 +389,7 @@ vlsmall_create(char *dirname)
 	    .cmd_args = "setaddrs -uuid ce387b42-9e84-459f-83-81-230712ed4cb5 "
 			"-host 10.0.0.2",
 	    .cmd_auth = 1,
+	    .cmd_sync = 1,
 	    .cmd_stdout = "",
 	},
 	{0}
@@ -409,7 +422,7 @@ vlsmall_create(char *dirname)
     };
 
     for (cmd = fs_cmds; cmd->descr != NULL; cmd++) {
-	vltest_dbtest(dirname, cmd);
+	vltest_dbtest(dirname, NULL, cmd);
     }
 
     vltest_createvol_list(vol_defs);

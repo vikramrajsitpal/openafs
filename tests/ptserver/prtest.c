@@ -41,10 +41,11 @@ prtest_init(char **argv)
 }
 
 static void
-prtest_dbtest(char *dirname, struct ubiktest_dbtest *test)
+prtest_dbtest(char *dirname, char *server, struct ubiktest_dbtest *test)
 {
     char *cmd = NULL;
     char *auth;
+    char *server_flag;
     struct afstest_cmdinfo cmdinfo;
 
     auth = "-noauth";
@@ -52,9 +53,16 @@ prtest_dbtest(char *dirname, struct ubiktest_dbtest *test)
 	auth = "-localauth";
     }
 
+    server_flag = "-ptserver";
+    if (server == NULL) {
+	server_flag = "";
+	server = "";
+    }
+
     opr_Assert(pts != NULL);
-    cmd = afstest_asprintf("%s %s -config %s %s",
-			   pts, test->cmd_args, dirname, auth);
+    cmd = afstest_asprintf("%s %s -config %s %s %s %s",
+			   pts, test->cmd_args, dirname, auth, server_flag,
+			   server);
 
     memset(&cmdinfo, 0, sizeof(cmdinfo));
     cmdinfo.command = cmd;
@@ -135,6 +143,7 @@ static struct ubiktest_dbtest prtiny_tests[] = {
 	.descr = "create user",
 	.cmd_args = "createuser -name user -id 2",
 	.cmd_auth = 1,
+	.cmd_sync = 1,
 	.cmd_stdout = "User user has id 2\n"
     },
     {
@@ -180,6 +189,7 @@ static struct ubiktest_dbtest prtiny_tests[] = {
 	.descr = "create group staff",
 	.cmd_args = "creategroup -name staff -id -210",
 	.cmd_auth = 1,
+	.cmd_sync = 1,
 	.cmd_stdout = "group staff has id -210\n"
     },
     {
@@ -208,6 +218,7 @@ static struct ubiktest_dbtest prtiny_tests[] = {
 	.descr = "add user to staff",
 	.cmd_args = "adduser -user user -group staff",
 	.cmd_auth = 1,
+	.cmd_sync = 1,
 	.cmd_stdout = ""
     },
     {
@@ -239,6 +250,7 @@ static struct ubiktest_dbtest prtiny_tests[] = {
 	.descr = "add user to system:administrators",
 	.cmd_args = "adduser -user user -group system:administrators",
 	.cmd_auth = 1,
+	.cmd_sync = 1,
 	.cmd_stdout = ""
     },
     {
@@ -254,6 +266,7 @@ static struct ubiktest_dbtest prtiny_tests[] = {
 	.descr = "remove user from system:administrators",
 	.cmd_args = "removeuser -user user -group system:administrators",
 	.cmd_auth = 1,
+	.cmd_sync = 1,
 	.cmd_stdout = ""
     },
     {
@@ -295,19 +308,21 @@ prtiny_create(char *dirname)
 	    .descr = "Create user admin",
 	    .cmd_args = "createuser -name admin -id 1",
 	    .cmd_auth = 1,
+	    .cmd_sync = 1,
 	    .cmd_stdout = "User admin has id 1\n",
 	},
 	{
 	    .descr = "Add admin to system:administrators",
 	    .cmd_args = "adduser -user admin -group system:administrators",
 	    .cmd_auth = 1,
+	    .cmd_sync = 1,
 	    .cmd_stdout = "",
 	},
 	{0}
     };
 
     for (cmd = pts_cmds; cmd->descr != NULL; cmd++) {
-	prtest_dbtest(dirname, cmd);
+	prtest_dbtest(dirname, NULL, cmd);
     }
 }
 

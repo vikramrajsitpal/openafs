@@ -39,11 +39,12 @@ struct afstest_server_type afstest_server_vl = {
 };
 
 static void
-check_startup(struct afstest_server_type *server, pid_t pid, char *log,
+check_startup(struct afstest_server_opts *opts, pid_t pid, char *log,
 	      int *a_started, int *a_stopped)
 {
     int status;
-    struct rx_connection *conn;
+    struct afstest_server_type *server = opts->server;
+    struct rx_connection *conn = NULL;
     struct ubik_debug udebug;
     afs_int32 isclone;
     pid_t exited;
@@ -61,13 +62,13 @@ check_startup(struct afstest_server_type *server, pid_t pid, char *log,
     if (exited != 0) {
 	/* pid is no longer running; vlserver must have died during startup */
 	*a_stopped = 1;
-	return;
+	goto done;
     }
 
     if (!afstest_file_contains(log, server->startup_string)) {
 	/* server hasn't logged the e.g. "Starting AFS vlserver" line yet, so
 	 * it's presumably still starting up. */
-	return;
+	goto done;
     }
 
     /*
@@ -80,20 +81,80 @@ check_startup(struct afstest_server_type *server, pid_t pid, char *log,
      * (via VOTE_XDebug).
      */
 
-    conn = rx_NewConnection(afstest_MyHostAddr(), htons(server->port),
+    conn = rx_NewConnection(opts->addr, htons(server->port),
 			    VOTE_SERVICE_ID,
 			    rxnull_NewClientSecurityObject(), 0);
     code = VOTE_XDebug(conn, &udebug, &isclone);
-    rx_DestroyConnection(conn);
     if (code != 0) {
 	diag("VOTE_XDebug returned %d while waiting for server startup",
 	     code);
-	return;
+	goto done;
     }
 
-    if (udebug.amSyncSite && (udebug.recoveryState & UBIK_RECHAVEDB) != 0) {
-	/* Okay, it's set! We have finished startup. */
-	*a_started = 1;
+    if (!udebug.amSyncSite) {
+	/* Not sync site yet. */
+	goto done;
+    }
+    if ((udebug.recoveryState & UBIK_RECHAVEDB) == 0) {
+	/* We don't "have the best db" yet. */
+	goto done;
+    }
+
+    if (opts->multi_server) {
+	int server_i;
+
+	/*
+	 * For multi-server setups, we also need to wait for the remote sites
+	 * to vote for the sync site after it has become the sync site. That
+	 * is, for each remote site, udebug.lastYesState must be set.
+	 */
+	for (server_i = 0; ; server_i++) {
+	    struct ubik_sdebug usdebug;
+	    struct rx_connection *s_conn;
+
+	    memset(&usdebug, 0, sizeof(usdebug));
+
+	    code = VOTE_XSDebug(conn, server_i, &usdebug, &isclone);
+	    if (code > 0) {
+		/* end-of-list */
+		break;
+	    }
+	    if (code < 0) {
+		diag("VOTE_XSDebug returned %d while waiting for server "
+		     "startup", code);
+		goto done;
+	    }
+
+	    s_conn = rx_NewConnection(htonl(usdebug.addr), htons(server->port),
+				      VOTE_SERVICE_ID,
+				      rxnull_NewClientSecurityObject(), 0);
+	    code = VOTE_XDebug(s_conn, &udebug, &isclone);
+	    rx_DestroyConnection(s_conn);
+	    if (code != 0) {
+		diag("VOTE_XDebug for server %d returned %d while waiting for "
+		     "server startup", server_i, code);
+		goto done;
+	    }
+
+	    if (udebug.lastYesHost == 0xffffffff) {
+		/* Server hasn't voted 'yes' for anyone yet; we're not ready. */
+		goto done;
+	    }
+
+	    if (!udebug.lastYesState) {
+		/* Last 'yes' vote was for a non-sync-site; we're not ready
+		 * yet. */
+		goto done;
+	    }
+	}
+    }
+
+    /* Otherwise, everything seems good, so we've finished startup. */
+    *a_started = 1;
+
+ done:
+    if (conn != NULL) {
+	rx_DestroyConnection(conn);
     }
 }
 
@@ -109,87 +170,121 @@ afstest_StartServerOpts(struct afstest_server_opts *opts)
     int stopped = 0;
     int try;
     FILE *fh;
+    int init_delayms;
+    int incr_delayms;
+    int max_tries;
     int code = 0;
+    int forked = 0;
 
     logPath = afstest_asprintf("%s/%s", dirname, server->logname);
 
-    /* Create/truncate the log in advance (since we look at it to detect when
-     * the server has started). */
-    fh = fopen(logPath, "w");
-    opr_Assert(fh != NULL);
-    fclose(fh);
+    if (*serverPid != 0) {
+	/* server has already started from a previous call. */
+	pid = *serverPid;
 
-    pid = fork();
-    if (pid == -1) {
-	exit(1);
-	/* Argggggghhhhh */
+    } else {
+	/* Create/truncate the log in advance (since we look at it to detect when
+	 * the server has started). */
+	fh = fopen(logPath, "w");
+	opr_Assert(fh != NULL);
+	fclose(fh);
 
-    } else if (pid == 0) {
-	/* Child */
+	forked = 1;
 
-	#define MAX_ARGS 16
-	char *binPath, *dbPath;
-	char *argv[MAX_ARGS];
-	int argc = 0;
-	char **x_arg;
+	pid = fork();
+	if (pid == -1) {
+	    exit(1);
+	    /* Argggggghhhhh */
 
-	memset(argv, 0, sizeof(argv));
+	} else if (pid == 0) {
+	    /* Child */
 
-	binPath = afstest_obj_path(server->bin_path);
-	dbPath = afstest_asprintf("%s/%s", dirname, server->db_name);
+	    #define MAX_ARGS 16
+	    char *binPath, *dbPath;
+	    char *argv[MAX_ARGS];
+	    int argc = 0;
+	    char **x_arg;
 
-	argv[argc++] = server->exec_name;
-	argv[argc++] = "-logfile";
-	argv[argc++] = logPath;
-	argv[argc++] = "-database";
-	argv[argc++] = dbPath;
-	argv[argc++] = "-config";
-	argv[argc++] = dirname;
+	    memset(argv, 0, sizeof(argv));
 
-	if (opts->extra_argv != NULL) {
-	    for (x_arg = opts->extra_argv; x_arg[0] != NULL; x_arg++) {
-		argv[argc++] = x_arg[0];
-		opr_Assert(argc < MAX_ARGS);
+	    binPath = afstest_obj_path(server->bin_path);
+	    dbPath = afstest_asprintf("%s/%s", dirname, server->db_name);
+
+	    argv[argc++] = server->exec_name;
+	    argv[argc++] = "-logfile";
+	    argv[argc++] = logPath;
+	    argv[argc++] = "-database";
+	    argv[argc++] = dbPath;
+	    argv[argc++] = "-config";
+	    argv[argc++] = dirname;
+	    if (opts->rxbind) {
+		argv[argc++] = "-rxbind";
 	    }
+
+	    if (opts->extra_argv != NULL) {
+		for (x_arg = opts->extra_argv; x_arg[0] != NULL; x_arg++) {
+		    argv[argc++] = x_arg[0];
+		    opr_Assert(argc < MAX_ARGS);
+		}
+	    }
+
+	    execv(binPath, argv);
+	    fprintf(stderr, "Running %s failed\n", binPath);
+	    exit(1);
+
+	    #undef MAX_ARGS
 	}
-
-	execv(binPath, argv);
-	fprintf(stderr, "Running %s failed\n", binPath);
-	exit(1);
-
-	#undef MAX_ARGS
     }
 
-    /*
-     * Wait for the vlserver to startup. Try to check if the vlserver is ready
-     * by checking the log file and the urecovery_state (check_startup()), but
-     * if it's taking too long, just return success anyway. If the vlserver
-     * isn't ready yet, then the caller's tests may fail, but we can't wait
-     * forever.
-     */
+    if (opts->nowait) {
+	diag("server pid %d started, not waiting", (int)pid);
 
-    diag("waiting for server to startup");
+    } else {
+	/*
+	 * Wait for the vlserver to startup. Try to check if the vlserver is ready
+	 * by checking the log file and the urecovery_state (check_startup()), but
+	 * if it's taking too long, just return success anyway. If the vlserver
+	 * isn't ready yet, then the caller's tests may fail, but we can't wait
+	 * forever.
+	 */
 
-    usleep(5000); /* 5ms */
-    check_startup(server, pid, logPath, &started, &stopped);
-    for (try = 0; !started && !stopped; try++) {
-	if (try > 100 * 5) {
-	    diag("waited too long for server to finish starting up; "
-		 "proceeding anyway");
+	if (opts->multi_server) {
+	    /* For multi-server setups, wait about 120 seconds. It takes ubik a
+	     * bit over 100s to finish coming up, currently. */
+	    diag("waiting for server pid %d to startup (slow)", (int)pid);
+	    init_delayms = 1000;
+	    incr_delayms = 2000;
+	    max_tries = 60;
+	} else {
+	    diag("waiting for server pid %d to startup", (int)pid);
+	    init_delayms = 5;
+	    incr_delayms = 10;
+	    max_tries = 500;
+	}
+
+	if (forked) {
+	    usleep(init_delayms * 1000);
+	}
+	check_startup(opts, pid, logPath, &started, &stopped);
+	for (try = 0; !started && !stopped; try++) {
+	    if (try > max_tries) {
+		diag("waited too long for server to finish starting up; "
+		     "proceeding anyway");
+		goto done;
+	    }
+
+	    usleep(incr_delayms * 1000);
+	    check_startup(opts, pid, logPath, &started, &stopped);
+	}
+
+	if (stopped) {
+	    fprintf(stderr, "server died during startup\n");
+	    code = -1;
 	    goto done;
 	}
 
-	usleep(1000 * 10); /* 10ms */
-	check_startup(server, pid, logPath, &started, &stopped);
+	diag("server started after try %d", try);
     }
-
-    if (stopped) {
-	fprintf(stderr, "server died during startup\n");
-	code = -1;
-	goto done;
-    }
-
-    diag("server started after try %d", try);
 
  done:
     *serverPid = pid;
