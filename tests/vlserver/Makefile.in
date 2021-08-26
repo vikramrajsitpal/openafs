@@ -7,7 +7,8 @@ include @TOP_OBJDIR@/src/config/Makefile.pthread
 BINS = badversion-t \
        check4-t \
        recovery-t \
-       vldb4-t
+       vldb4-t \
+       vldb4-multi-t
 
 MODULE_CFLAGS=-I$(TOP_OBJDIR) -I$(srcdir)/../common/
 
@@ -33,6 +34,9 @@ recovery-t: recovery-t.o $(vltest_deps)
 
 vldb4-t: vldb4-t.o $(vltest_deps)
 	$(LT_LDRULE_static) vldb4-t.o $(vltest_libs)
+
+vldb4-multi-t: vldb4-multi-t.o $(vltest_deps)
+	$(LT_LDRULE_static) vldb4-multi-t.o $(vltest_libs)
 
 clean:
 	$(LT_CLEAN)
