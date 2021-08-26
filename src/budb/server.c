@@ -535,7 +535,7 @@ main(int argc, char **argv)
             ccode = rx_getAllAddr(SHostAddrs, ADDRSPERSITE);
         }
         if (ccode == 1) {
-            host = SHostAddrs[0];
+	    globalConfPtr->myHost = host = SHostAddrs[0];
 	}
     }
 

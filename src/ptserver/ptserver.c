@@ -568,7 +568,7 @@ main(int argc, char **argv)
 					  ADDRSPERSITE, reason,
 					  configDirExplicit);
 	if (ccode == 1) {
-	    host = SHostAddrs[0];
+	    myHost = host = SHostAddrs[0];
 	}
     }
 
