@@ -43,6 +43,11 @@ F</usr/vice/etc>, except if B<-localauth> is specified, in which case the
 default is F</usr/afs/etc>. This option allows the use of alternative
 configuration locations for testing purposes.
 
+=item B<-vlserver> <I<server>>
+
+Forces the use of a specific VL server to contact when interacting with the
+VLDB.
+
 =item B<-help>
 
 Prints the online help for this command. All other valid options are

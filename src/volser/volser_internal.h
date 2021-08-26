@@ -122,4 +122,10 @@ extern int UV_ConvertRO(afs_uint32 server, afs_uint32 partition, afs_uint32 voli
 			struct nvldbentry *entry);
 extern int verbose;
 extern int noresolve;
+
+/* vsutils.c */
+extern afs_int32 vsu_ClientInit_int(const char *confDir, char *cellName,
+				    int secFlags, ugen_secproc_func secproc,
+				    afs_uint32 vlserver_addr,
+				    struct ubik_client **uclientp);
 #endif

@@ -273,6 +273,14 @@ causes B<vos> to use rxgk without any per-packet cryptography.
 By default, B<vos> uses rxkad credentials.  B<vos> falls back to unauthenticated
 connections if credentials are not available.
 
+=item B<-vlserver> <I<server>>
+
+Specifies the VL server to contact when interacting with the VLDB. By default,
+B<vos> randomly chooses a VL server in the appropriate cell, but specifying
+this option allows you to force using a specific server. This is normally not
+needed, but may be useful for testing purposes or if specific servers are
+behaving differently.
+
 =back
 
 =head1 PRIVILEGE REQUIRED

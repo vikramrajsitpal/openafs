@@ -81,6 +81,7 @@ enum {
     COMMONPARM_OFFSET_NORESOLVE = 30,
     COMMONPARM_OFFSET_CONFIG    = 31,
     COMMONPARM_OFFSET_RXGK      = 32,
+    COMMONPARM_OFFSET_VLSERVER  = 33,
 };
 
 #define COMMONPARMS \
@@ -101,6 +102,8 @@ cmd_AddParmAtOffset(ts, COMMONPARM_OFFSET_CONFIG, \
     "-config", CMD_SINGLE, CMD_OPTIONAL, "config location"); \
 cmd_AddParmAtOffset(ts, COMMONPARM_OFFSET_RXGK, \
     "-rxgk", CMD_SINGLE, CMD_OPTIONAL, "rxgk security level to use"); \
+cmd_AddParmAtOffset(ts, COMMONPARM_OFFSET_VLSERVER, \
+    "-vlserver", CMD_SINGLE, CMD_OPTIONAL, "vlserver to contact"); \
 
 #define ERROR_EXIT(code) do { \
     error = (code); \
@@ -5847,6 +5850,8 @@ MyBeforeProc(struct cmd_syndesc *as, void *arock)
     char *rxgk_seclevel_str = NULL;
     afs_int32 code;
     int secFlags;
+    char *vl_server = NULL;
+    afs_uint32 vl_addr = 0;
 
     /* Initialize the ubik_client connection */
     rx_SetRxDeadTime(90);
@@ -5892,8 +5897,19 @@ MyBeforeProc(struct cmd_syndesc *as, void *arock)
 	rxgk_seclevel_str = NULL;
     }
 
-    if ((code = vsu_ClientInit(confdir, tcell, secFlags, UV_SetSecurity,
-			       &cstruct))) {
+    if (cmd_OptionAsString(as, COMMONPARM_OFFSET_VLSERVER, &vl_server) == 0) {
+	vl_addr = GetServer(vl_server);
+	if (vl_addr == 0) {
+	    fprintf(STDERR, "vos: vlserver '%s' not found in host table\n",
+		    vl_server);
+	    exit(1);
+	}
+	free(vl_server);
+	vl_server = NULL;
+    }
+
+    if ((code = vsu_ClientInit_int(confdir, tcell, secFlags, UV_SetSecurity,
+				   vl_addr, &cstruct))) {
 	fprintf(STDERR, "could not initialize VLDB library (code=%lu) \n",
 		(unsigned long)code);
 	exit(1);

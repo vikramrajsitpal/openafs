@@ -397,13 +397,29 @@ VLDB_IsSameAddrs(afs_uint32 serv1, afs_uint32 serv2, afs_int32 *errorp)
   Get the appropriate type of ubik client structure out from the system.
 */
 int
+vsu_ClientInit_int(const char *confDir, char *cellName, int secFlags,
+		   ugen_secproc_func secproc, afs_uint32 vlserver_addr,
+		   struct ubik_client **uclientp)
+{
+    int code;
+    code = ugen_ClientInitServer(confDir, cellName, secFlags, uclientp,
+				 VLDB_MAXSERVERS, AFSCONF_VLDBSERVICE,
+				 90, vlserver_addr, htons(AFSCONF_VLDBPORT));
+    if (code == 0 && secproc != NULL) {
+	struct ubik_client *uclient = *uclientp;
+	(*secproc)(rx_SecurityObjectOf(uclient->conns[0]),
+		   rx_SecurityClassOf(uclient->conns[0]));
+    }
+    return code;
+}
+
+int
 vsu_ClientInit(const char *confDir, char *cellName, int secFlags,
 	       ugen_secproc_func secproc,
 	       struct ubik_client **uclientp)
 {
-    return ugen_ClientInitFlags(confDir, cellName, secFlags, uclientp,
-				secproc, VLDB_MAXSERVERS, AFSCONF_VLDBSERVICE,
-				90);
+    return vsu_ClientInit_int(confDir, cellName, secFlags, secproc, 0,
+			      uclientp);
 }
 
 /*extract the name of volume <name> without readonly or backup suffixes

@@ -31,6 +31,7 @@
 #include "ptuser.h"
 #include "pterror.h"
 #include "ptprototypes.h"
+#include "ptserver_internal.h"
 
 static const char *whoami;
 int force = 0;
@@ -66,6 +67,7 @@ enum {
     OPT_encrypt	    = 22,
     OPT_config	    = 23,
     OPT_rxgk	    = 24,
+    OPT_ptserver    = 25,
 };
 
 static int CleanUp(struct cmd_syndesc *as, void *arock);
@@ -187,6 +189,7 @@ GetGlobals(struct cmd_syndesc *as, void *arock)
     int changed = 0;
     const char* confdir;
     RXGK_Level rxgk_level = RXGK_LEVEL_BOGUS;
+    afs_uint32 ptserver_addr = 0;
 
     if (!strcmp(as->name, "help"))
 	return 0;
@@ -256,9 +259,24 @@ GetGlobals(struct cmd_syndesc *as, void *arock)
 
     }
 
+    if (as->parms[OPT_ptserver].items) {
+	char *ptserver_str = as->parms[OPT_ptserver].items->data;
+	struct hostent *thost;
+	changed = 1;
+
+	thost = hostutil_GetHostByName(ptserver_str);
+	if (thost == NULL) {
+	    fprintf(stderr, "pts: ptserver '%s' not found in host table\n",
+		    ptserver_str);
+	    return 1;
+	}
+
+	memcpy(&ptserver_addr, thost->h_addr, sizeof(ptserver_addr));
+    }
+
     if (changed) {
 	CleanUp(as, arock);
-	code = pr_Initialize2(sec, confdir, cell, rxgk_level);
+	code = pr_Initialize_int(sec, confdir, cell, rxgk_level, ptserver_addr);
     } else {
 	code = 0;
     }
@@ -1042,6 +1060,8 @@ add_std_args(struct cmd_syndesc *ts)
 			"config location");
     cmd_AddParmAtOffset(ts, OPT_rxgk, "-rxgk", CMD_SINGLE, CMD_OPTIONAL,
 			"rxgk security level to use");
+    cmd_AddParmAtOffset(ts, OPT_ptserver, "-ptserver", CMD_SINGLE,
+			CMD_OPTIONAL, "ptserver to contact");
     free(test_help);
 }
 

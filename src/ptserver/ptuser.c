@@ -25,6 +25,7 @@
 #include "ptclient.h"
 #include "ptuser.h"
 #include "pterror.h"
+#include "ptserver_internal.h"
 
 struct ubik_client *pruclient = 0;
 static afs_int32 lastLevel;	/* security level pruclient, if any */
@@ -179,8 +180,8 @@ pr_Initialize(IN afs_int32 secLevel, IN const char *confDir, IN char *cell)
 }
 
 afs_int32
-pr_Initialize2(IN afs_int32 secLevel, IN const char *confDir, IN char *cell,
-	       int rxgk_level)
+pr_Initialize_int(afs_int32 secLevel, const char *confDir, char *cell,
+		  int rxgk_level, afs_uint32 ptserver_addr)
 {
     afs_int32 code;
     struct rx_connection *serverconns[MAXSERVERS];
@@ -333,11 +334,17 @@ pr_Initialize2(IN afs_int32 secLevel, IN const char *confDir, IN char *cell,
 		whoami);
 
     memset(serverconns, 0, sizeof(serverconns));	/* terminate list!!! */
-    for (i = 0; i < info.numServers; i++)
-	serverconns[i] =
-	    rx_NewConnection(info.hostAddr[i].sin_addr.s_addr,
-			     info.hostAddr[i].sin_port, PRSRV, sc,
-			     scIndex);
+    if (ptserver_addr != 0) {
+	serverconns[0] = rx_NewConnection(ptserver_addr,
+					  info.hostAddr[0].sin_port, PRSRV, sc,
+					  scIndex);
+    } else {
+	for (i = 0; i < info.numServers; i++)
+	    serverconns[i] =
+		rx_NewConnection(info.hostAddr[i].sin_addr.s_addr,
+				 info.hostAddr[i].sin_port, PRSRV, sc,
+				 scIndex);
+    }
 
     code = ubik_ClientInit(serverconns, &pruclient);
     if (code) {
@@ -348,6 +355,13 @@ pr_Initialize2(IN afs_int32 secLevel, IN const char *confDir, IN char *cell,
 
     code = rxs_Release(sc);
     return code;
+}
+
+afs_int32
+pr_Initialize2(IN afs_int32 secLevel, IN const char *confDir, IN char *cell,
+	       int rxgk_level)
+{
+    return pr_Initialize_int(secLevel, confDir, cell, rxgk_level, 0);
 }
 
 int

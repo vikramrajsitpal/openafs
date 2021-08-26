@@ -37,3 +37,8 @@ or B<-noauth> options. For more details, see L<pts(1)>.
 
 Assigns the unprivileged identity anonymous to the issuer. For more
 details, see L<pts(1)>.
+
+=item B<-ptserver> <I<server>>
+
+Forces the use of a specific Protection Server to contact when interacting with
+the Protection Database.
