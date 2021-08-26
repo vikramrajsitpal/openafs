@@ -57,7 +57,7 @@
 #include <afs/volume.h>
 #include <afs/auth.h>
 #include <afs/authcon.h>
-#include <afs/cellconfig.h>
+#include <afs/cellconfig_np.h>
 #include <afs/acl.h>
 #include <afs/prs_fs.h>
 #include <rx/rx.h>
@@ -1759,29 +1759,15 @@ afs_int32
 SetupVL(void)
 {
     afs_int32 code;
+    char reason[1024];
 
-    if (AFSDIR_SERVER_NETRESTRICT_FILEPATH || AFSDIR_SERVER_NETINFO_FILEPATH) {
-	/*
-	 * Find addresses we are supposed to register as per the netrestrict
-	 * and netinfo files (/usr/afs/local/NetInfo and
-	 * /usr/afs/local/NetRestict)
-	 */
-	char reason[1024];
-	afs_int32 code;
-
-	code = afsconf_ParseNetFiles(FS_HostAddrs, NULL, NULL,
-				     ADDRSPERSITE, reason,
-				     AFSDIR_SERVER_NETINFO_FILEPATH,
-				     AFSDIR_SERVER_NETRESTRICT_FILEPATH);
-	if (code < 0) {
-	    ViceLog(0, ("Can't register any valid addresses: %s\n", reason));
-	    exit(1);
-	}
-	FS_HostAddr_cnt = (afs_uint32) code;
-    } else
-    {
-	FS_HostAddr_cnt = rx_getAllAddr(FS_HostAddrs, ADDRSPERSITE);
+    code = afsconf_ParseNetFiles_int(FS_HostAddrs, NULL, NULL,
+				     ADDRSPERSITE, reason);
+    if (code < 0) {
+	ViceLog(0, ("Can't register any valid addresses: %s\n", reason));
+	exit(1);
     }
+    FS_HostAddr_cnt = (afs_uint32) code;
 
     if (FS_HostAddr_cnt == 1 && rxBind == 1)
 	code = FS_HostAddrs[0];

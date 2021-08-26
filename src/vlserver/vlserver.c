@@ -30,7 +30,7 @@
 #include <rx/rxstat.h>
 #include <afs/authcon.h>
 #include <afs/cmd.h>
-#include <afs/cellconfig.h>
+#include <afs/cellconfig_np.h>
 #include <afs/keys.h>
 #include <afs/auth.h>
 #include <afs/audit.h>
@@ -473,19 +473,9 @@ main(int argc, char **argv)
 
     if (rxBind) {
 	afs_int32 ccode;
-#ifndef AFS_NT40_ENV
-        if (AFSDIR_SERVER_NETRESTRICT_FILEPATH ||
-            AFSDIR_SERVER_NETINFO_FILEPATH) {
-            char reason[1024];
-            ccode = afsconf_ParseNetFiles(SHostAddrs, NULL, NULL,
-					  ADDRSPERSITE, reason,
-					  AFSDIR_SERVER_NETINFO_FILEPATH,
-					  AFSDIR_SERVER_NETRESTRICT_FILEPATH);
-        } else
-#endif
-	{
-            ccode = rx_getAllAddr(SHostAddrs, ADDRSPERSITE);
-        }
+	char reason[1024];
+	ccode = afsconf_ParseNetFiles_int(SHostAddrs, NULL, NULL,
+					  ADDRSPERSITE, reason);
         if (ccode == 1) {
             host = SHostAddrs[0];
 	}

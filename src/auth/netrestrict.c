@@ -568,3 +568,12 @@ afsconf_ParseNetFiles(afs_uint32 addrbuf[], afs_uint32 maskbuf[],
     }
     return 0;
 }
+
+int
+afsconf_ParseNetFiles_int(afs_uint32 addrbuf[], afs_uint32 maskbuf[],
+			  afs_uint32 mtubuf[], afs_uint32 max, char reason[])
+{
+    return afsconf_ParseNetFiles(addrbuf, maskbuf, mtubuf, max, reason,
+				 AFSDIR_SERVER_NETINFO_FILEPATH,
+				 AFSDIR_SERVER_NETRESTRICT_FILEPATH);
+}

@@ -16,7 +16,7 @@
 #include <rx/rx.h>
 #include <rx/rxkad.h>
 #include <rx/rx_multi.h>
-#include <afs/cellconfig.h>
+#include <afs/cellconfig_np.h>
 #include <afs/afsutil.h>
 
 #include "ubik_internal.h"
@@ -674,12 +674,13 @@ ubeacon_Interact(void *dummy)
  */
 static int
 verifyInterfaceAddress(afs_uint32 *ame, struct afsconf_cell *info,
-		       afs_uint32 aservers[]) {
+		       afs_uint32 aservers[])
+{
     afs_uint32 myAddr[UBIK_MAX_INTERFACE_ADDR], *servList, tmpAddr;
     afs_uint32 myAddr2[UBIK_MAX_INTERFACE_ADDR];
     char hoststr[16];
-    int tcount, count, found, i, j, totalServers, start, end, usednetfiles =
-	0;
+    char reason[1024];
+    int tcount, count, found, i, j, totalServers, start, end;
 
     if (info)
 	totalServers = info->numServers;
@@ -688,29 +689,18 @@ verifyInterfaceAddress(afs_uint32 *ame, struct afsconf_cell *info,
 	    totalServers++;
     }
 
-    if (AFSDIR_SERVER_NETRESTRICT_FILEPATH || AFSDIR_SERVER_NETINFO_FILEPATH) {
-	/*
-	 * Find addresses we are supposed to register as per the netrestrict file
-	 * if it exists, else just register all the addresses we find on this
-	 * host as returned by rx_getAllAddr (in NBO)
-	 */
-	char reason[1024];
-	count = afsconf_ParseNetFiles(myAddr, NULL, NULL,
-				      UBIK_MAX_INTERFACE_ADDR, reason,
-				      AFSDIR_SERVER_NETINFO_FILEPATH,
-				      AFSDIR_SERVER_NETRESTRICT_FILEPATH);
-	if (count < 0) {
-	    ViceLog(0, ("ubik: Can't register any valid addresses:%s\n",
-		       reason));
-	    ViceLog(0, ("Aborting..\n"));
-	    return UBADHOST;
-	}
-	usednetfiles++;
-    } else {
-	/* get all my interface addresses in net byte order */
-	count = rx_getAllAddr(myAddr, UBIK_MAX_INTERFACE_ADDR);
+    /*
+     * Find addresses we are supposed to register as per the
+     * netinfo/netrestrict files.
+     */
+    count = afsconf_ParseNetFiles_int(myAddr, NULL, NULL,
+				      UBIK_MAX_INTERFACE_ADDR, reason);
+    if (count < 0) {
+	ViceLog(0, ("ubik: Can't register any valid addresses:%s\n",
+		   reason));
+	ViceLog(0, ("Aborting..\n"));
+	return UBADHOST;
     }
-
     if (count <= 0) {		/* no address found */
 	ViceLog(0, ("ubik: No network addresses found, aborting..\n"));
 	return UBADHOST;
@@ -727,25 +717,19 @@ verifyInterfaceAddress(afs_uint32 *ame, struct afsconf_cell *info,
     if (!found) {
 	ViceLog(0, ("ubik: primary address %s does not exist\n",
 		   afs_inet_ntoa_r(*ame, hoststr)));
-	/* if we had the result of rx_getAllAddr already, avoid subverting
-	 * the "is gethostbyname(gethostname()) us" check. If we're
-	 * using NetInfo/NetRestrict, we assume they have enough clue
-	 * to avoid that big hole in their foot from the loaded gun. */
-	if (usednetfiles) {
-	    /* take the address we did get, then see if ame was masked */
-	    *ame = myAddr[0];
-	    tcount = rx_getAllAddr(myAddr2, UBIK_MAX_INTERFACE_ADDR);
-	    if (tcount <= 0) {	/* no address found */
-		ViceLog(0, ("ubik: No network addresses found, aborting..\n"));
-		return UBADHOST;
-	    }
+	/* take the address we did get, then see if ame was masked */
+	*ame = myAddr[0];
+	tcount = rx_getAllAddr(myAddr2, UBIK_MAX_INTERFACE_ADDR);
+	if (tcount <= 0) {	/* no address found */
+	    ViceLog(0, ("ubik: No network addresses found, aborting..\n"));
+	    return UBADHOST;
+	}
 
-	    /* verify that the My-address passed in by ubik is correct */
-	    for (j = 0, found = 0; j < tcount; j++) {
-		if (*ame == myAddr2[j]) {	/* both in net byte order */
-		    found = 1;
-		    break;
-		}
+	/* verify that the My-address passed in by ubik is correct */
+	for (j = 0, found = 0; j < tcount; j++) {
+	    if (*ame == myAddr2[j]) {	/* both in net byte order */
+		found = 1;
+		break;
 	    }
 	}
 	if (!found)

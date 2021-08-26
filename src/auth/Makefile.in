@@ -44,6 +44,7 @@ all: liboafs_auth.la libauth_pic.la libpam_auth.la \
 
 depinstall: ${TOP_INCDIR}/afs/keys.h \
 	${TOP_INCDIR}/afs/cellconfig.h \
+	${TOP_INCDIR}/afs/cellconfig_np.h \
 	${TOP_INCDIR}/afs/auth.h \
 	${TOP_INCDIR}/afs/authcon.h \
 	${TOP_INCDIR}/afs/ktc.h \
@@ -62,6 +63,9 @@ ${TOP_INCDIR}/afs/keys.h: keys.h
 
 ${TOP_INCDIR}/afs/cellconfig.h: cellconfig.h
 	${INSTALL_DATA} cellconfig.h $@
+
+${TOP_INCDIR}/afs/cellconfig_np.h: cellconfig_np.h
+	${INSTALL_DATA} $? $@
 
 ${TOP_INCDIR}/afs/auth.h: auth.h
 	${INSTALL_DATA} $? $@
