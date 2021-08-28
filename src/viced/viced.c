@@ -180,6 +180,7 @@ pthread_key_t viced_uclient_key;
 
 char FS_HostName[128] = "localhost";
 char *FS_configPath = NULL;
+static char *configDirExplicit = NULL;
 afs_uint32 FS_HostAddr_NBO;
 afs_uint32 FS_HostAddr_HBO;
 afs_uint32 FS_HostAddrs[ADDRSPERSITE], FS_HostAddr_cnt = 0, FS_registered = 0;
@@ -1433,7 +1434,9 @@ ParseArgs(int argc, char *argv[])
 	busy_threshold = 3 * rxpackets / 2;
     }
 
-    cmd_OptionAsString(opts, OPT_config, &FS_configPath);
+    if (cmd_OptionAsString(opts, OPT_config, &FS_configPath) == 0) {
+	configDirExplicit = FS_configPath;
+    }
 
     code = osi_audit_cmd_Options(auditIface, auditLogList);
     free(auditIface);
@@ -1762,7 +1765,7 @@ SetupVL(void)
     char reason[1024];
 
     code = afsconf_ParseNetFiles_int(FS_HostAddrs, NULL, NULL,
-				     ADDRSPERSITE, reason);
+				     ADDRSPERSITE, reason, configDirExplicit);
     if (code < 0) {
 	ViceLog(0, ("Can't register any valid addresses: %s\n", reason));
 	exit(1);

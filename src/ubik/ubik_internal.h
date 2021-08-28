@@ -341,8 +341,9 @@ extern int ubeacon_AmSyncSite(void);
 extern int ubeacon_SyncSiteAdvertised(void);
 extern int ubeacon_InitServerListByInfo(afs_uint32 ame,
 					struct afsconf_cell *info,
-					char clones[]);
-extern int ubeacon_InitServerList(afs_uint32 ame, afs_uint32 aservers[]);
+					char clones[], char *configDir);
+extern int ubeacon_InitServerList(afs_uint32 ame, afs_uint32 aservers[],
+				  char *configDir);
 extern void *ubeacon_Interact(void *);
 extern int ubeacon_updateUbikNetworkAddress(afs_uint32 ubik_host[UBIK_MAX_INTERFACE_ADDR]);
 extern struct beacon_data beacon_globals;

@@ -47,8 +47,8 @@ setclientaddrs> command.
 
 =head2 Server NetInfo
 
-The server F<NetInfo> file, if present in the F</usr/afs/local> directory,
-defines the following:
+The server F<NetInfo> file, if present in the F</usr/afs/local> directory (or
+the B<-config> directory, if given), defines the following:
 
 =over 4
 
@@ -70,12 +70,11 @@ If the F<NetInfo> file exists when the File Server initializes, the File
 Server uses its contents as the basis for a list of interfaces to register
 in the VLDB. Otherwise, it uses the list of network interfaces configured
 with the operating system. It then removes from the list any addresses
-that appear in the F</usr/afs/local/NetRestrict> file, if it exists. The
-File Server records the resulting list in the F</usr/afs/local/sysid> file
-and registers the interfaces in the VLDB. The database server processes
-use a similar procedure when initializing, to determine which interfaces
-to use for communication with the peer processes on other database
-machines in the cell.
+that appear in the F<NetRestrict> file, if it exists. The File Server records
+the resulting list in the F</usr/afs/local/sysid> file and registers the
+interfaces in the VLDB. The database server processes use a similar procedure
+when initializing, to determine which interfaces to use for communication with
+the peer processes on other database machines in the cell.
 
 The F<NetInfo> file is in ASCII format. One of the machine's IP addresses
 appears on each line, in dotted decimal format.  To match a network

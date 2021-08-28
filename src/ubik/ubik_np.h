@@ -57,6 +57,10 @@ struct ubik_serverinit_opts {
 
     /* Initial prefix used for naming storage files used by this system. */
     const char *pathName;
+
+    /* If non-NULL, use this config dir for locating some files (such as
+     * NetInfo). */
+    char *configDir;
 };
 
 int ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,

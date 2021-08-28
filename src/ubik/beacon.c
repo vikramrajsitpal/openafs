@@ -53,9 +53,10 @@ struct beacon_data beacon_globals;
 static int ubeacon_InitServerListCommon(afs_uint32 ame,
 					struct afsconf_cell *info,
 					char clones[],
-					afs_uint32 aservers[]);
+					afs_uint32 aservers[],
+					char *configDir);
 static int verifyInterfaceAddress(afs_uint32 *ame, struct afsconf_cell *info,
-				  afs_uint32 aservers[]);
+				  afs_uint32 aservers[], char *configDir);
 
 /*! \file
  * Module responsible for both deciding if we're currently the sync site,
@@ -179,11 +180,11 @@ ubeacon_SyncSiteAdvertised(void)
  */
 int
 ubeacon_InitServerListByInfo(afs_uint32 ame, struct afsconf_cell *info,
-			     char clones[])
+			     char clones[], char *configDir)
 {
     afs_int32 code;
 
-    code = ubeacon_InitServerListCommon(ame, info, clones, 0);
+    code = ubeacon_InitServerListCommon(ame, info, clones, 0, configDir);
     return code;
 }
 
@@ -194,13 +195,13 @@ ubeacon_InitServerListByInfo(afs_uint32 ame, struct afsconf_cell *info,
  * \see ubeacon_InitServerListCommon()
  */
 int
-ubeacon_InitServerList(afs_uint32 ame, afs_uint32 aservers[])
+ubeacon_InitServerList(afs_uint32 ame, afs_uint32 aservers[], char *configDir)
 {
     afs_int32 code;
 
     code =
 	ubeacon_InitServerListCommon(ame, (struct afsconf_cell *)0, 0,
-				     aservers);
+				     aservers, configDir);
     return code;
 }
 
@@ -282,7 +283,8 @@ ubeacon_ReinitServer(struct ubik_server *ts)
  */
 int
 ubeacon_InitServerListCommon(afs_uint32 ame, struct afsconf_cell *info,
-			     char clones[], afs_uint32 aservers[])
+			     char clones[], afs_uint32 aservers[],
+			     char *configDir)
 {
     struct ubik_server *ts;
     afs_int32 me = -1;
@@ -292,7 +294,7 @@ ubeacon_InitServerListCommon(afs_uint32 ame, struct afsconf_cell *info,
     struct ubik_server *magicServer;
 
     /* verify that the addresses passed in are correct */
-    if ((code = verifyInterfaceAddress(&ame, info, aservers)))
+    if ((code = verifyInterfaceAddress(&ame, info, aservers, configDir)))
 	return code;
 
     ubeacon_InitSecurityClass();
@@ -674,7 +676,7 @@ ubeacon_Interact(void *dummy)
  */
 static int
 verifyInterfaceAddress(afs_uint32 *ame, struct afsconf_cell *info,
-		       afs_uint32 aservers[])
+		       afs_uint32 aservers[], char *configDir)
 {
     afs_uint32 myAddr[UBIK_MAX_INTERFACE_ADDR], *servList, tmpAddr;
     afs_uint32 myAddr2[UBIK_MAX_INTERFACE_ADDR];
@@ -694,7 +696,7 @@ verifyInterfaceAddress(afs_uint32 *ame, struct afsconf_cell *info,
      * netinfo/netrestrict files.
      */
     count = afsconf_ParseNetFiles_int(myAddr, NULL, NULL,
-				      UBIK_MAX_INTERFACE_ADDR, reason);
+				      UBIK_MAX_INTERFACE_ADDR, reason, configDir);
     if (count < 0) {
 	ViceLog(0, ("ubik: Can't register any valid addresses:%s\n",
 		   reason));

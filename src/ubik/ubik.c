@@ -416,9 +416,11 @@ ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
     if (code)
 	return code;
     if (opts->info)
-	code = ubeacon_InitServerListByInfo(opts->myHost, opts->info, opts->clones);
+	code = ubeacon_InitServerListByInfo(opts->myHost, opts->info,
+					    opts->clones, opts->configDir);
     else
-	code = ubeacon_InitServerList(opts->myHost, opts->serverList);
+	code = ubeacon_InitServerList(opts->myHost, opts->serverList,
+				      opts->configDir);
     if (code)
 	return code;
 

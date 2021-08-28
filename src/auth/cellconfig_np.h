@@ -37,6 +37,6 @@
 
 int afsconf_ParseNetFiles_int(afs_uint32 addrbuf[], afs_uint32 maskbuf[],
 			      afs_uint32 mtubuf[], afs_uint32 max,
-			      char reason[]);
+			      char reason[], const char *configDir);
 
 #endif /* OPENAFS_AUTH_CELLCONFIG_NP_H */

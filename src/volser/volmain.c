@@ -83,6 +83,7 @@ static char *auditIface = NULL;
 static struct cmd_item *auditLogList = NULL;
 static struct logOptions logopts;
 char *configDir = NULL;
+static char *configDirExplicit = NULL;
 
 enum vol_s2s_crypt doCrypt = VS2SC_NEVER;
 
@@ -396,7 +397,9 @@ ParseArgs(int argc, char **argv) {
 	    return -1;
 	}
     }
-    cmd_OptionAsString(opts, OPT_config, &configDir);
+    if (cmd_OptionAsString(opts, OPT_config, &configDir) == 0) {
+	configDirExplicit = configDir;
+    }
     if (cmd_OptionAsString(opts, OPT_restricted_query,
 			   &restricted_query_parameter) == 0) {
 	if (strcmp(restricted_query_parameter, "anyuser") == 0)
@@ -531,7 +534,7 @@ main(int argc, char **argv)
 	afs_int32 ccode;
 	char reason[1024];
 	ccode = afsconf_ParseNetFiles_int(SHostAddrs, NULL, NULL, ADDRSPERSITE,
-					  reason);
+					  reason, configDirExplicit);
         if (ccode == 1)
             host = SHostAddrs[0];
     }

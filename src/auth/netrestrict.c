@@ -571,9 +571,48 @@ afsconf_ParseNetFiles(afs_uint32 addrbuf[], afs_uint32 maskbuf[],
 
 int
 afsconf_ParseNetFiles_int(afs_uint32 addrbuf[], afs_uint32 maskbuf[],
-			  afs_uint32 mtubuf[], afs_uint32 max, char reason[])
+			  afs_uint32 mtubuf[], afs_uint32 max, char reason[],
+			  const char *configDir)
 {
-    return afsconf_ParseNetFiles(addrbuf, maskbuf, mtubuf, max, reason,
-				 AFSDIR_SERVER_NETINFO_FILEPATH,
-				 AFSDIR_SERVER_NETRESTRICT_FILEPATH);
+    const char *netinfo = NULL, *netrestrict = NULL;
+    char *netinfo_free = NULL, *netrestrict_free = NULL;
+    int code;
+
+    if (configDir != NULL) {
+	/* If we have a configDir, and configDir/NetInfo or
+	 * configDir/NetRestrict exist, use the netfiles in configDir. */
+
+	code = asprintf(&netinfo_free, "%s/%s", configDir,
+			AFSDIR_NETINFO_FILE);
+	if (code < 0) {
+	    netinfo_free = NULL;
+	    goto error;
+	}
+
+	code = asprintf(&netrestrict_free, "%s/%s", configDir,
+			AFSDIR_NETRESTRICT_FILE);
+	if (code < 0) {
+	    netrestrict_free = NULL;
+	    goto error;
+	}
+
+	if (access(netinfo_free, F_OK) == 0 ||
+	    access(netrestrict_free, F_OK) == 0) {
+	    netinfo = netinfo_free;
+	    netrestrict = netrestrict_free;
+	}
+    }
+
+    if (netinfo == NULL && netrestrict == NULL) {
+	netinfo = AFSDIR_SERVER_NETINFO_FILEPATH;
+	netrestrict = AFSDIR_SERVER_NETRESTRICT_FILEPATH;
+    }
+
+    code = afsconf_ParseNetFiles(addrbuf, maskbuf, mtubuf, max, reason,
+				 netinfo, netrestrict);
+
+ error:
+    free(netinfo_free);
+    free(netrestrict_free);
+    return code;
 }

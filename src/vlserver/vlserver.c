@@ -187,6 +187,7 @@ main(int argc, char **argv)
 
     char *vl_dbaseName;
     char *configDir;
+    char *configDirExplicit = NULL;
 
     struct cmd_item *auditLogList = NULL;
     char *auditIface = NULL;
@@ -301,7 +302,9 @@ main(int argc, char **argv)
     if (code)
 	return -1;
 
-    cmd_OptionAsString(opts, OPT_config, &configDir);
+    if (cmd_OptionAsString(opts, OPT_config, &configDir) == 0) {
+	configDirExplicit = configDir;
+    }
 
     cmd_OpenConfigFile(AFSDIR_SERVER_CONFIG_FILE_FILEPATH);
     cmd_SetCommandName("vlserver");
@@ -475,7 +478,8 @@ main(int argc, char **argv)
 	afs_int32 ccode;
 	char reason[1024];
 	ccode = afsconf_ParseNetFiles_int(SHostAddrs, NULL, NULL,
-					  ADDRSPERSITE, reason);
+					  ADDRSPERSITE, reason,
+					  configDirExplicit);
         if (ccode == 1) {
             host = SHostAddrs[0];
 	}
@@ -517,6 +521,7 @@ main(int argc, char **argv)
     u_opts.info = &info;
     u_opts.clones = clones;
     u_opts.pathName = vl_dbaseName;
+    u_opts.configDir = configDirExplicit;
 
     code = ubik_ServerInitByOpts(&u_opts, &VL_dbase);
     if (code) {
