@@ -47,12 +47,16 @@ generated: \
 depinstall: \
 	ubik_int.cs.c ubik_int.xdr.c \
 	${TOP_INCDIR}/ubik.h \
+	${TOP_INCDIR}/ubik_np.h \
 	${TOP_INCDIR}/ubik_int.h
 
 ${TOP_LIBDIR}/libubik.a: libubik.a
 	${INSTALL_DATA} $? $@
 
 ${TOP_INCDIR}/ubik.h: ubik.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/ubik_np.h: ubik_np.h
 	${INSTALL_DATA} $? $@
 
 ${TOP_INCDIR}/ubik_int.h: ubik_int.h

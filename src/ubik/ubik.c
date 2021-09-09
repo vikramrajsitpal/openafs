@@ -338,20 +338,11 @@ ubik_thread_create(pthread_attr_t *tattr, pthread_t *thread, void *proc) {
 /*!
  * \brief This routine initializes the ubik system for a set of servers.
  * \return 0 for success, or an error code on failure.
- * \param serverList set of servers specified; nServers gives the number of entries in this array.
- * \param pathName provides an initial prefix used for naming storage files used by this system.
- * \param dbase the returned structure representing this instance of an ubik; it is passed to various calls below.
  *
- * \todo This routine should perhaps be generalized to a low-level disk interface providing read, write, file enumeration and sync operations.
- *
- * \warning The host named by myHost should not also be listed in serverList.
- *
- * \see ubik_ServerInit(), ubik_ServerInitByInfo()
+ * \see ubik_ServerInit(), ubik_ServerInitByInfo(), struct ubik_serverinit_opts
  */
-static int
-ubik_ServerInitCommon(afs_uint32 myHost, short myPort,
-		      struct afsconf_cell *info, char clones[],
-		      afs_uint32 serverList[], const char *pathName,
+int
+ubik_ServerInitByOpts(struct ubik_serverinit_opts *opts,
 		      struct ubik_dbase **dbase)
 {
     struct ubik_dbase *tdb;
@@ -377,7 +368,7 @@ ubik_ServerInitCommon(afs_uint32 myHost, short myPort,
     initialize_U_error_table();
 
     tdb = calloc(1, sizeof(*tdb));
-    tdb->pathName = strdup(pathName);
+    tdb->pathName = strdup(opts->pathName);
 #ifdef AFS_PTHREAD_ENV
     opr_mutex_init(&tdb->versionLock);
     opr_mutex_init(&beacon_globals.beacon_lock);
@@ -409,11 +400,11 @@ ubik_ServerInitCommon(afs_uint32 myHost, short myPort,
 
     /* the following call is idempotent so when/if it got called earlier,
      * by whatever called us, it doesn't really matter -- klm */
-    code = rx_Init(myPort);
+    code = rx_Init(opts->myPort);
     if (code < 0)
 	return code;
 
-    ubik_callPortal = myPort;
+    ubik_callPortal = opts->myPort;
 
     udisk_Init(ubik_nBuffers);
     ulock_Init();
@@ -424,10 +415,10 @@ ubik_ServerInitCommon(afs_uint32 myHost, short myPort,
     code = urecovery_Initialize(tdb);
     if (code)
 	return code;
-    if (info)
-	code = ubeacon_InitServerListByInfo(myHost, info, clones);
+    if (opts->info)
+	code = ubeacon_InitServerListByInfo(opts->myHost, opts->info, opts->clones);
     else
-	code = ubeacon_InitServerList(myHost, serverList);
+	code = ubeacon_InitServerList(opts->myHost, opts->serverList);
     if (code)
 	return code;
 
@@ -512,34 +503,41 @@ ubik_ServerInitCommon(afs_uint32 myHost, short myPort,
 }
 
 /*!
- * \see ubik_ServerInitCommon()
+ * \see ubik_ServerInitByOpts()
  */
 int
 ubik_ServerInitByInfo(afs_uint32 myHost, short myPort,
 		      struct afsconf_cell *info, char clones[],
 		      const char *pathName, struct ubik_dbase **dbase)
 {
-    afs_int32 code;
+    struct ubik_serverinit_opts opts;
+    memset(&opts, 0, sizeof(opts));
 
-    code =
-	ubik_ServerInitCommon(myHost, myPort, info, clones, 0, pathName,
-			      dbase);
-    return code;
+    opts.myHost = myHost;
+    opts.myPort = myPort;
+    opts.info = info;
+    opts.clones = clones;
+    opts.pathName = pathName;
+
+    return ubik_ServerInitByOpts(&opts, dbase);
 }
 
 /*!
- * \see ubik_ServerInitCommon()
+ * \see ubik_ServerInitByOpts()
  */
 int
 ubik_ServerInit(afs_uint32 myHost, short myPort, afs_uint32 serverList[],
 		const char *pathName, struct ubik_dbase **dbase)
 {
-    afs_int32 code;
+    struct ubik_serverinit_opts opts;
+    memset(&opts, 0, sizeof(opts));
 
-    code =
-	ubik_ServerInitCommon(myHost, myPort, (struct afsconf_cell *)0, 0,
-			      serverList, pathName, dbase);
-    return code;
+    opts.myHost = myHost;
+    opts.myPort = myPort;
+    opts.serverList = serverList;
+    opts.pathName = pathName;
+
+    return ubik_ServerInitByOpts(&opts, dbase);
 }
 
 /*!

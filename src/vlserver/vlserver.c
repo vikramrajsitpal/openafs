@@ -36,7 +36,7 @@
 #include <afs/audit.h>
 #include <afs/com_err.h>
 #include <lock.h>
-#include <ubik.h>
+#include <ubik_np.h>
 #include <afs/afsutil.h>
 
 #include "vlserver.h"
@@ -183,6 +183,7 @@ main(int argc, char **argv)
     struct logOptions logopts;
     int s2s_rxgk = 0;
     struct afsconf_bsso_info bsso;
+    struct ubik_serverinit_opts u_opts;
 
     char *vl_dbaseName;
     char *configDir;
@@ -214,6 +215,7 @@ main(int argc, char **argv)
 
     memset(&logopts, 0, sizeof(logopts));
     memset(&bsso, 0, sizeof(bsso));
+    memset(&u_opts, 0, sizeof(u_opts));
 
     setprogname(argv[0]);
 
@@ -519,9 +521,14 @@ main(int argc, char **argv)
 				afsconf_CheckAuth, tdir);
 
     ubik_SyncWriterCacheProc = vlsynccache;
-    code =
-	ubik_ServerInitByInfo(myHost, htons(AFSCONF_VLDBPORT), &info, clones,
-			      vl_dbaseName, &VL_dbase);
+
+    u_opts.myHost = myHost;
+    u_opts.myPort = htons(AFSCONF_VLDBPORT);
+    u_opts.info = &info;
+    u_opts.clones = clones;
+    u_opts.pathName = vl_dbaseName;
+
+    code = ubik_ServerInitByOpts(&u_opts, &VL_dbase);
     if (code) {
 	VLog(0, ("vlserver: Ubik init failed: %s\n", afs_error_message(code)));
 	exit(2);

@@ -26,6 +26,7 @@ ubik_RefreshConn
 ubik_Seek
 ubik_ServerInit
 ubik_ServerInitByInfo
+ubik_ServerInitByOpts
 ubik_SetClientSecurityProcs
 ubik_SetLock
 ubik_SetServerSecurityProcs

@@ -127,7 +127,7 @@
 #include <rx/rx_globals.h>
 #include <rx/rxstat.h>
 #include <lock.h>
-#include <ubik.h>
+#include <ubik_np.h>
 #include <afs/authcon.h>
 #include <afs/cmd.h>
 #include <afs/cellconfig.h>
@@ -265,6 +265,7 @@ main(int argc, char **argv)
     struct cmd_item *auditLogList = NULL;
     char *s2s_crypt_behavior = NULL;
     struct afsconf_bsso_info bsso;
+    struct ubik_serverinit_opts u_opts;
 
 #ifdef	AFS_AIX32_ENV
     /*
@@ -286,6 +287,7 @@ main(int argc, char **argv)
     setprogname(argv[0]);
 
     memset(&bsso, 0, sizeof(bsso));
+    memset(&u_opts, 0, sizeof(u_opts));
 
     /* Initialize dirpaths */
     if (!(initAFSDirPath() & AFSDIR_SERVER_PATHS_OK)) {
@@ -592,9 +594,13 @@ main(int argc, char **argv)
 	}
     }
 
-    code =
-	ubik_ServerInitByInfo(myHost, htons(AFSCONF_PROTPORT), &info, clones,
-			      pr_dbaseName, &dbase);
+    u_opts.myHost = myHost;
+    u_opts.myPort = htons(AFSCONF_PROTPORT);
+    u_opts.info = &info;
+    u_opts.clones = clones;
+    u_opts.pathName = pr_dbaseName;
+
+    code = ubik_ServerInitByOpts(&u_opts, &dbase);
     if (code) {
 	afs_com_err(whoami, code, "Ubik init failed");
 	PT_EXIT(2);

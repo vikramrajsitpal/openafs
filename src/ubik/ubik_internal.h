@@ -17,7 +17,7 @@
 # include <opr/lockstub.h>
 #endif
 
-#include "ubik.h"
+#include "ubik_np.h"
 #include "ubik_int.h"
 
 /*! Sanity check: This macro represents an arbitrary date in the past
