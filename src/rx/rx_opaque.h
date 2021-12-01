@@ -38,6 +38,7 @@ struct rx_opaque_stringbuf {
 
 struct rx_opaque *rx_opaque_new(void *data, size_t datalen);
 int rx_opaque_alloc(struct rx_opaque *buf, size_t length);
+int rx_opaque_realloc(struct rx_opaque *buf, size_t length);
 int rx_opaque_populate(struct rx_opaque *to, const void *data, size_t datalen);
 int rx_opaque_copy(struct rx_opaque *to, const struct rx_opaque *from);
 void rx_opaque_freeContents(struct rx_opaque *buf);

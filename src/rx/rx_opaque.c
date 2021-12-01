@@ -35,6 +35,9 @@
 #include <rx/rx.h>
 #include <rx/rx_opaque.h>
 
+#ifndef MIN
+# define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
 
 /*!
  * Generate a new opaque object
@@ -84,6 +87,46 @@ rx_opaque_alloc(struct rx_opaque *buf, size_t length)
     buf->val = mem;
     buf->len = length;
     memset(buf->val, 0, buf->len);
+
+    return 0;
+}
+
+/*!
+ * Resize an opaque object
+ *
+ * Change the length of an existing opaque object, and reallocate memory as
+ * needed. If the given opaque object has no allocated memory, this is
+ * effectively the same as rx_opaque_alloc().
+ *
+ * @param buf
+ * 	The opaque object
+ * @param length
+ * 	The length that 'buf' should be set to (cannot be 0)
+ * @returns
+ * 	0 on success, ENOMEM on allocation failure, EINVAL on 0-length
+ */
+int
+rx_opaque_realloc(struct rx_opaque *buf, size_t length)
+{
+    int code;
+    struct rx_opaque newbuf;
+
+    if (length == buf->len)
+	return 0;
+
+    if (length == 0)
+	return EINVAL;
+
+    code = rx_opaque_alloc(&newbuf, length);
+    if (code != 0)
+	return code;
+
+    if (buf->len != 0) {
+	memcpy(newbuf.val, buf->val, MIN(length, buf->len));
+	rx_opaque_freeContents(buf);
+    }
+
+    *buf = newbuf;
 
     return 0;
 }
