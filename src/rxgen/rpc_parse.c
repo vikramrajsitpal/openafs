@@ -102,8 +102,9 @@ static int InvalidConstant(char *name);
 static int opcodenum_is_defined(int opcode_num);
 static void analyze_ProcParams(definition * defp, token * tokp);
 static void generate_code(definition * defp, int proc_split_flag,
-			  int multi_flag);
-static void handle_split_proc(definition * defp, int multi_flag);
+			  int multi_flag, int bulk_flag, int bulkhandler_flag);
+static void handle_split_proc(definition * defp, int bulk_flag, int multi_flag,
+			      int bulkhandler_flag);
 static void do_split(definition * defp, int direction, int *numofparams,
 		     defkind param_kind, int restore_flag);
 static void hdle_param_tok(definition * defp, declaration * dec, token * tokp,
@@ -113,37 +114,40 @@ static void get1_param_type(definition * defp, declaration * dec,
 static void get_param_type(definition * defp, declaration * dec,
 			   char **param_type, char **typename);
 static void cs_Proc_CodeGeneration(definition * defp, int split_flag,
-				   char *procheader);
+				   int bulk_flag, char *procheader);
 static void cs_ProcName_setup(definition * defp, char *procheader,
-			      int split_flag);
-static void cs_ProcParams_setup(definition * defp, int split_flag);
-static void cs_ProcMarshallInParams_setup(definition * defp, int split_flag);
+			      int split_flag, int bulk_flag);
+static void cs_ProcParams_setup(definition * defp, int split_flag,
+				int bulk_flag);
+static void cs_ProcMarshallInParams_setup(definition * defp, int split_flag,
+					  int bulk_flag);
 static void cs_ProcSendPacket_setup(definition * defp, int split_flag);
 static void cs_ProcUnmarshallOutParams_setup(definition * defp);
-static void cs_ProcTail_setup(definition * defp, int split_flag);
+static void cs_ProcTail_setup(definition * defp, int split_flag, int bulk_flag);
 static void ucs_ProcCallback_setup(definition * defp, char *cbheader);
 static void ucs_ProcName_setup(definition * defp, char *procheader,
 			      int split_flag);
 static void ucs_ProcParams_setup(definition * defp, int split_flag);
 static void ucs_ProcTail_setup(definition * defp, char *cbheader,
 			       int split_flag);
-static void ss_Proc_CodeGeneration(definition * defp);
-static void ss_ProcName_setup(definition * defp);
+static void ss_Proc_CodeGeneration(definition * defp, int bulk_flag,
+				   int bulkhandler_flag);
+static void ss_ProcName_setup(definition * defp, int bulk);
 static void ss_ProcParams_setup(definition * defp);
 static void ss_ProcSpecial_setup(definition * defp);
 static void ss_ProcUnmarshallInParams_setup(definition * defp);
 static void ss_ProcCallRealProc_setup(definition * defp);
 static void ss_ProcMarshallOutParams_setup(definition * defp);
-static void ss_ProcTail_setup(definition * defp);
+static void ss_ProcTail_setup(definition * defp, int bulk);
 static int opcode_holes_exist(void);
 static void er_ProcDeclExterns_setup(void);
 static void er_ProcProcsArray_setup(void);
 static void er_ProcMainBody_setup(void);
 static void er_HeadofOldStyleProc_setup(void);
 static void er_HeadofOldStyleProc_setup2(void);
-static void er_BodyofOldStyleProc_setup(void);
+static void er_BodyofOldStyleProc_setup(int bulk);
 static void er_BodyofOldStyleProc_setup2(void);
-static void proc_er_case(definition * defp);
+static void proc_er_case(definition * defp, int bulk);
 static void er_TailofOldStyleProc_setup(void);
 static void er_TailofOldStyleProc_setup2(void);
 
@@ -704,6 +708,8 @@ check_proc(definition * defp, token * tokp, int noname)
     token tok;
     int proc_split = 0;
     int proc_multi = 0;
+    int proc_bulk = 0;
+    int proc_bulkhandler = 0;
 
     if (PackageIndex < 0)
 	error("Procedure must be in a package!\n");
@@ -725,7 +731,8 @@ check_proc(definition * defp, token * tokp, int noname)
     }
     analyze_ProcParams(defp, &tok);
     defp->pc.proc_opcodenum = -1;
-    scan4(TOK_SPLIT, TOK_MULTI, TOK_EQUAL, TOK_SEMICOLON, &tok);
+    scan6(TOK_SPLIT, TOK_MULTI, TOK_BULK, TOK_BULKHANDLER, TOK_EQUAL,
+	  TOK_SEMICOLON, &tok);
     if (tok.kind == TOK_MULTI) {
 	proc_multi = 1;
 	defp->pc.multi_flag = 1;
@@ -733,12 +740,23 @@ check_proc(definition * defp, token * tokp, int noname)
     } else {
 	defp->pc.multi_flag = 0;
     }
-    if (tok.kind == TOK_SPLIT) {
+    if (tok.kind == TOK_SPLIT || tok.kind == TOK_BULKHANDLER) {
 	proc_split = 1;
 	defp->pc.split_flag = 1;
+	if (tok.kind == TOK_BULKHANDLER) {
+	    proc_bulkhandler = 1;
+	    defp->pc.bulkhandler_flag = 1;
+	}
 	scan2(TOK_EQUAL, TOK_SEMICOLON, &tok);
     } else {
 	defp->pc.split_flag = 0;
+    }
+    if (tok.kind == TOK_BULK) {
+	proc_bulk = 1;
+	defp->pc.bulk_flag = 1;
+	scan2(TOK_EQUAL, TOK_SEMICOLON, &tok);
+    } else {
+	defp->pc.bulk_flag = 0;
     }
     if (tok.kind == TOK_EQUAL) {
 	if (opcodesnotallowed[PackageIndex])
@@ -773,13 +791,13 @@ check_proc(definition * defp, token * tokp, int noname)
     }
     no_of_opcodes[PackageIndex]++, master_no_of_opcodes++;
     if (proc_multi) {
-	generate_code(defp, 0, 1);
+	generate_code(defp, 0, 1, 0, 0);
 	if (Cflag || cflag) {
-	    generate_code(defp, 1, 1);
+	    generate_code(defp, 1, 1, 0, 0);
 	}
 	generate_multi_macros(defp);
     } else {
-	generate_code(defp, proc_split, 0);
+	generate_code(defp, proc_split, 0, proc_bulk, proc_bulkhandler);
     }
     if (Sflag || (cflag && xflag) || hflag)
 	STOREVAL(&proc_defined[PackageIndex], defp);
@@ -869,24 +887,40 @@ analyze_ProcParams(definition * defp, token * tokp)
     *tailp = NULL;
 }
 
-
 static void
-generate_code(definition * defp, int proc_split_flag, int multi_flag)
+generate_code(definition * defp, int proc_split_flag, int multi_flag,
+	      int bulk_flag, int bulkhandler_flag)
 {
+    if (bulk_flag || bulkhandler_flag) {
+	if (Cflag || Sflag) {
+	    static int did_bulk[MAX_PACKAGES];
+	    if (!did_bulk[PackageIndex]) {
+		did_bulk[PackageIndex] = 1;
+		/* The first time we encounter a bulk RPC, include rx_bulk.h
+		 * for client and server code. */
+		f_print(fout, "\n#include <rx/rx_bulk.h>\n\n");
+	    }
+	}
+    }
+
     if (proc_split_flag)
-	handle_split_proc(defp, multi_flag);
+	handle_split_proc(defp, multi_flag, bulk_flag, bulkhandler_flag);
     else {
 	if (Cflag || cflag) {
-	    cs_Proc_CodeGeneration(defp, 0, "");
+	    cs_Proc_CodeGeneration(defp, 0, 0, "");
+	    if (bulk_flag) {
+		cs_Proc_CodeGeneration(defp, 0, 1, "rxbulk_");
+	    }
 	}
 	if (Sflag || cflag)
-	    ss_Proc_CodeGeneration(defp);
+	    ss_Proc_CodeGeneration(defp, bulk_flag, bulkhandler_flag);
     }
 }
 
 
 static void
-handle_split_proc(definition * defp, int multi_flag)
+handle_split_proc(definition * defp, int multi_flag, int bulk_flag,
+		  int bulkhandler_flag)
 {
     char *startname = SplitStart, *endname = SplitEnd;
     int numofparams = 0;
@@ -899,18 +933,18 @@ handle_split_proc(definition * defp, int multi_flag)
 	if (!cflag) {
 	    do_split(defp, OUT, &numofparams, DEF_OUTPARAM, 0);
 	}
-	cs_Proc_CodeGeneration(defp, 1, startname);
+	cs_Proc_CodeGeneration(defp, 1, 0, startname);
 	if (!cflag) {
 	    do_split(defp, OUT, &numofparams, DEF_OUTPARAM, 1);
 	    do_split(defp, IN, &numofparams, DEF_INPARAM, 0);
 	}
-	cs_Proc_CodeGeneration(defp, (multi_flag ? 3 : 2), endname);
+	cs_Proc_CodeGeneration(defp, (multi_flag ? 3 : 2), 0, endname);
 	if (!cflag) {
 	    do_split(defp, IN, &numofparams, DEF_INPARAM, 1);
 	}
     }
     if (Sflag || cflag)
-	ss_Proc_CodeGeneration(defp);
+	ss_Proc_CodeGeneration(defp, bulk_flag, bulkhandler_flag);
 }
 
 
@@ -1015,20 +1049,92 @@ get_param_type(definition * defp, declaration * dec, char **param_type,
     }
 }
 
+static void
+cs_ProcBulkCallback_setup(definition * defp)
+{
+    static const char *bulk_cbheader = "_rxbulkcb_";
+    static const char *bulk_argsheader = "_rxbulkoutargs_";
+
+    int noofoutparams = defp->pc.paramtypes[INOUT] + defp->pc.paramtypes[OUT];
+    proc1_list *plist;
+
+    if (noofoutparams == 0) {
+	return;
+    }
+
+    f_print(fout, "\nstruct %s%s%s%s {\n", bulk_argsheader, prefix,
+	    PackagePrefix[PackageIndex], defp->pc.proc_name);
+    for (plist = defp->pc.plists; plist; plist = plist->next) {
+	if (plist->component_kind == DEF_PARAM
+	    && (plist->pl.param_kind == DEF_OUTPARAM
+		|| plist->pl.param_kind == DEF_INOUTPARAM)) {
+	    f_print(fout, "\t");
+	    if ((plist->pl.param_flag & OUT_STRING) != 0) {
+		f_print(fout, "%s *%s", plist->pl.param_type,
+			plist->pl.param_name);
+	    } else {
+		f_print(fout, "%s %s", plist->pl.param_type,
+			plist->pl.param_name);
+	    }
+	    f_print(fout, ";\n");
+	}
+    }
+    f_print(fout, "};\n");
+
+    f_print(fout, "\nstatic int\n");
+    f_print(fout, "%s%s%s%s(struct rx_call *z_call, XDR *z_xdrs, struct rx_opaque *z_rock)\n",
+	    bulk_cbheader, prefix, PackagePrefix[PackageIndex], defp->pc.proc_name);
+    f_print(fout, "{\n");
+    f_print(fout, "\tint z_result;\n");
+    f_print(fout, "\tstruct %s%s%s%s *z_outargs;\n",
+	    bulk_argsheader, prefix, PackagePrefix[PackageIndex], defp->pc.proc_name);
+
+    f_print(fout, "\topr_Assert(z_rock->len == sizeof(*z_outargs));\n");
+    f_print(fout, "\tz_outargs = z_rock->val;\n");
+    f_print(fout, "    {\n");
+
+    for (plist = defp->pc.plists; plist; plist = plist->next) {
+	if (plist->component_kind == DEF_PARAM
+	    && (plist->pl.param_kind == DEF_OUTPARAM
+		|| plist->pl.param_kind == DEF_INOUTPARAM)) {
+	    f_print(fout, "\t");
+	    if ((plist->pl.param_flag & OUT_STRING) != 0) {
+		f_print(fout, "%s *%s", plist->pl.param_type,
+			plist->pl.param_name);
+	    } else {
+		f_print(fout, "%s %s", plist->pl.param_type,
+			plist->pl.param_name);
+	    }
+	    f_print(fout, " = z_outargs->%s;\n", plist->pl.param_name);
+	}
+    }
+
+    cs_ProcUnmarshallOutParams_setup(defp);
+
+    f_print(fout, "    }\n");
+
+    f_print(fout, "\tz_result = RXGEN_SUCCESS;\n");
+    f_print(fout, " fail:\n");
+    f_print(fout, "\treturn z_result;\n");
+    f_print(fout, "}\n");
+}
 
 static void
-cs_Proc_CodeGeneration(definition * defp, int split_flag, char *procheader)
+cs_Proc_CodeGeneration(definition * defp, int split_flag, int bulk_flag, char *procheader)
 {
     defp->can_fail = 0;
-    cs_ProcName_setup(defp, procheader, split_flag);
+    if (bulk_flag && !cflag) {
+	cs_ProcBulkCallback_setup(defp);
+    }
+    cs_ProcName_setup(defp, procheader, split_flag, bulk_flag);
     if (!cflag) {
-	cs_ProcParams_setup(defp, split_flag);
-	cs_ProcMarshallInParams_setup(defp, split_flag);
-	if (split_flag != 1) {
+	cs_ProcParams_setup(defp, split_flag, bulk_flag);
+	cs_ProcMarshallInParams_setup(defp, split_flag, bulk_flag);
+	if (split_flag != 1 && !bulk_flag) {
 	    cs_ProcSendPacket_setup(defp, split_flag);
 	    cs_ProcUnmarshallOutParams_setup(defp);
 	}
-	cs_ProcTail_setup(defp, split_flag);
+	cs_ProcTail_setup(defp, split_flag, bulk_flag);
     }
 
     if (!kflag && !split_flag && uflag) {
@@ -1044,19 +1150,24 @@ cs_Proc_CodeGeneration(definition * defp, int split_flag, char *procheader)
 }
 
 static void
-cs_ProcName_setup(definition * defp, char *procheader, int split_flag)
+cs_ProcName_setup(definition * defp, char *procheader, int split_flag,
+		  int bulk_flag)
 {
     proc1_list *plist;
     char *first_arg;
 
     if (ansic_flag) {
-	if (split_flag) {
+	if (bulk_flag) {
+	    first_arg = "struct rx_bulk *z_bulk";
+	} else if (split_flag) {
 	    first_arg = "struct rx_call *z_call";
 	} else {
 	    first_arg = "struct rx_connection *z_conn";
 	}
     } else {
-	if (split_flag) {
+	if (bulk_flag) {
+	    first_arg = "z_bulk";
+	} else if (split_flag) {
 	    first_arg = "z_call";
 	} else {
 	    first_arg = "z_conn";
@@ -1099,14 +1210,16 @@ cs_ProcName_setup(definition * defp, char *procheader, int split_flag)
 }
 
 static void
-cs_ProcParams_setup(definition * defp, int split_flag)
+cs_ProcParams_setup(definition * defp, int split_flag, int bulk_flag)
 {
     proc1_list *plist, *plist1;
 
     if (ansic_flag)
 	return;
 
-    if (!split_flag)
+    if (bulk_flag) {
+	f_print(fout, "\tstruct rx_bulk *z_bulk;\n");
+    } else if (!split_flag)
 	f_print(fout, "\tstruct rx_connection *z_conn;\n");
     if (split_flag) {
 	f_print(fout, "\tstruct rx_call *z_call;\n");
@@ -1145,17 +1258,21 @@ cs_ProcParams_setup(definition * defp, int split_flag)
 
 
 static void
-cs_ProcMarshallInParams_setup(definition * defp, int split_flag)
+cs_ProcMarshallInParams_setup(definition * defp, int split_flag, int bulk_flag)
 {
+    static const char *bulk_cbheader = "_rxbulkcb_";
+    static const char *bulk_argsheader = "_rxbulkoutargs_";
+
     int noofparams, i = 0;
     proc1_list *plist;
     decl_list *dl;
     int noofallparams =
 	defp->pc.paramtypes[IN] + defp->pc.paramtypes[INOUT] +
 	defp->pc.paramtypes[OUT];
+    int noofoutparams = defp->pc.paramtypes[INOUT] + defp->pc.paramtypes[OUT];
 
     f_print(fout, "{\n");
-    if (!split_flag)
+    if (!bulk_flag && !split_flag)
 	f_print(fout, "\tstruct rx_call *z_call = rx_NewCall(z_conn);\n");
     if ((!split_flag) || (split_flag == 1)) {
 	if (opcodesnotallowed[PackageIndex]) {
@@ -1167,14 +1284,66 @@ cs_ProcMarshallInParams_setup(definition * defp, int split_flag)
 	}
     }
     f_print(fout, "\tint z_result;\n");
-    if (!(split_flag > 1) || (noofallparams != 0)) {
-	f_print(fout, "\tXDR z_xdrs;\n");
+    if (bulk_flag) {
+	f_print(fout, "\tXDR *z_xdrs = NULL;\n");
+	f_print(fout, "\tstruct rxbulk_call_info z_callinfo;\n");
+	if (noofoutparams != 0) {
+	    f_print(fout, "\tstruct %s%s%s%s z_outargs;\n",
+		    bulk_argsheader, prefix, PackagePrefix[PackageIndex],
+		    defp->pc.proc_name);
+	}
+    } else if (!(split_flag > 1) || (noofallparams != 0)) {
+	f_print(fout, "\tXDR xdrs_s;\n");
+	f_print(fout, "\tXDR *z_xdrs = &xdrs_s;\n");
     }
 
     if ((!split_flag) || (split_flag == 1)) {
-	f_print(fout, "\txdrrx_create(&z_xdrs, z_call, XDR_ENCODE);\n");
+	if (bulk_flag) {
+	    if (PackageStatIndex[PackageIndex] == NULL) {
+		/* This isn't strictly required, but it makes things simpler for
+		 * now. This could be removed if needed. */
+		error("package must define a 'statindex' when using 'bulk'");
+	    }
+
+	    if (noofoutparams != 0) {
+		f_print(fout, "\n\tmemset(&z_outargs, 0, sizeof(z_outargs));\n");
+		for (plist = defp->pc.plists, dl = defp->def.st.decls, i = 0; plist;
+		     plist = plist->next, dl = dl->next) {
+		    if (plist->component_kind == DEF_PARAM
+			&& (plist->pl.param_kind == DEF_OUTPARAM
+			    || plist->pl.param_kind == DEF_INOUTPARAM)) {
+			f_print(fout, "\tz_outargs.%s = %s;\n",
+				plist->pl.param_name, plist->pl.param_name);
+		    }
+		}
+	    }
+
+	    f_print(fout, "\n\tmemset(&z_callinfo, 0, sizeof(z_callinfo));\n");
+	    f_print(fout, "\tz_callinfo.op = z_op;\n");
+	    f_print(fout, "\tz_callinfo.cstat.rxInterface = %s;\n",
+		    PackageStatIndex[PackageIndex]);
+	    f_print(fout, "\tz_callinfo.cstat.currentFunc = %d;\n", no_of_stat_funcs);
+	    f_print(fout, "\tz_callinfo.cstat.totalFunc = %sNO_OF_STAT_FUNCS;\n",
+		    PackagePrefix[PackageIndex]);
+
+	    if (noofoutparams != 0) {
+		f_print(fout, "\tz_callinfo.outargs_cb = %s%s%s%s;\n",
+			bulk_cbheader, prefix, PackagePrefix[PackageIndex],
+			defp->pc.proc_name);
+		f_print(fout, "\tz_callinfo.outargs_rock.val = &z_outargs;\n");
+		f_print(fout, "\tz_callinfo.outargs_rock.len = sizeof(z_outargs);\n");
+	    }
+
+	    f_print(fout, "\n\tz_result = rxbulk_newcall(z_bulk, &z_callinfo, &z_xdrs);\n");
+	    f_print(fout, "\tif (z_result != 0) {\n");
+	    f_print(fout, "\t\tgoto fail;\n");
+	    f_print(fout, "\t}\n");
+	} else {
+	    f_print(fout, "\txdrrx_create(z_xdrs, z_call, XDR_ENCODE);\n");
+	}
+
 	f_print(fout, "\n\t/* Marshal the arguments */\n");
-	f_print(fout, "\tif ((!xdr_int(&z_xdrs, &z_op))");
+	f_print(fout, "\tif ((!xdr_int(z_xdrs, &z_op))");
 	noofparams = defp->pc.paramtypes[IN] + defp->pc.paramtypes[INOUT];
 	for (plist = defp->pc.plists, dl = defp->def.st.decls; plist;
 	     plist = plist->next, dl = dl->next) {
@@ -1206,9 +1375,9 @@ cs_ProcSendPacket_setup(definition * defp, int split_flag)
     if (noofoutparams) {
 	f_print(fout, "\t/* Un-marshal the reply arguments */\n");
 	if (split_flag) {
-	    f_print(fout, "\txdrrx_create(&z_xdrs, z_call, XDR_DECODE);\n");
+	    f_print(fout, "\txdrrx_create(z_xdrs, z_call, XDR_DECODE);\n");
 	} else {
-	    f_print(fout, "\tz_xdrs.x_op = XDR_DECODE;\n");
+	    f_print(fout, "\tz_xdrs->x_op = XDR_DECODE;\n");
 	}
     }
 }
@@ -1244,16 +1413,16 @@ cs_ProcUnmarshallOutParams_setup(definition * defp)
 
 
 static void
-cs_ProcTail_setup(definition * defp, int split_flag)
+cs_ProcTail_setup(definition * defp, int split_flag, int bulk_flag)
 {
     f_print(fout, "\tz_result = RXGEN_SUCCESS;\n");
     if (defp->can_fail) {
 	f_print(fout, "fail:\n");
     }
-    if (!split_flag) {
+    if (!split_flag && !bulk_flag) {
 	f_print(fout, "\tz_result = rx_EndCall(z_call, z_result);\n");
     }
-    if (xflag && split_flag != 1) {
+    if (xflag && split_flag != 1 && !bulk_flag) {
 	f_print(fout, "\tif (rx_enable_stats) {\n");
 	if (PackageStatIndex[PackageIndex]) {
 	    f_print(fout,
@@ -1272,9 +1441,29 @@ cs_ProcTail_setup(definition * defp, int split_flag)
     f_print(fout, "\treturn z_result;\n}\n\n");
 }
 
+static void
+ss_ProcBulkHandler_setup(definition * defp)
+{
+    static int declared[MAX_PACKAGES];
+    if (!declared[PackageIndex]) {
+	declared[PackageIndex] = 1;
+	f_print(fout, "\nstatic afs_int32 %s%sExecuteBulkRequest("
+		      "struct rx_call *z_call, XDR *z_xdrs, "
+		      "afs_int32 z_op, struct rxbulk_call_stat *z_cstat);\n",
+		prefix, (combinepackages ? MasterPrefix : PackagePrefix[PackageIndex]));
+    }
+
+    f_print(fout, "\nstatic afs_int32\n");
+    f_print(fout, "%s%s%s%s(struct rx_call *z_call, afs_int32 flags)\n",
+	    prefix, ServerPrefix, PackagePrefix[PackageIndex], defp->pc.proc_name);
+    f_print(fout, "{\n");
+    f_print(fout, "\treturn rxbulk_handler(z_call, flags, %s%sExecuteBulkRequest);\n",
+	    prefix, PackagePrefix[PackageIndex]);
+    f_print(fout, "}\n");
+}
 
 static void
-ss_Proc_CodeGeneration(definition * defp)
+ss_Proc_CodeGeneration(definition * defp, int bulk_flag, int bulkhandler_flag)
 {
     extern char zflag;
 
@@ -1282,20 +1471,33 @@ ss_Proc_CodeGeneration(definition * defp)
 	defp->can_fail = 0;
     else
 	defp->can_fail = 1;
-    ss_ProcName_setup(defp);
+    if (!cflag && bulkhandler_flag) {
+	ss_ProcBulkHandler_setup(defp);
+    }
+    ss_ProcName_setup(defp, 0);
     if (!cflag) {
 	ss_ProcParams_setup(defp);
 	ss_ProcSpecial_setup(defp);
 	ss_ProcUnmarshallInParams_setup(defp);
 	ss_ProcCallRealProc_setup(defp);
 	ss_ProcMarshallOutParams_setup(defp);
-	ss_ProcTail_setup(defp);
+	ss_ProcTail_setup(defp, 0);
+
+	if (bulk_flag) {
+	    ss_ProcName_setup(defp, 1);
+	    ss_ProcParams_setup(defp);
+	    ss_ProcSpecial_setup(defp);
+	    ss_ProcUnmarshallInParams_setup(defp);
+	    ss_ProcCallRealProc_setup(defp);
+	    ss_ProcMarshallOutParams_setup(defp);
+	    ss_ProcTail_setup(defp, 1);
+	}
     }
 }
 
 
 static void
-ss_ProcName_setup(definition * defp)
+ss_ProcName_setup(definition * defp, int bulk)
 {
     proc1_list *plist;
 
@@ -1305,7 +1507,11 @@ ss_ProcName_setup(definition * defp)
     }
 
     if (!cflag) {
-	f_print(fout, "static afs_int32 _%s%s%s(", prefix,
+	char *bulk_prefix = "";
+	if (bulk) {
+	    bulk_prefix = "_rxbulk";
+	}
+	f_print(fout, "static afs_int32 %s_%s%s%s(", bulk_prefix, prefix,
 		PackagePrefix[PackageIndex], defp->pc.proc_name);
 	f_print(fout, "struct rx_call *z_call, XDR *z_xdrs)\n{\n");
 	f_print(fout, "\t" "afs_int32 z_result;\n");
@@ -1569,7 +1775,7 @@ ss_ProcTail_frees(char *xdrfunc, int *somefrees) {
 
 
 static void
-ss_ProcTail_setup(definition * defp)
+ss_ProcTail_setup(definition * defp, int bulk)
 {
     proc1_list *plist;
     definition *defp1;
@@ -1628,7 +1834,7 @@ ss_ProcTail_setup(definition * defp)
 	f_print(fout, "\t\tz_result = RXGEN_SS_XDRFREE;\n\n");
     }
 
-    if (xflag) {
+    if (xflag && !bulk) {
 	f_print(fout, "\tif (rx_enable_stats) {\n");
 	f_print(fout, "\t    rx_RecordCallStatistics(z_call,");
 	if (PackageStatIndex[PackageIndex]) {
@@ -1869,6 +2075,60 @@ opcode_holes_exist(void)
     return 0;
 }
 
+static void
+er_HeadOfBulkHandler_setup(void)
+{
+    f_print(fout, "\nstatic afs_int32\n");
+    f_print(fout, "%s%sExecuteBulkRequest(struct rx_call *z_call, XDR *z_xdrs, "
+		  "afs_int32 z_op, struct rxbulk_call_stat *z_cstat)\n",
+	    prefix, (combinepackages ? MasterPrefix : PackagePrefix[PackageIndex]));
+    f_print(fout, "{\n");
+    f_print(fout, "\tafs_int32 z_result;\n");
+    f_print(fout, "\n");
+    f_print(fout, "\tswitch (z_op) {\n");
+}
+
+static void
+er_TailofBulkHandler_setup(void)
+{
+    f_print(fout, "\t\tdefault:\n");
+    f_print(fout, "\t\t\tz_result = RXGEN_OPCODE;\n");
+    f_print(fout, "\t\t\tbreak;\n\t}\n");
+    f_print(fout, "\treturn z_result;\n}\n");
+}
+
+static void
+er_ExecBulkRequest_setup(void)
+{
+    rxgen_list *listp;
+    definition *defp;
+    int saw_bulk = 0;
+    int saw_bulkhandler = 0;
+
+    for (listp = proc_defined[PackageIndex]; listp != NULL;
+	 listp = listp->next) {
+	defp = (definition *) listp->val;
+	if (defp->pc.bulk_flag) {
+	    saw_bulk = 1;
+	}
+	if (defp->pc.bulkhandler_flag) {
+	    saw_bulkhandler = 1;
+	}
+    }
+
+    if (saw_bulk && !saw_bulkhandler) {
+	f_print(stderr, "%s, package %d: some routines flagged bulk, but no "
+		"bulkhandler defined\n",
+		infilename, PackageIndex);
+	crash();
+    }
+
+    if (saw_bulkhandler) {
+	er_HeadOfBulkHandler_setup();
+	er_BodyofOldStyleProc_setup(1);
+	er_TailofBulkHandler_setup();
+    }
+}
 
 void
 er_Proc_CodeGeneration(void)
@@ -1883,7 +2143,7 @@ er_Proc_CodeGeneration(void)
 	    continue;
 	if (combinepackages || opcode_holes_exist()) {
 	    er_HeadofOldStyleProc_setup();
-	    er_BodyofOldStyleProc_setup();
+	    er_BodyofOldStyleProc_setup(0);
 	    er_TailofOldStyleProc_setup();
 	    er_HeadofOldStyleProc_setup2();
 	    er_BodyofOldStyleProc_setup2();
@@ -1892,6 +2152,9 @@ er_Proc_CodeGeneration(void)
 	    er_ProcDeclExterns_setup();
 	    er_ProcProcsArray_setup();
 	    er_ProcMainBody_setup();
+	}
+	if (Sflag) {
+	    er_ExecBulkRequest_setup();
 	}
     }
     PackageIndex = temp;
@@ -1988,16 +2251,17 @@ er_ProcMainBody_setup(void)
     f_print(fout, "int %s%sExecuteRequest(struct rx_call *z_call)\n",
 	    prefix, PackagePrefix[PackageIndex]);
     f_print(fout, "{\n\tint op;\n");
-    f_print(fout, "\tXDR z_xdrs;\n");
+    f_print(fout, "\tXDR xdrs_s;\n");
+    f_print(fout, "\tXDR *z_xdrs = &xdrs_s;\n");
     f_print(fout, "\t" "afs_int32 z_result;\n\n");
-    f_print(fout, "\txdrrx_create(&z_xdrs, z_call, XDR_DECODE);\n");
+    f_print(fout, "\txdrrx_create(z_xdrs, z_call, XDR_DECODE);\n");
     f_print(fout,
-	    "\tif (!xdr_int(&z_xdrs, &op))\n\t\tz_result = RXGEN_DECODE;\n");
+	    "\tif (!xdr_int(z_xdrs, &op))\n\t\tz_result = RXGEN_DECODE;\n");
     f_print(fout,
 	    "\telse if (op < %sLOWEST_OPCODE || op > %sHIGHEST_OPCODE)\n\t\tz_result = RXGEN_OPCODE;\n",
 	    PackagePrefix[PackageIndex], PackagePrefix[PackageIndex]);
     f_print(fout,
-	    "\telse\n\t\tz_result = (*StubProcsArray%d[op - %sLOWEST_OPCODE])(z_call, &z_xdrs);\n",
+	    "\telse\n\t\tz_result = (*StubProcsArray%d[op - %sLOWEST_OPCODE])(z_call, z_xdrs);\n",
 	    PackageIndex, PackagePrefix[PackageIndex]);
     f_print(fout, "\treturn hton_syserr_conv(z_result);\n}\n");
 }
@@ -2025,39 +2289,50 @@ er_HeadofOldStyleProc_setup(void)
 		(combinepackages ? MasterPrefix : PackagePrefix[PackageIndex]));
 	f_print(fout, "{\n");
 	f_print(fout, "\tint op;\n");
-	f_print(fout, "\tXDR z_xdrs;\n");
+	f_print(fout, "\tXDR xdrs_s;\n");
+	f_print(fout, "\tXDR *z_xdrs = &xdrs_s;\n");
 	f_print(fout, "\t" "afs_int32 z_result;\n\n");
-	f_print(fout, "\txdrrx_create(&z_xdrs, z_call, XDR_DECODE);\n");
+	f_print(fout, "\txdrrx_create(z_xdrs, z_call, XDR_DECODE);\n");
 	f_print(fout, "\tz_result = RXGEN_DECODE;\n");
-	f_print(fout, "\tif (!xdr_int(&z_xdrs, &op)) goto fail;\n");
+	f_print(fout, "\tif (!xdr_int(z_xdrs, &op)) goto fail;\n");
     }
     f_print(fout, "\tswitch (op) {\n");
 }
 
 static void
-er_BodyofOldStyleProc_setup(void)
+er_BodyofOldStyleProc_setup(int bulk)
 {
     rxgen_list *listp;
+    definition *defp;
 
     if (combinepackages) {
 	int temp = PackageIndex;
 	for (PackageIndex = 0; PackageIndex <= temp; PackageIndex++) {
 	    for (listp = proc_defined[PackageIndex]; listp != NULL;
-		 listp = listp->next)
-		proc_er_case((definition *) listp->val);
+		 listp = listp->next) {
+		defp = (definition *)listp->val;
+		if (!bulk || defp->pc.bulk_flag) {
+		    proc_er_case((definition *) listp->val, bulk);
+		}
+	    }
 	}
 	PackageIndex = temp;
     } else {
 	for (listp = proc_defined[PackageIndex]; listp != NULL;
-	     listp = listp->next)
-	    proc_er_case((definition *) listp->val);
+	     listp = listp->next) {
+	    defp = (definition *)listp->val;
+	    if (!bulk || defp->pc.bulk_flag) {
+		proc_er_case((definition *) listp->val, bulk);
+	    }
+	}
     }
 }
 
 
 static void
-proc_er_case(definition * defp)
+proc_er_case(definition * defp, int bulk)
 {
+    char *bulk_prefix = "";
     if ( cflag ) {
 	f_print(fout, "\t\tcase %d:", defp->pc.proc_opcodenum);
 	f_print(fout, "\treturn \"%s%s\";\n",
@@ -2069,12 +2344,20 @@ proc_er_case(definition * defp)
     } else {
 	f_print(fout, "\t\tcase %s:\n", defp->pc.proc_opcodename);
     }
+    if (bulk) {
+	f_print(fout, "\t\t\tz_cstat->rxInterface = %s;\n",
+		PackageStatIndex[PackageIndex]);
+	f_print(fout, "\t\t\tz_cstat->currentFunc = %d;\n", defp->statindex);
+	f_print(fout, "\t\t\tz_cstat->totalFunc = %sNO_OF_STAT_FUNCS;\n",
+		PackagePrefix[PackageIndex]);
+	bulk_prefix = "_rxbulk";
+    }
     if (defp->pc.proc_serverstub) {
-	f_print(fout, "\t\t\tz_result = %s(z_call, &z_xdrs);\n",
-		defp->pc.proc_serverstub);
+	f_print(fout, "\t\t\tz_result = %s%s(z_call, z_xdrs);\n",
+		bulk_prefix, defp->pc.proc_serverstub);
     } else {
-	f_print(fout, "\t\t\tz_result = _%s%s%s(z_call, &z_xdrs);\n", prefix,
-		defp->pc.proc_prefix, defp->pc.proc_name);
+	f_print(fout, "\t\t\tz_result = %s_%s%s%s(z_call, z_xdrs);\n",
+		bulk_prefix, prefix, defp->pc.proc_prefix, defp->pc.proc_name);
     }
     f_print(fout, "\t\t\tbreak;\n");
 }

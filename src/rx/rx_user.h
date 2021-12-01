@@ -14,6 +14,7 @@ error - foo error - foo error - foo
 #define RX_USER_INCLUDE
 /* rx_user.h:  definitions specific to the user-level implementation of Rx */
 #include <afs/param.h>
+#include <afs/opr.h>
 #include <stdio.h>
 #include <stdlib.h>		/* for malloc() */
 #include <lwp.h>

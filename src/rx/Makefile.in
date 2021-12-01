@@ -18,7 +18,7 @@ LT_objs = xdr.lo xdr_array.lo xdr_rx.lo xdr_mem.lo xdr_len.lo xdr_afsuuid.lo \
 	  rx_pthread.lo rx.lo rx_null.lo rx_globals.lo rx_getaddr.lo rx_misc.lo \
 	  rx_packet.lo rx_peer.lo rx_rdwr.lo rx_trace.lo rx_conncache.lo \
 	  rx_opaque.lo rx_identity.lo rx_stats.lo rx_multi.lo \
-	  rx_stubs.lo xdr_buf.lo xdr_split.lo \
+	  rx_stubs.lo xdr_buf.lo xdr_split.lo rx_bulk.lo \
 	  AFS_component_version_number.lo
 LT_deps = $(top_builddir)/src/opr/liboafs_opr.la
 LT_libs = $(MT_LIBS)
@@ -35,6 +35,7 @@ rx_user.lo: rx.h rx_user.h rx_prototypes.h
 rx_packet.lo: rx_packet.c rx_packet.h rx.h
 rx_rdwr.lo: rx_rdwr.c rx.h rx_prototypes.h
 rx.lo: rx.h rx_user.h rx_server.h rx_prototypes.h
+rx_bulk.lo: rx.h rx_user.h rx_server.h rx_prototypes.h
 rx_conncache.lo: rx.h rx_prototypes.h
 rx_trace.lo: rx_trace.h
 rx_getaddr.lo: rx.h rx_getaddr.c rx_prototypes.h
@@ -62,6 +63,7 @@ includes: \
 	${TOP_INCDIR}/rx/rx_prototypes.h \
 	${TOP_INCDIR}/rx/rx.h \
 	${TOP_INCDIR}/rx/rx_atomic.h \
+	${TOP_INCDIR}/rx/rx_bulk.h \
 	${TOP_INCDIR}/rx/rx_user.h \
 	${TOP_INCDIR}/rx/rx_event.h \
 	${TOP_INCDIR}/rx/rx_queue.h \
@@ -90,6 +92,9 @@ ${TOP_INCDIR}/rx/rx.h: rx.h
 	${INSTALL_DATA} $? $@
 
 ${TOP_INCDIR}/rx/rx_atomic.h: rx_atomic.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/rx/rx_bulk.h: rx_bulk.h
 	${INSTALL_DATA} $? $@
 
 ${TOP_INCDIR}/rx/rx_user.h: rx_user.h

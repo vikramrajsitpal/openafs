@@ -52,6 +52,12 @@ STEST_CheckOdd(struct rx_call *rxcall, int val)
 }
 
 afs_int32
+STEST_CheckOddSingle(struct rx_call *rxcall, int val)
+{
+    return STEST_CheckOdd(rxcall, val);
+}
+
+afs_int32
 STEST_Sum(struct rx_call *rxcall, int x, int y, int *result)
 {
     *result = x + y;

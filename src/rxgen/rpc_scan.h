@@ -85,6 +85,8 @@ enum tok_kind {
     TOK_OUT,
     TOK_INOUT,
     TOK_AFSUUID,
+    TOK_BULK,
+    TOK_BULKHANDLER,
     TOK_EOF
 };
 typedef enum tok_kind tok_kind;

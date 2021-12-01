@@ -114,6 +114,21 @@ scan4(tok_kind expect1, tok_kind expect2, tok_kind expect3, tok_kind expect4,
 }
 
 /*
+ * scan expecting 6 given tokens
+ */
+void
+scan6(tok_kind expect1, tok_kind expect2, tok_kind expect3, tok_kind expect4,
+      tok_kind expect5, tok_kind expect6, token * tokp)
+{
+    get_token(tokp);
+    if (tokp->kind != expect1 && tokp->kind != expect2
+	&& tokp->kind != expect3 && tokp->kind != expect4
+	&& tokp->kind != expect5 && tokp->kind != expect6) {
+	expected6(expect1, expect2, expect3, expect4, expect5, expect6);
+    }
+}
+
+/*
  * scan expecting a constant, possibly symbolic
  */
 void
@@ -413,6 +428,8 @@ static token symbols[] = {
     {TOK_OUT, "OUT"},
     {TOK_INOUT, "INOUT"},
     {TOK_AFSUUID, "afsUUID"},
+    {TOK_BULK, "bulk"},
+    {TOK_BULKHANDLER, "bulkhandler"},
     {TOK_EOF, "??????"},
 };
 

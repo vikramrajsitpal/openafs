@@ -24,6 +24,7 @@ ptserver/prdb
 ptserver/pt_util
 ptserver/pts-man
 ptserver/recovery
+rx/bulk
 rx/event
 rx/opaque
 rx/perf

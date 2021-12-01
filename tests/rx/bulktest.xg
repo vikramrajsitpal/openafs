@@ -26,50 +26,24 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package TEST_
+package BTEST_
 prefix S
 statindex 22
 
-const TEST_SERVICE_ID = 5;
-const TEST_PORT = 1235;
-const TEST_MAX = 10240;
+const BTEST_SERVICE_ID = 5;
+const BTEST_PORT = 1235;
+const BTEST_MAX = 10240;
 
 /* Error code for CheckOdd */
-const TEST_CHECKODD_NOTODD = 123456;
+const BTEST_CHECKODD_NOTODD = 123456;
 
-struct rxstat_clock {
-    afs_uint32 sec;
-    afs_uint32 usec;
-};
+CheckOdd(IN int val) bulk = 101;
+CheckOddSingle(IN int val) = 102;
+Sum(IN int x,
+    int y,
+    OUT int *result) bulk = 103;
+Concat(IN string foo<BTEST_MAX>,
+       string bar<BTEST_MAX>,
+       OUT string foobar<BTEST_MAX>) bulk = 104;
 
-/* Copied from rx_function_entry_v1_t, as marshalled in
- * rx_MarshallProcessRPCStats */
-struct rxstat_entry {
-    afs_uint32 remote_peer;
-    afs_uint32 remote_port;
-    afs_uint32 remote_is_server;
-    afs_uint32 interfaceId;
-    afs_uint32 func_total;
-    afs_uint32 func_index;
-    afs_uint64 invocations;
-    afs_uint64 bytes_sent;
-    afs_uint64 bytes_rcvd;
-    struct rxstat_clock queue_time_sum;
-    struct rxstat_clock queue_time_sum_sqr;
-    struct rxstat_clock queue_time_min;
-    struct rxstat_clock queue_time_max;
-    struct rxstat_clock execution_time_sum;
-    struct rxstat_clock execution_time_sum_sqr;
-    struct rxstat_clock execution_time_min;
-    struct rxstat_clock execution_time_max;
-};
-
-SleepMS(IN int ms) bulk = 101;
-CheckOdd(IN int val) bulk = 102;
-CheckOddSingle(IN int val) = 103;
-Sum(IN int x, int y, OUT int *result) bulk = 104;
-Concat(IN string foo<TEST_MAX>,
-       string bar<TEST_MAX>,
-       OUT string foobar<TEST_MAX>) bulk = 105;
-Echo() split = 106;
-BulkCall(IN afs_uint32 flags) bulkhandler = 107;
+BulkCall(IN afs_uint32 flags) bulkhandler = 105;

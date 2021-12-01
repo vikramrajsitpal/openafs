@@ -498,7 +498,7 @@ print_cout(declaration * dec)
 static void
 print_rxifopen(char *typename)
 {
-    sprintf(Proc_list->code, "xdr_%s(&z_xdrs", typename);
+    sprintf(Proc_list->code, "xdr_%s(z_xdrs", typename);
     sprintf(Proc_list->scode, "xdr_%s(z_xdrs", typename);
 }
 

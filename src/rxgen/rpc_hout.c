@@ -162,15 +162,24 @@ pdefine(char *name, char *num)
 }
 
 static void
-psproc1(definition * defp, int callTconnF, char *type, char *prefix,
-	int iomask)
+psproc2(definition * defp, int callTconnF, char *type, char *prefix,
+	int iomask, int bulk_flag)
 {
     proc1_list *plist;
+
+    static int first_bulk = 1;
+
+    if (bulk_flag && first_bulk) {
+	f_print(fout, "\nstruct rx_bulk;\n");
+	first_bulk = 0;
+    }
 
     f_print(fout, "\nextern %s %s%s%s(\n", type, prefix, defp->pc.proc_prefix,
 	    defp->pc.proc_name);
 
-    if (callTconnF == 1 || callTconnF == 3) {
+    if (bulk_flag) {
+	f_print(fout, "\t/*IN */ struct rx_bulk *z_bulk");
+    } else if (callTconnF == 1 || callTconnF == 3) {
 	f_print(fout, "\t/*IN */ struct rx_call *z_call");
     } else if (callTconnF == 2) {
 	f_print(fout, "\tstruct ubik_client *aclient, afs_int32 aflags");
@@ -210,10 +219,19 @@ psproc1(definition * defp, int callTconnF, char *type, char *prefix,
 }
 
 static void
+psproc1(definition * defp, int callTconnF, char *type, char *prefix,
+	int iomask)
+{
+    psproc2(defp, callTconnF, type, prefix, iomask, 0);
+}
+
+static void
 psprocdef(definition * defp)
 {
     int split_flag = defp->pc.split_flag;
     int multi_flag = defp->pc.multi_flag;
+    int bulk_flag = defp->pc.bulk_flag;
+    int bulkhandler_flag = defp->pc.bulkhandler_flag;
 
     if (split_flag || multi_flag) {
 	psproc1(defp, 1, "int", "Start",
@@ -224,13 +242,16 @@ psprocdef(definition * defp)
     if (!(!multi_flag && split_flag))
         psproc1(defp, 0, "int", "", 0xFFFFFFFF);
 
+    if (bulk_flag)
+	psproc2(defp, 0, "int", "rxbulk_", 0xFFFFFFFF, 1);
+
     if (uflag && !kflag) {
 	f_print(fout, "\n#ifndef KERNEL");
 	psproc1(defp, 2, "int", "ubik_", 0xFFFFFFFF);
 	f_print(fout, "#endif /* KERNEL */\n");
     }
 
-    if (*ServerPrefix)
+    if (*ServerPrefix && !bulkhandler_flag)
 	psproc1(defp, 3, "afs_int32", ServerPrefix, 0xFFFFFFFF);
 }
 

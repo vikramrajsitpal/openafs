@@ -5,14 +5,14 @@ abs_top_builddir=@abs_top_builddir@
 include @TOP_OBJDIR@/src/config/Makefile.config
 include @TOP_OBJDIR@/src/config/Makefile.pthread
 
-MODULE_CFLAGS = -I$(TOP_OBJDIR) -I$(srcdir)/../common/
+MODULE_CFLAGS = -I$(TOP_OBJDIR) -I$(srcdir)/../common/ -I$(TOP_SRCDIR)/rx/
 
 LIBS = $(abs_top_builddir)/tests/common/libafstest_common.la \
        $(abs_top_builddir)/src/rx/liboafs_rx.la
 
 LIB_rxstat = $(abs_top_builddir)/src/rxstat/liboafs_rxstat.la
 
-BINS = event-t opaque-t procstat-t xdrbuf-t xdrsplit-t
+BINS = bulk-t bulk-procstat-t event-t opaque-t procstat-t xdrbuf-t xdrsplit-t
 
 all: $(BINS)
 
@@ -42,6 +42,14 @@ procstat-t: procstat-t.o $(test_objs) $(LIBS)
 			    $(LIB_rxstat) $(XLIBS)
 procstat-t.o: test.h test_int.h
 
+bulk-procstat-t: bulk-procstat-t.o $(test_objs) $(LIBS)
+	$(LT_LDRULE_static) bulk-procstat-t.o $(test_objs) $(LIBS) $(LIB_roken) \
+			    $(LIB_rxstat) $(XLIBS)
+bulk-procstat-t.o: test.h test_int.h
+
+bulk-t: bulk-t.o $(test_objs) $(LIBS)
+	$(LT_LDRULE_static) bulk-t.o $(test_objs) $(LIBS) $(LIB_roken) $(XLIBS)
+bulk-t.o: test.h test_int.h
 
 clean distclean:
 	$(LT_CLEAN)

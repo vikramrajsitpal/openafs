@@ -314,6 +314,19 @@ expected4(tok_kind exp1, tok_kind exp2, tok_kind exp3, tok_kind exp4)
     error(expectbuf);
 }
 
+/*
+ * error, token encountered was not one of 6 expected ones
+ */
+void
+expected6(tok_kind exp1, tok_kind exp2, tok_kind exp3, tok_kind exp4,
+	  tok_kind exp5, tok_kind exp6)
+{
+    sprintf(expectbuf, "expected '%s', '%s', '%s', '%s', '%s', or '%s'",
+	    toktostr(exp1), toktostr(exp2), toktostr(exp3), toktostr(exp4),
+	    toktostr(exp5), toktostr(exp6));
+    error(expectbuf);
+}
+
 void
 tabify(FILE * f, int tab)
 {
@@ -369,6 +382,8 @@ static token tokstrings[] = {
     {TOK_OUT, "OUT"},
     {TOK_INOUT, "INOUT"},
     {TOK_AFSUUID, "afsUUID"},
+    {TOK_BULK, "bulk"},
+    {TOK_BULKHANDLER, "bulkhandler"},
     {TOK_EOF, "??????"}
 };
 

@@ -160,6 +160,8 @@ struct procedure_def {
     short paramtypes[3];
     char split_flag;
     char multi_flag;
+    char bulk_flag;
+    char bulkhandler_flag;
     relation rel;
     proc1_list *plists;
 };

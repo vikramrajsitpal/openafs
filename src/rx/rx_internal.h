@@ -5,6 +5,12 @@
  * customers of RX belong in rx_private.h, which is installed.
  */
 
+#ifndef OPENAFS_RX_RX_INTERNAL_H
+#define OPENAFS_RX_RX_INTERNAL_H
+
+#include <rx/rx.h>
+#include <rx/rx_atomic.h>
+
 #ifdef AFS_RXERRQ_ENV
 # if defined(AFS_LINUX_ENV) || defined(AFS_USR_LINUX_ENV)
 #  include <linux/types.h>
@@ -79,3 +85,5 @@ extern struct rx_packet *rxi_SplitJumboPacket(struct rx_packet *p);
 
 /* rx_kcommon.c / rx_user.c */
 extern void osi_Msg(const char *fmt, ...) AFS_ATTRIBUTE_FORMAT(__printf__, 1, 2);
+
+#endif /* OPENAFS_RX_RX_INTERNAL_H */
