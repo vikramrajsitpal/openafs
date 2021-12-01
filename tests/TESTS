@@ -27,6 +27,7 @@ ptserver/recovery
 rx/event
 rx/opaque
 rx/perf
+rx/xdrbuf
 rxgk/derive
 vlserver/badversion
 vlserver/check4

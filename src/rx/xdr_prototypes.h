@@ -29,6 +29,12 @@ extern bool_t xdr_afs_uint64(XDR * xdrs, afs_uint64 * ulp);
 extern void xdrrx_create(XDR * xdrs, struct rx_call *call,
 			 enum xdr_op op);
 
+/* xdr_buf.c */
+struct rx_opaque;
+extern void xdrbuf_create(XDR *xdrs, int maxlen);
+extern int xdrbuf_getbuf(XDR *xdrs, struct rx_opaque *buf);
+extern void xdrbuf_reset(XDR *xrs);
+
 #ifndef XDR_AFS_DECLS_ONLY
 
 /* xdr_array.c */
