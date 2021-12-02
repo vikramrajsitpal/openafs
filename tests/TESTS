@@ -28,6 +28,7 @@ rx/event
 rx/opaque
 rx/perf
 rx/xdrbuf
+rx/xdrsplit
 rxgk/derive
 vlserver/badversion
 vlserver/check4

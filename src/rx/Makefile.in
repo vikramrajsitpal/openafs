@@ -18,7 +18,7 @@ LT_objs = xdr.lo xdr_array.lo xdr_rx.lo xdr_mem.lo xdr_len.lo xdr_afsuuid.lo \
 	  rx_pthread.lo rx.lo rx_null.lo rx_globals.lo rx_getaddr.lo rx_misc.lo \
 	  rx_packet.lo rx_peer.lo rx_rdwr.lo rx_trace.lo rx_conncache.lo \
 	  rx_opaque.lo rx_identity.lo rx_stats.lo rx_multi.lo \
-	  rx_stubs.lo xdr_buf.lo \
+	  rx_stubs.lo xdr_buf.lo xdr_split.lo \
 	  AFS_component_version_number.lo
 LT_deps = $(top_builddir)/src/opr/liboafs_opr.la
 LT_libs = $(MT_LIBS)
@@ -41,6 +41,7 @@ rx_getaddr.lo: rx.h rx_getaddr.c rx_prototypes.h
 rx_globals.lo: rx.h rx_user.h rx_globals.h rx_prototypes.h
 xdr_rx.lo: xdr.h rx.h xdr_prototypes.h rx_prototypes.h
 xdr_buf.lo: xdr.h rx.h xdr_prototypes.h rx_prototypes.h
+xdr_split.lo: xdr.h rx.h xdr_prototypes.h rx_prototypes.h
 xdr_refernce.lo: xdr_refernce.c xdr.h xdr_prototypes.h
 
 librx.a: $(LT_objs)

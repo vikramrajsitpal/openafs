@@ -35,6 +35,16 @@ extern void xdrbuf_create(XDR *xdrs, int maxlen);
 extern int xdrbuf_getbuf(XDR *xdrs, struct rx_opaque *buf);
 extern void xdrbuf_reset(XDR *xrs);
 
+/* xdr_split.c */
+struct xdrsplit_info {
+    XDR *reader;
+    XDR *writer;
+    afs_uint64 read_bytes;
+    afs_uint64 wrote_bytes;
+};
+extern void xdrsplit_create(XDR *xdrs, struct xdrsplit_info *info,
+			    enum xdr_op op);
+
 #ifndef XDR_AFS_DECLS_ONLY
 
 /* xdr_array.c */
