@@ -148,6 +148,11 @@ AC_ARG_ENABLE([checking],
          to disabled)])],
     [enable_checking="$enableval"],
     [enable_checking="no"])
+AC_ARG_ENABLE([coverage],
+    [AS_HELP_STRING([--enable-coverage],
+	[turn on gcov-style code profiling (defaults to disabled)])],
+    [],
+    [enable_coverage="no"])
 AC_ARG_ENABLE([debug-locks],
     [AS_HELP_STRING([--enable-debug-locks],
         [turn on lock debugging assertions (defaults to disabled)])],

@@ -679,6 +679,12 @@ AS_IF([test "x$enable_checking" != "xno"],
       [AX_APPEND_COMPILE_FLAGS([-Wimplicit-fallthrough], [XCFLAGS], [-Werror])
 ])
 
+AS_IF([test x"$enable_coverage" = xyes],
+      [AC_DEFINE([ENABLE_COVERAGE], [1],
+		 [define if we're building with code coverage profiling])
+       XCFLAGS="${XCFLAGS} --coverage"
+       LDFLAGS_coverage="--coverage"])
+
 dnl horribly cheating, assuming double / is ok.
 case $INSTALL in
   ./* ) 
@@ -705,6 +711,7 @@ AC_SUBST(FSINCLUDES)
 AC_SUBST(KERN_DBG)
 AC_SUBST(KERN_OPTMZ)
 AC_SUBST(LD)
+AC_SUBST(LDFLAGS_coverage)
 AC_SUBST(LEX)
 AC_SUBST(LWP_DBG)
 AC_SUBST(LWP_OPTMZ)

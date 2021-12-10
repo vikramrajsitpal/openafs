@@ -84,6 +84,14 @@ signalHandler(void *arg)
 static void
 ExitHandler(int signal)
 {
+#ifdef ENABLE_COVERAGE
+    /*
+     * If we're compiling with --coverage, just do a normal exit. If we
+     * terminate the process via a signal (below), our profiling data will not
+     * get written out.
+     */
+    exit(0);
+#else
     sigset_t set;
     sigemptyset(&set);
     sigaddset(&set, signal);
@@ -92,6 +100,7 @@ ExitHandler(int signal)
 
     /* Should be unreachable. */
     exit(signal);
+#endif
 }
 
 static void
