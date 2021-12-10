@@ -821,7 +821,7 @@ dumpPass(struct dumpRock * dparamsPtr, int passNumber)
     struct dumpNode *nodePtr = dparamsPtr->node;
     struct butm_tapeInfo *tapeInfoPtr = dparamsPtr->tapeInfoPtr;
     afs_int32 taskId = nodePtr->taskID;
-    struct tc_dumpDesc *curDump;
+    struct tc_dumpDesc *curDump = NULL;
     int action, e;
     afs_int32 code = 0, tcode, dvcode;
     char ch;

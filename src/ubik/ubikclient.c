@@ -357,7 +357,7 @@ CallIter(int (*aproc) (), struct ubik_client *aclient,
 	 long p12, long p13, long p14, long p15, long p16, int needlock)
 {
     afs_int32 code;
-    struct rx_connection *tc;
+    struct rx_connection *tc = NULL;
     short origLevel;
 
     if (needlock) {

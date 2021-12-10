@@ -2988,7 +2988,7 @@ DECL_PIOCTL(PSetCacheSize)
 DECL_PIOCTL(PGetCacheSize)
 {
     afs_int32 results[MAXGCSTATS];
-    afs_int32 flags;
+    afs_int32 flags = 0;
     struct dcache * tdc;
     int i;
 
