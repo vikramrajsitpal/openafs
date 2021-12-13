@@ -17,8 +17,8 @@ MODULE_LIBS = 	$(abs_top_builddir)/tests/common/libafstest_common.la \
 authcon-t: authcon-t.o
 	$(LT_LDRULE_static) authcon-t.o $(MODULE_LIBS)
 
-superuser-t: superuser-t.o test.cs.o test.ss.o test.xdr.o
-	$(LT_LDRULE_static) superuser-t.o test.cs.o test.ss.o test.xdr.o \
+superuser-t: superuser-t.o test.cs.o test.ss.o
+	$(LT_LDRULE_static) superuser-t.o test.cs.o test.ss.o \
 		$(MODULE_LIBS)
 
 keys-t: keys-t.o
@@ -36,9 +36,6 @@ test.cs.c: test.xg
 test.ss.c: test.xg
 	$(RXGEN) -A -x -S -o $@ $(srcdir)/test.xg
 
-test.xdr.c: test.xg
-	$(RXGEN) -A -x -c -o $@ $(srcdir)/test.xg
-
 test.h: test.xg
 	$(RXGEN) -A -x -h -o $@ $(srcdir)/test.xg
 
@@ -46,5 +43,5 @@ superuser-t.o: test.h
 
 clean:
 	$(LT_CLEAN)
-	rm -f *.o *.cs.c *.ss.c *.xdr.c test.h \
+	rm -f *.o *.cs.c *.ss.c test.h \
 		$(BINS)
