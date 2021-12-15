@@ -1,0 +1,73 @@
+/*
+ * Copyright (c) 2021 Sine Nomine Associates
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS ``AS
+ * IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+ * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+ * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+ * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+ * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+package TEST_
+prefix S
+statindex 22
+
+const TEST_SERVICE_ID = 5;
+const TEST_PORT = 1235;
+const TEST_MAX = 10240;
+
+/* Error code for CheckOdd */
+const TEST_CHECKODD_NOTODD = 123456;
+
+struct rxstat_clock {
+    afs_uint32 sec;
+    afs_uint32 usec;
+};
+
+/* Copied from rx_function_entry_v1_t, as marshalled in
+ * rx_MarshallProcessRPCStats */
+struct rxstat_entry {
+    afs_uint32 remote_peer;
+    afs_uint32 remote_port;
+    afs_uint32 remote_is_server;
+    afs_uint32 interfaceId;
+    afs_uint32 func_total;
+    afs_uint32 func_index;
+    afs_uint64 invocations;
+    afs_uint64 bytes_sent;
+    afs_uint64 bytes_rcvd;
+    struct rxstat_clock queue_time_sum;
+    struct rxstat_clock queue_time_sum_sqr;
+    struct rxstat_clock queue_time_min;
+    struct rxstat_clock queue_time_max;
+    struct rxstat_clock execution_time_sum;
+    struct rxstat_clock execution_time_sum_sqr;
+    struct rxstat_clock execution_time_min;
+    struct rxstat_clock execution_time_max;
+};
+
+SleepMS(IN int ms) = 101;
+CheckOdd(IN int val) = 102;
+Sum(IN int x, int y, OUT int *result) = 103;
+Concat(IN string foo<TEST_MAX>,
+       string bar<TEST_MAX>,
+       OUT string foobar<TEST_MAX>) = 104;
+Echo() split = 105;

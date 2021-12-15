@@ -242,20 +242,27 @@ afstest_StartTestRPCService(const char *configPath,
 
     memset(&bsso, 0, sizeof(bsso));
 
-    dir = afsconf_Open(configPath);
-    if (dir == NULL) {
-        fprintf(stderr, "Server: Unable to open config directory\n");
-        return -1;
-    }
-
     code = rx_Init(htons(port));
     if (code != 0) {
 	fprintf(stderr, "Server: Unable to initialise RX\n");
 	return -1;
     }
 
-    bsso.dir = dir;
-    afsconf_BuildServerSecurityObjects_int(&bsso, &classes, &numClasses);
+    if (configPath == NULL) {
+	numClasses = 1;
+	classes = calloc(numClasses, sizeof(classes[0]));
+	classes[0] = rxnull_NewServerSecurityObject();
+
+    } else {
+	dir = afsconf_Open(configPath);
+	if (dir == NULL) {
+	    fprintf(stderr, "Server: Unable to open config directory\n");
+	    return -1;
+	}
+
+	bsso.dir = dir;
+	afsconf_BuildServerSecurityObjects_int(&bsso, &classes, &numClasses);
+    }
 
     service = rx_NewService(0, serviceId, serviceName, classes, numClasses,
 			    proc);
@@ -369,4 +376,3 @@ afstest_ForkRxProc(int (*proc)(void *rock), void *rock)
 
     /* end_fds[1] will be closed when we eventually exit */
 }
-

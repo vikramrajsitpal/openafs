@@ -662,6 +662,9 @@ test_build_nolibafs: finale_nolibafs_notest
 check test: finale_notest
 	cd tests && $(MAKE) check TESTS="$(TESTS)"
 
+check_all: finale_notest
+	cd tests && $(MAKE) check_all
+
 force:
 
 TARGET=finale
