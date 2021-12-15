@@ -52,7 +52,8 @@
 #define TEST_PORT 1234
 
 static void
-testOriginalIterator(struct afsconf_dir *dir, int num, char *user) {
+testOriginalIterator(struct afsconf_dir *dir, int num, char *user)
+{
     char buffer[256];
 
     ok((afsconf_GetNthUser(dir, num, buffer, sizeof buffer) == 0),
@@ -63,7 +64,8 @@ testOriginalIterator(struct afsconf_dir *dir, int num, char *user) {
 }
 
 static void
-testNewIterator(struct afsconf_dir *dir, int num, struct rx_identity *id) {
+testNewIterator(struct afsconf_dir *dir, int num, struct rx_identity *id)
+{
     struct rx_identity *fileId;
 
     ok((afsconf_GetNthIdentity(dir, num, &fileId) == 0),
@@ -74,9 +76,8 @@ testNewIterator(struct afsconf_dir *dir, int num, struct rx_identity *id) {
     rx_identity_free(&fileId);
 }
 
-
-void
-startClient(char *configPath)
+static void
+main_client(char *configPath)
 {
     struct afsconf_dir *dir;
     struct rx_identity *testId, *anotherId, *extendedId, *dummy;
@@ -86,16 +87,16 @@ startClient(char *configPath)
     char ubuffer[256];
     afs_int32 classIndex;
     int code;
-    struct hostent *he;
-    afs_uint32 addr;
+    afs_uint32 localhost = 0x7f000001;
     afs_int32 result;
     char *string = NULL;
 
-    plan(63);
+    plan(62);
 
     dir = afsconf_Open(configPath);
-    ok(dir!=NULL,
-       "Configuration directory opened sucessfully by client");
+    if (dir == NULL) {
+	bail("Failed to open config dir");
+    }
 
     /* Add a normal user to the super user file */
     ok(afsconf_AddUser(dir, "test") == 0,
@@ -202,16 +203,9 @@ startClient(char *configPath)
     is_int(code, 0, "Can successfully create superuser token");
 
     /* Start a connection to our test service with it */
-    he = gethostbyname("localhost");
-    if (!he) {
-	fprintf(stderr, "Couldn't look up server hostname");
-        exit(1);
-    }
 
-    memcpy(&addr, he->h_addr, sizeof(afs_uint32));
-
-    conn = rx_NewConnection(addr, htons(TEST_PORT), TEST_SERVICE_ID,
-			    class, classIndex);
+    conn = rx_NewConnection(htonl(localhost), htons(TEST_PORT),
+			    TEST_SERVICE_ID, class, classIndex);
 
     /* There's nothing in the list, so this just succeeds because we can */
     code = TEST_CanI(conn, &result);
@@ -234,8 +228,8 @@ startClient(char *configPath)
     class = afstest_FakeRxkadClass(dir, "rpctest", "", "", startTime,
 				   startTime + 60* 60);
 
-    conn = rx_NewConnection(addr, htons(TEST_PORT), TEST_SERVICE_ID, class,
-			    RX_SECIDX_KAD);
+    conn = rx_NewConnection(htonl(localhost), htons(TEST_PORT),
+			    TEST_SERVICE_ID, class, RX_SECIDX_KAD);
 
     code = TEST_CanI(conn, &result);
     is_int(EPERM, code,
@@ -273,8 +267,8 @@ startClient(char *configPath)
     class = afstest_FakeRxkadClass(dir, "rpctest", "admin", "", startTime,
 				   startTime + 60* 60);
 
-    conn = rx_NewConnection(addr, htons(TEST_PORT), TEST_SERVICE_ID, class,
-			    RX_SECIDX_KAD);
+    conn = rx_NewConnection(htonl(localhost), htons(TEST_PORT),
+			    TEST_SERVICE_ID, class, RX_SECIDX_KAD);
 
     code = TEST_CanI(conn, &result);
     is_int(EPERM, code,
@@ -367,125 +361,35 @@ STEST_NewWhoAmI(struct rx_call *call, char **result)
    return 0;
 }
 
-/*
- * Primitive replacement for using sigtimedwait(). Just see if 'signo' is
- * pending, and if it's not, wait 100ms and try again. Try this for
- * approximately as many times as it takes to wait for 'nsecs' seconds.
- */
 static int
-waitforsig(int signo, int nsecs)
+start_server(void *rock)
 {
-    int nsleeps;
-
-    for (nsleeps = 0; nsleeps < nsecs * 10; nsleeps++) {
-	sigset_t set;
-	int code;
-
-	opr_Verify(sigpending(&set) == 0);
-	if (sigismember(&set, signo)) {
-	    return 0;
-	}
-
-	/* Sleep for 100ms */
-	code = usleep(100000);
-	opr_Assert(code == 0 || errno == EINTR);
+    char *dirname = rock;
+    globalDir = afsconf_Open(dirname);
+    if (globalDir == NULL) {
+	bail("Failed to open config dir");
     }
-
-    return -1;
+    return afstest_StartTestRPCService(dirname, "test", TEST_PORT,
+				       TEST_SERVICE_ID, TEST_ExecuteRequest);
 }
 
-int main(int argc, char **argv)
+int
+main(int argc, char **argv)
 {
-    struct afsconf_dir *dir;
     char *dirname;
-    int serverPid, clientPid, waited, stat;
-    int ret = 0;
-    sigset_t set;
-    const char *argv0;
 
     setprogname(argv[0]);
-    argv0 = getprogname();
 
     afstest_SkipTestsIfBadHostname();
 
-    /* Start the client and the server if requested */
-
-    if (argc == 3 ) {
-        if (strcmp(argv[1], "-server") == 0) {
-	    globalDir = afsconf_Open(argv[2]);
-	    afstest_StartTestRPCService(argv[2], getppid(), TEST_PORT,
-					TEST_SERVICE_ID, TEST_ExecuteRequest);
-            exit(0);
-        } else if (strcmp(argv[1], "-client") == 0) {
-            startClient(argv[2]);
-            exit(0);
-        } else {
-	    fprintf(stderr, "Bad option %s\n", argv[1]);
-            exit(1);
-        }
-    }
-
-    /* Otherwise, do the basic configuration, then start the client and
-     * server */
-
-    sigemptyset(&set);
-    sigaddset(&set, SIGUSR1);
-    opr_Verify(sigprocmask(SIG_BLOCK, &set, NULL) == 0);
-
     dirname = afstest_BuildTestConfig(NULL);
+    diag("Config directory is %s", dirname);
 
-    dir = afsconf_Open(dirname);
-    if (dir == NULL) {
-	fprintf(stderr, "Unable to configure directory.\n");
-	ret = 1;
-	goto out;
-    }
+    afstest_ForkRxProc(start_server, dirname);
 
-    diag("Config directory is %s\n", dirname);
-    serverPid = fork();
-    if (serverPid == -1) {
-	sysbail("fork");
+    main_client(dirname);
 
-    } else if (serverPid == 0) {
-        execl(argv[0], argv[0], "-server", dirname, NULL);
-	ret = 1;
-	goto out;
-    }
-
-    /* Our server child pid will send us a SIGUSR1 when it's started listening
-     * on its port. Wait for up to 5 seconds to get the USR1. */
-    if (waitforsig(SIGUSR1, 5) != 0) {
-	fprintf(stderr, "%s: Timed out waiting for SIGUSR1 from server child\n",
-		argv0);
-	kill(serverPid, SIGTERM);
-	ret = 1;
-	goto out;
-    }
-
-    clientPid = fork();
-    if (clientPid == -1) {
-        kill(serverPid, SIGTERM);
-        waitpid(serverPid, &stat, 0);
-	ret = 1;
-	goto out;
-    } else if (clientPid == 0) {
-        execl(argv[0], argv[0], "-client", dirname, NULL);
-    }
-
-    do {
-        waited = waitpid(0, &stat, 0);
-    } while(waited == -1 && errno == EINTR);
-
-    if (waited == serverPid) {
-        kill(clientPid, SIGTERM);
-    } else if (waited == clientPid) {
-        kill(serverPid, SIGTERM);
-    }
-    waitpid(0, &stat, 0);
-
-out:
-    /* Client and server are both done, so cleanup after everything */
     afstest_rmdtemp(dirname);
 
-    return ret;
+    return 0;
 }

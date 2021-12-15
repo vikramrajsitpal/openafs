@@ -6,6 +6,7 @@
 #ifdef HAVE_SYS_WAIT_H
 #include <sys/wait.h>
 #endif
+#include <poll.h>
 
 #include <rx/rx.h>
 
@@ -198,9 +199,36 @@ afstest_StopServer(pid_t serverPid)
     return 0;
 }
 
+static void *
+exit_thread(void *rock)
+{
+    int end_fd = *((int*)rock);
+
+    for (;;) {
+	int nbytes;
+	int dummy;
+
+	nbytes = read(end_fd, &dummy, sizeof(dummy));
+	if (nbytes >= 0) {
+	    exit(0);
+	}
+	if (errno != EINTR) {
+	    sysbail("read(server end_fd)");
+	}
+    }
+
+    return NULL;
+}
+
+/**
+ * Setup a custom Rx service to run.
+ *
+ * This doesn't actually call rx_StartServer(); it just sets up the relevant Rx
+ * service. The caller must call rx_StartServer() itself at some point.
+ */
 int
 afstest_StartTestRPCService(const char *configPath,
-			    pid_t signal_pid,
+			    char *serviceName,
 			    u_short port,
 			    u_short serviceId,
 			    afs_int32 (*proc) (struct rx_call *))
@@ -226,20 +254,119 @@ afstest_StartTestRPCService(const char *configPath,
 	return -1;
     }
 
-    if (signal_pid != 0) {
-	kill(signal_pid, SIGUSR1);
-    }
-
     bsso.dir = dir;
     afsconf_BuildServerSecurityObjects_int(&bsso, &classes, &numClasses);
-    service = rx_NewService(0, serviceId, "test", classes, numClasses,
-                            proc);
+
+    service = rx_NewService(0, serviceId, serviceName, classes, numClasses,
+			    proc);
     if (service == NULL) {
         fprintf(stderr, "Server: Unable to start to test service\n");
         return -1;
     }
 
-    rx_StartServer(1);
-
-    return 0; /* Not reached, we donated ourselves to StartServer */
+    return 0;
 }
+
+/**
+ * Run the specified function in a forked process.
+ *
+ * When this function is called, we fork, and run proc() in the child process.
+ * When proc() returns success, we signal to the parent process that it has
+ * finished, and then this function returns. The child process does not exit
+ * until the parent process dies; in the meantime, it stays in a
+ * rx_StartServer() loop.
+ *
+ * If proc() returns an error, the child process exits immediately, and the
+ * parent process bails.
+ */
+void
+afstest_ForkRxProc(int (*proc)(void *rock), void *rock)
+{
+    int start_fds[2];
+    int end_fds[2];
+    int code;
+    unsigned char byte;
+    ssize_t nbytes;
+    pid_t pid;
+    struct pollfd pfd;
+
+    memset(&pfd, 0, sizeof(pfd));
+
+    /*
+     * 'start_fds' are the pipe we use to read the "I am ready" message from
+     * the child process, so we can wait until the child is ready to serve
+     * requests, or it's done doing whatever it's going to do.
+     */
+    code = pipe(start_fds);
+    if (code < 0) {
+	sysbail("pipe");
+    }
+
+    /*
+     * 'end_fds' are the pipe the child pid uses to see if it can quit. The
+     * child process just tries to read from the pipe, and when the pipe is
+     * closed, the child process knows it can exit. In this process, we never
+     * write anything to it; we just let the pipe close when we exit. This way,
+     * the child should always exit after this process exits, even if we
+     * segfault or abort, etc.
+     */
+    code = pipe(end_fds);
+    if (code < 0) {
+	sysbail("pipe");
+    }
+
+    pid = fork();
+    if (pid < 0) {
+	sysbail("fork");
+    }
+    if (pid == 0) {
+	unsigned char nul = '\0';
+	pthread_t tid;
+
+	close(start_fds[0]);
+	close(end_fds[1]);
+
+	opr_Verify(pthread_create(&tid, NULL, exit_thread, &end_fds[0]) == 0);
+
+	code = (*proc)(rock);
+	if (code != 0) {
+	    exit(code);
+	}
+
+	if (write(start_fds[1], &nul, sizeof(nul)) != sizeof(nul)) {
+	    sysbail("write");
+	}
+
+	rx_StartServer(1);
+
+	exit(0);
+    }
+
+    close(start_fds[1]);
+    close(end_fds[0]);
+
+    /* Wait 5 seconds for the server pid to write something to the start_fds
+     * pipe. */
+    pfd.fd = start_fds[0];
+    pfd.events = POLLIN;
+    code = poll(&pfd, 1, 5000);
+    if (code < 0) {
+	sysbail("poll");
+    }
+    if (code == 0) {
+	bail("child pid (%d) failed to indicate readiness in 5 seconds",
+	     (int)pid);
+    }
+
+    nbytes = read(start_fds[0], &byte, sizeof(byte));
+    if (nbytes != sizeof(byte)) {
+	sysbail("read");
+    }
+
+    if (byte != 0) {
+	bail("bad byte from child: %d", (int)byte);
+    }
+
+    /* end_fds[1] will be closed when we eventually exit */
+}
+

@@ -106,8 +106,9 @@ struct rx_call;
 extern int afstest_StartServer(struct afstest_server_type *server,
 			       char *dirname, pid_t *serverPid);
 extern int afstest_StopServer(pid_t serverPid);
-extern int afstest_StartTestRPCService(const char *, pid_t, u_short, u_short,
+extern int afstest_StartTestRPCService(const char *, char *, u_short, u_short,
 				       afs_int32 (*proc)(struct rx_call *));
+extern void afstest_ForkRxProc(int (*proc)(void *rock), void *rock);
 
 /* ubik.c */
 struct ubik_client;
