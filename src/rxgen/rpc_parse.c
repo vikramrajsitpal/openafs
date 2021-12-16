@@ -1841,12 +1841,31 @@ static int
 opcode_holes_exist(void)
 {
     int i;
+    rxgen_list *listp;
+    definition *defp;
+    int last_opcode = -1;
 
     for (i = lowest_opcode[PackageIndex]; i < highest_opcode[PackageIndex];
 	 i++) {
 	if (!opcodenum_is_defined(i))
 	    return 1;
     }
+
+    /*
+     * Also check if our opcodes are defined "in order". rxgen currently
+     * assumes that if we have no holes, that lower-numbered opcodes are also
+     * defined before higher-number opcodes; if this isn't true, then the
+     * "no-holes" code paths do not work properly. To work around this, pretend
+     * we have opcode holes if the opcodes are not defined in order.
+     */
+    for (listp = proc_defined[PackageIndex]; listp != NULL;
+	 listp = listp->next) {
+	defp = (definition *) listp->val;
+	if (defp->pc.proc_opcodenum <= last_opcode)
+	    return 1;
+	last_opcode = defp->pc.proc_opcodenum;
+    }
+
     return 0;
 }
 
