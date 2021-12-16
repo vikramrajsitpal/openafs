@@ -1978,6 +1978,11 @@ er_ProcMainBody_setup(void)
 	f_print(fout, "\treturn NULL;/*%d %s*/\n}\n",
 		PackageIndex, PackagePrefix[PackageIndex]);
 
+	f_print(fout, "\nint %sOpCodeIndex(int op)\n{\n", PackagePrefix[PackageIndex]);
+	f_print(fout, "\tif (op < %sLOWEST_OPCODE || op > %sHIGHEST_OPCODE)\n\t\treturn -1;\n",
+		PackagePrefix[PackageIndex], PackagePrefix[PackageIndex]);
+	f_print(fout, "\treturn op - %sLOWEST_OPCODE;\n}\n",
+		PackagePrefix[PackageIndex]);
 	return;
     }
     f_print(fout, "int %s%sExecuteRequest(struct rx_call *z_call)\n",
@@ -2133,6 +2138,8 @@ h_ProcMainBody_setup(void)
     f_print(fout,"\nextern int %s%sExecuteRequest(struct rx_call *);\n",
 	    prefix, PackagePrefix[PackageIndex]);
     f_print(fout,"extern char * %s%sTranslateOpCode(int op);\n", prefix,
+	    PackagePrefix[PackageIndex]);
+    f_print(fout,"\nextern int %sOpCodeIndex(int op);\n",
 	    PackagePrefix[PackageIndex]);
 }
 
