@@ -635,7 +635,6 @@ rxi_WriteProc(struct rx_call *call, char *buf,
 		 * there will be others. PrepareSendPacket may
 		 * alter the packet length by up to
 		 * conn->securityMaxTrailerSize */
-		call->app.bytesSent += call->app.currentPacket->length;
 		rxi_PrepareSendPacket(call, call->app.currentPacket, 0);
                 /* PrepareSendPacket drops the call lock */
                 rxi_WaitforTQBusy(call);
@@ -768,12 +767,14 @@ rxi_WriteProc(struct rx_call *call, char *buf,
 
 	/* might be out of space now */
 	if (!nbytes) {
+	    call->app.bytesSent += requestCount;
 	    return requestCount;
 	} else {
 	    /* more data to send, so get another packet and keep going */
 	}
     } while (nbytes);
 
+    call->app.bytesSent += requestCount - nbytes;
     return requestCount - nbytes;
 }
 
@@ -807,6 +808,7 @@ rx_WriteProc(struct rx_call *call, char *buf, int nbytes)
 	call->app.curpos = tcurpos + nbytes;
 	call->app.curlen = (u_short)(tcurlen - nbytes);
 	call->app.nFree = (u_short)(tnFree - nbytes);
+	call->app.bytesSent += nbytes;
 	return nbytes;
     }
 
@@ -851,6 +853,7 @@ rx_WriteProc32(struct rx_call *call, afs_int32 * value)
 	call->app.curpos = tcurpos + sizeof(afs_int32);
 	call->app.curlen = (u_short)(tcurlen - sizeof(afs_int32));
 	call->app.nFree = (u_short)(tnFree - sizeof(afs_int32));
+	call->app.bytesSent += sizeof(afs_int32);
 	return sizeof(afs_int32);
     }
 
@@ -1069,7 +1072,6 @@ rxi_WritevProc(struct rx_call *call, struct iovec *iov, int nio, int nbytes)
 	     * there will be others. PrepareSendPacket may
 	     * alter the packet length by up to
 	     * conn->securityMaxTrailerSize */
-	    call->app.bytesSent += call->app.currentPacket->length;
 	    rxi_PrepareSendPacket(call, call->app.currentPacket, 0);
             /* PrepareSendPacket drops the call lock */
             rxi_WaitforTQBusy(call);
@@ -1202,6 +1204,7 @@ rxi_WritevProc(struct rx_call *call, struct iovec *iov, int nio, int nbytes)
     }
     MUTEX_EXIT(&call->lock);
 
+    call->app.bytesSent += requestCount - nbytes;
     return requestCount - nbytes;
 }
 
@@ -1288,7 +1291,6 @@ FlushWrite(struct rx_call *call, int locked)
 	}
 
 	/* The 1 specifies that this is the last packet */
-	call->app.bytesSent += cp->length;
 	rxi_PrepareSendPacket(call, cp, 1);
         /* PrepareSendPacket drops the call lock */
         rxi_WaitforTQBusy(call);

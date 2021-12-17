@@ -218,9 +218,7 @@ test_stats(int client)
 	bytes_sent = 12;
 	bytes_rcvd = 4;
     } else {
-	/* XXX: should be 4, but there's a known bug where server-side sent
-	 * bytes are not recorded properly. */
-	bytes_sent = 0;
+	bytes_sent = 4;
 	bytes_rcvd = 12;
     }
     is_int(bytes_sent, entry->bytes_sent, "%s Sum bytes_sent", descr);
@@ -241,9 +239,7 @@ test_stats(int client)
 	bytes_sent = 20;
 	bytes_rcvd = 12;
     } else {
-	/* XXX: should be 12, but there's a known bug where server-side sent
-	 * bytes are not recorded properly. */
-	bytes_sent = 0;
+	bytes_sent = 12;
 	bytes_rcvd = 20;
     }
     is_int(bytes_sent, entry->bytes_sent, "%s Concat bytes_sent", descr);
@@ -264,9 +260,7 @@ test_stats(int client)
 	bytes_sent = 24;
 	bytes_rcvd = 20;
     } else {
-	/* XXX: should be 20, but there's a known bug where server-side sent
-	 * bytes are not recorded properly. */
-	bytes_sent = 0;
+	bytes_sent = 20;
 	bytes_rcvd = 24;
     }
     is_int(bytes_sent, entry->bytes_sent, "%s Echo bytes_sent", descr);
