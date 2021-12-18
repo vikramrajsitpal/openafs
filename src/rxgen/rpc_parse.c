@@ -781,6 +781,8 @@ check_proc(definition * defp, token * tokp, int noname)
     } else {
 	generate_code(defp, proc_split, 0);
     }
+    if (Sflag || (cflag && xflag) || hflag)
+	STOREVAL(&proc_defined[PackageIndex], defp);
 
     if (function_list_index >= MAX_FUNCTIONS_PER_INTERFACE) {
 	error("too many functions in interface, "
@@ -880,8 +882,6 @@ generate_code(definition * defp, int proc_split_flag, int multi_flag)
 	if (Sflag || cflag)
 	    ss_Proc_CodeGeneration(defp);
     }
-    if (Sflag || (cflag && xflag && !proc_split_flag) || hflag)
-	STOREVAL(&proc_defined[PackageIndex], defp);
 }
 
 
