@@ -51,11 +51,11 @@ void ridb_close(struct db_handle** hdl);
 
 int ridb_purge_db(char* dir_path);
 
-int ridb_get(struct AFSFid* key, char** value);
+int ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** value);
 
-int ridb_set(struct AFSFid* key, char* value);
+int ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value);
 
-int ridb_del(struct AFSFid* key, char** del_value);
+int ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key, char** del_value);
 
 
 
