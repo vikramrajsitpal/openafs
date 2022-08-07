@@ -37,7 +37,6 @@ RIDB_BAD_KEY,
 RIDB_BAD_VAL,
 RIDB_BAD_HDL,
 RIDB_BAD_PATH,
-RIDB_BAD_OPTS,
 RIDB_ALREADY_OPEN
 };
 
@@ -53,9 +52,10 @@ int ridb_purge_db(char* dir_path);
 
 int ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** value);
 
-int ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value);
+int ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value,
+             size_t val_len);
 
-int ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key, char** del_value);
+int ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key);
 
 
 
