@@ -66,7 +66,7 @@ ridb_open(const char* dir_path, struct okv_dbhandle** hdl) {
 }
 
 void
-ridb_close(struct db_handle** hdl) {
+ridb_close(struct okv_dbhandle** hdl) {
     okv_close(hdl);
 }
 

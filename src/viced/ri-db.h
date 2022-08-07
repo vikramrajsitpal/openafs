@@ -46,7 +46,7 @@ int ridb_create(const char *dir_path, struct okv_dbhandle** hdl);
 
 int ridb_open(const char *dir_path, struct okv_dbhandle** hdl);
 
-void ridb_close(struct db_handle** hdl);
+void ridb_close(struct okv_dbhandle** hdl);
 
 int ridb_purge_db(char* dir_path);
 
