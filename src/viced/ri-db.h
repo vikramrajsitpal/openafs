@@ -29,16 +29,6 @@
 
 struct okv_dbhandle;
 
-/* ERROR CODES - FOR INTERNAL PURPOSES ONLY */
-
-enum ridb_status_code {
-RIDB_SUCCESS = 0,    
-RIDB_BAD_KEY,
-RIDB_BAD_VAL,
-RIDB_BAD_HDL,
-RIDB_BAD_PATH,
-RIDB_ALREADY_OPEN
-};
 
 /* PROTOTYPES */
 
@@ -52,8 +42,7 @@ int ridb_purge_db(char* dir_path);
 
 int ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** value);
 
-int ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value,
-             size_t val_len);
+int ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value);
 
 int ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key);
 

@@ -206,8 +206,8 @@ static afs_int32 StoreData_RXStyle(Volume * volptr, Vnode * targetptr,
 				   afs_sfsize_t * a_bytesStoredP);
 
 static int _ri_afs_dir_Create(dir_file_t dir, char *entry,
-                              struct AFSFid *OutFid);
-static int _ri_afs_dir_Delete (dir_file_t dir, char *entry);
+                              struct AFSFid *OutFid, Volume *volptr);
+static int _ri_afs_dir_Delete (dir_file_t dir, char *entry, Volume *volptr);
 
 #ifdef AFS_SGI_XFS_IOPS_ENV
 #include <afs/xfsattrs.h>
@@ -1469,37 +1469,38 @@ CopyOnWrite(Vnode * targetptr, Volume * volptr, afs_foff_t off, afs_fsize_t len)
  * WRAPPERS FOR afs_dir_Create and afs_dir_Delete with reverse index code
  */
 static int
-_ri_afs_dir_Create(dir_file_t dir, char *entry, struct AFSFid *Fid)
+_ri_afs_dir_Create(dir_file_t dir, char *entry, struct AFSFid *Fid, 
+                   Volume *volptr)
 {
-    int errno_cur;
+
     int ret;
     
-    errno_cur = errno;
+
     ret = afs_dir_Create(dir, entry, Fid);
 
     if (ret == 0)
         ViceLog(0,
 		("afs_dir_Create: Added entry: %s | FID (Volume: Vnode: Vunique): %d:%d:%d | Parent Dir FID (Vol:Vnode:Vunique): %d:%d:%d\n", entry, Fid->Volume, Fid->Vnode, Fid->Unique, dir->dirh_vid, dir->dirh_vnode, dir->dirh_unique));
 
-    errno = errno_cur;
+
     return ret;
 }
 
 
 static int
-_ri_afs_dir_Delete(dir_file_t dir, char *entry)
+_ri_afs_dir_Delete(dir_file_t dir, char *entry, Volume *volptr)
 {
-    int errno_cur;
+
     int ret;
     
-    errno_cur = errno;
+
     ret = afs_dir_Delete(dir, entry);
 
     if (ret == 0)
         ViceLog(0,
 		("afs_dir_Delete: Deleted entry: %s | Parent Dir FID (Vol:Vnode:Vunique): %d:%d:%d\n", entry, dir->dirh_vid, dir->dirh_vnode, dir->dirh_unique));
     
-    errno = errno_cur;
+
     return ret;
 
 }
@@ -1621,7 +1622,7 @@ DeleteTarget(Vnode * parentptr, Volume * volptr, Vnode ** targetptr,
 
     (*targetptr)->changed_newTime = 1;	/* Status change of deleted file/dir */
 
-    code = _ri_afs_dir_Delete(dir, Name);
+    code = _ri_afs_dir_Delete(dir, Name, volptr);
     if (code) {
 	ViceLog(0,
 		("Error %d deleting %s\n", code,
@@ -2001,7 +2002,7 @@ Alloc_NewVnode(Vnode * parentptr, DirHandle * dir, Volume * volptr,
 
     /* add the name to the directory */
     SetDirHandle(dir, parentptr);
-    if ((errorCode = _ri_afs_dir_Create(dir, Name, OutFid))) {
+    if ((errorCode = _ri_afs_dir_Create(dir, Name, OutFid, volptr))) {
 	(*targetptr)->delete = 1;
 	VAdjustDiskUsage(&temp, volptr, -BlocksPreallocatedForVnode, 0);
 	IH_REALLYCLOSE((*targetptr)->handle);
@@ -3959,7 +3960,7 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
     doDelete = 0;
     if (newfileptr) {
 	/* Delete NewName from its directory */
-	code = _ri_afs_dir_Delete(&newdir, NewName);
+	code = _ri_afs_dir_Delete(&newdir, NewName, volptr);
 	opr_Assert(code == 0);
 
 	/* Drop the link count */
@@ -4003,11 +4004,11 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
      * highly unlikely that it would work since it would involve issuing
      * another create.
      */
-    if ((errorCode = _ri_afs_dir_Create(&newdir, NewName, &fileFid)))
+    if ((errorCode = _ri_afs_dir_Create(&newdir, NewName, &fileFid, volptr)))
 	goto Bad_Rename;
 
     /* Delete the old name */
-    opr_Assert(_ri_afs_dir_Delete(&olddir, OldName) == 0);
+    opr_Assert(_ri_afs_dir_Delete(&olddir, OldName, volptr) == 0);
 
     /* if the directory length changes, reflect it in the statistics */
     Update_ParentVnodeStatus(oldvptr, volptr, &olddir, client->z.ViceId,
@@ -4031,8 +4032,8 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
 	fileptr->changed_newTime = 1;	/* status change of moved file */
 
 	/* fix .. to point to the correct place */
-	_ri_afs_dir_Delete(&filedir, "..");	/* No assert--some directories may be bad */
-	opr_Assert(_ri_afs_dir_Create(&filedir, "..", NewDirFid) == 0);
+	_ri_afs_dir_Delete(&filedir, "..", volptr);	/* No assert--some directories may be bad */
+	opr_Assert(_ri_afs_dir_Create(&filedir, "..", NewDirFid, volptr) == 0);
 	fileptr->disk.dataVersion++;
 
 	/* if the parent directories are different the link counts have to be   */
@@ -4418,7 +4419,7 @@ SAFSS_Link(struct rx_call *acall, struct AFSFid *DirFid, char *Name,
 
     /* add the name to the directory */
     SetDirHandle(&dir, parentptr);
-    if ((errorCode = _ri_afs_dir_Create(&dir, Name, ExistingFid)))
+    if ((errorCode = _ri_afs_dir_Create(&dir, Name, ExistingFid, volptr)))
 	goto Bad_Link;
     DFlush();
 
