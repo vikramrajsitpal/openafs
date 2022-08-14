@@ -27,6 +27,8 @@
 #include <ctype.h>
 #include <stddef.h>
 
+#include <libgen.h>
+
 #ifdef HAVE_SYS_FILE_H
 #include <sys/file.h>
 #endif
@@ -109,6 +111,7 @@
 #include "common.h"
 #include "vutils.h"
 #include <afs/dir.h>
+#include "viced/ri-db.h"
 
 #ifdef AFS_PTHREAD_ENV
 pthread_mutex_t vol_glock_mutex;
@@ -3128,6 +3131,93 @@ attach_check_vop(Error *ec, VolumeId volid, struct DiskPartition64 *partp,
 }
 #endif /* AFS_DEMAND_ATTACH_FS */
 
+
+/*
+ * Create reverse-index database: 1 for each volume.
+ * Dir is always the parent directory for "V_linkHandle(vp)"
+ * Name of the RIDB directory is "ridb_<VolID>.db"
+ * 
+ * This function creates a database if it does not exist.
+ * Then it opens it and adds the handle to vp->ridb_hdl.
+ * 
+ * Otherwise, it just opens up the database.
+ * 
+ * @param[in] vp       volume object;
+ */
+
+int
+OpenRIDatabase (Volume *vp) {
+
+	int code = 0;
+	namei_t name;
+	char *basedir;
+	int retry = 0;
+	char dbdir[AFSPATHMAX] = {0};
+
+	if (vp->ridb_hdl != NULL) {
+	Log("OpenRIDatabase: RIDB handle in Volume ptr is not NULL\n");
+	return EIO;
+	}
+
+	/* Get the directory path to create RIDB */
+	if (!V_linkHandle(vp)) {
+	Log("OpenRIDatabase: Link handle in Volume ptr is NULL\n");
+	return EIO;
+	}
+	
+	namei_HandleToName(&name, V_linkHandle(vp));
+
+	basedir = dirname((char *)name.n_path);
+
+	/* Expected basedir is neither "." NOR "/" */
+	if (basedir[0] == '.' || basedir[0] == '/') {
+	Log("OpenRIDatabase: Wrong base directory: '%s'\n", basedir);
+	return EIO;
+	}
+	
+	snprintf(dbdir, AFSPATHMAX, "%s/ridb_%u.db", basedir, V_id(vp));
+
+	ridb_retry:
+	code = ridb_create(dbdir, &(vp->ridb_hdl));
+
+	if (!retry && code == EEXIST) {
+	/* EEXIST - need to open since the dir exists, so ignore that error */
+	code = ridb_open(dbdir, &(vp->ridb_hdl));
+
+	if (code) {
+	Log("OpenRIDatabase: Incorrect base directory format: '%s'\n", dbdir);
+	ridb_purge_db(dbdir);
+	
+	/* Since the dir format is not as expected, delete the DB dir and retry 
+	 * creation only ONE more time.
+	 */
+	if (!retry) {
+	++retry;
+	goto ridb_retry;
+	}
+	}
+	}
+	return code;
+	
+}
+
+
+/*
+ * Close the reverse-index database in the volume.
+ * @param[in] vp       volume object;
+ */
+
+void CloseRIDatabase (Volume *vp) {
+
+	if (NULL == vp->ridb_hdl) {
+	Log("CloseRIDatabase: RIDB handle in Volume ptr is NULL\n");
+	}
+
+	ridb_close(&(vp->ridb_hdl));
+	return 0;
+}
+
+
 /**
  * volume attachment helper function.
  *
@@ -3487,7 +3577,14 @@ attach2(Error * ec, VolumeId volumeId, char *path, struct DiskPartition64 *partp
 	(V_inUse(vp) == fileServer)) {
 	AddVolumeToVByPList_r(vp);
 	VLRU_Add_r(vp);
+
+	/* open reverse-index database here */
+	if (OpenRIDatabase(vp)) {
+	VChangeState_r(vp, VOL_STATE_UNATTACHED);
+	}
+	else {
 	VChangeState_r(vp, VOL_STATE_ATTACHED);
+	}
     } else {
 	VChangeState_r(vp, VOL_STATE_UNATTACHED);
     }
@@ -4769,8 +4866,10 @@ VCloseVolumeHandles_r(Volume * vp)
     VOL_UNLOCK;
 #endif
 
+
     /* Too time consuming and unnecessary for the volserver */
     if (programType == fileServer) {
+	CloseRIDatabase(vp);
 	IH_CONDSYNC(vp->vnodeIndex[vLarge].handle);
 	IH_CONDSYNC(vp->vnodeIndex[vSmall].handle);
 	IH_CONDSYNC(vp->diskDataHandle);
@@ -4821,9 +4920,10 @@ VReleaseVolumeHandles_r(Volume * vp)
 #ifdef AFS_DEMAND_ATTACH_FS
     VOL_UNLOCK;
 #endif
-
+	
     /* Too time consuming and unnecessary for the volserver */
     if (programType == fileServer) {
+	CloseRIDatabase(vp);
 	IH_CONDSYNC(vp->vnodeIndex[vLarge].handle);
 	IH_CONDSYNC(vp->vnodeIndex[vSmall].handle);
 	IH_CONDSYNC(vp->diskDataHandle);

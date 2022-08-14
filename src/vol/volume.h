@@ -28,6 +28,8 @@ typedef bit32 FileOffset;	/* Offset in this file */
 #define Date afs_uint32
 #include "daemon_com.h"
 #include "fssync.h"
+/* for Reverse Index */
+#include "okv.h"
 
 /** turn on VOL_LOCK_DEBUG if you suspect a volume package locking bug */
 
@@ -663,6 +665,7 @@ typedef struct Volume {
     bit32 cacheCheck;		/* Online sequence number to be used to invalidate vnode cache entries
 				 * that stayed around while a volume was offline */
     short nUsers;		/* Number of users of this volume header */
+    struct okv_dbhandle* ridb_hdl; /* Reverse-index database handle */
 #define VOL_PUTBACK 1
 #define VOL_PUTBACK_DELETE 2
     byte needsPutBack;		/* For a volume utility, this flag is set to VOL_PUTBACK if we

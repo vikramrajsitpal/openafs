@@ -103,6 +103,7 @@
 #include <afs/audit.h>
 #include <afs/afsutil.h>
 #include <afs/dir.h>
+#include "ri-db.h"
 
 extern void SetDirHandle(DirHandle * dir, Vnode * vnode);
 extern void FidZap(DirHandle * file);
@@ -1474,13 +1475,19 @@ _ri_afs_dir_Create(dir_file_t dir, char *entry, struct AFSFid *Fid,
 {
 
     int ret;
-    
-
     ret = afs_dir_Create(dir, entry, Fid);
 
-    if (ret == 0)
-        ViceLog(0,
-		("afs_dir_Create: Added entry: %s | FID (Volume: Vnode: Vunique): %d:%d:%d | Parent Dir FID (Vol:Vnode:Vunique): %d:%d:%d\n", entry, Fid->Volume, Fid->Vnode, Fid->Unique, dir->dirh_vid, dir->dirh_vnode, dir->dirh_unique));
+    if (ret == 0) {
+
+    ret = ridb_set()
+    ViceLog(0,
+    ("afs_dir_Create: Added entry: %s | FID (Volume: Vnode: Vunique):" 
+    "%d:%d:%d | Parent Dir FID (Vol:Vnode:Vunique): %d:%d:%d\n", entry, 
+    Fid->Volume, Fid->Vnode, Fid->Unique, dir->dirh_vid, dir->dirh_vnode, 
+    dir->dirh_unique));
+
+
+    }
 
 
     return ret;
