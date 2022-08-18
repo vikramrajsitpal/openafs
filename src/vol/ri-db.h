@@ -25,16 +25,15 @@
 #ifndef AFS_SRC_VICED_RIDB_H
 #define AFS_SRC_VICED_RIDB_H
 
-#include <afs/afsint.h>
-
 struct okv_dbhandle;
+struct AFSFid;
 
 
 /* PROTOTYPES */
 
-int ridb_create(const char *dir_path, struct okv_dbhandle** hdl);
+int ridb_create(char *dir_path, struct okv_dbhandle** hdl);
 
-int ridb_open(const char *dir_path, struct okv_dbhandle** hdl);
+int ridb_open(char *dir_path, struct okv_dbhandle** hdl);
 
 void ridb_close(struct okv_dbhandle** hdl);
 

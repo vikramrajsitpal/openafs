@@ -31,10 +31,10 @@ SALVAGEROBJS=salvager.o s_vol-salvage.o s_physio.o
 DIROBJS=buffer.o dir.o salvage.o
 SDIROBJS=s_buffer.o s_dir.o s_salvage.o
 
-VLIBOBJS=volume.o vnode.o vutil.o partition.o fssync-client.o \
+VLIBOBJS=volume.o ri-db.o vnode.o vutil.o partition.o fssync-client.o \
 	 clone.o nuke.o devname.o listinodes.o ihandle.o \
 	 namei_ops.o salvsync-server.o salvsync-client.o daemon_com.o
-SVLIBOBJS=s_volume.o s_vnode.o s_vutil.o s_partition.o s_fssync-client.o \
+SVLIBOBJS=s_volume.o ri-db.o s_vnode.o s_vutil.o s_partition.o s_fssync-client.o \
 	 s_clone.o s_nuke.o s_devname.o s_listinodes.o s_ihandle.o \
 	 s_namei_ops.o s_salvsync-server.o s_salvsync-client.o s_daemon_com.o
 
@@ -49,6 +49,7 @@ LIBS=   \
 	$(top_builddir)/src/sys/liboafs_sys.la \
 	$(top_builddir)/src/rx/liboafs_rx.la \
 	$(top_builddir)/src/util/liboafs_util.la \
+	$(top_builddir)/src/okv/liboafs_okv.la \
 	$(top_builddir)/src/cmd/liboafs_cmd.la \
 	$(top_builddir)/src/lwp/liboafs_lwpcompat.la \
 	$(top_builddir)/src/opr/liboafs_opr.la
@@ -122,6 +123,9 @@ vnode.o: ${VOL}/vnode.c
 
 volume.o: ${VOL}/volume.c
 	$(AFS_CCRULE) $(VOL)/volume.c
+
+ri-db.o: ${VOL}/ri-db.c
+	$(AFS_CCRULE) $(VOL)/ri-db.c
 
 vutil.o: ${VOL}/vutil.c
 	$(AFS_CCRULE) $(VOL)/vutil.c

@@ -1473,11 +1473,11 @@ CopyOnWrite(Vnode * targetptr, Volume * volptr, afs_foff_t off, afs_fsize_t len)
  */
 static int
 _ri_afs_dir_Create(dir_file_t dir, char *entry, struct AFSFid *Fid, 
-                   Volume *volptr)
+                   Volume *vp)
 {
 
     int ret;
-    opr_Assert(volptr);
+    opr_Assert(vp);
 
     ret = afs_dir_Create(dir, entry, Fid);
 
@@ -1485,6 +1485,7 @@ _ri_afs_dir_Create(dir_file_t dir, char *entry, struct AFSFid *Fid,
     goto done;
     }
 
+#ifdef AFS_DEMAND_ATTACH_FS
     if (ret == 0) {
     opr_Assert(V_ridbHandle(vp));
     /* Maybe change entry size and remove NULL char? */
@@ -1495,6 +1496,7 @@ _ri_afs_dir_Create(dir_file_t dir, char *entry, struct AFSFid *Fid,
     Fid->Volume, Fid->Vnode, Fid->Unique, dir->dirh_vid, dir->dirh_vnode, 
     dir->dirh_unique));
     }
+#endif
 
     done:
     return ret;
@@ -1503,26 +1505,28 @@ _ri_afs_dir_Create(dir_file_t dir, char *entry, struct AFSFid *Fid,
 
 static int
 _ri_afs_dir_Delete(dir_file_t dir, char *entry, struct AFSFid *delFid, 
-                   Volume *volptr)
+                   Volume *vp)
 {
 
     int ret;
-    opr_Assert(volptr);
+    opr_Assert(vp);
     ret = afs_dir_Delete(dir, entry);
-    
+
     if (!strcmp(entry, ".") || !strcmp(entry, "..") || !delFid) {
     goto done;
     }
 
+#ifdef AFS_DEMAND_ATTACH_FS
     if (ret == 0) {
     opr_Assert(V_ridbHandle(vp));
     opr_Assert(delFid);
     /* Maybe change entry size and remove NULL char? */
-    ret = ridb_del(V_ridbHandle(vp), Fid);
+    ret = ridb_del(V_ridbHandle(vp), delFid);
     ViceLog(0,
 		("afs_dir_Delete: Deleted entry: %s | Parent Dir FID (Vol:Vnode:Vunique): %d:%d:%d\n", entry, dir->dirh_vid, dir->dirh_vnode, dir->dirh_unique));
     
     }
+#endif
 
     done:
     return ret;

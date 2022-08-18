@@ -3129,7 +3129,6 @@ attach_check_vop(Error *ec, VolumeId volid, struct DiskPartition64 *partp,
 	VOL_UNLOCK;
     }
 }
-#endif /* AFS_DEMAND_ATTACH_FS */
 
 
 /*
@@ -3211,6 +3210,7 @@ void CloseRIDatabase (Volume *vp) {
 
 	ridb_close(&(V_ridbHandle(vp)));
 }
+#endif /* AFS_DEMAND_ATTACH_FS */
 
 
 /**
@@ -4864,7 +4864,9 @@ VCloseVolumeHandles_r(Volume * vp)
 
     /* Too time consuming and unnecessary for the volserver */
     if (programType == fileServer) {
+#ifdef AFS_DEMAND_ATTACH_FS
 	CloseRIDatabase(vp);
+#endif
 	IH_CONDSYNC(vp->vnodeIndex[vLarge].handle);
 	IH_CONDSYNC(vp->vnodeIndex[vSmall].handle);
 	IH_CONDSYNC(vp->diskDataHandle);
@@ -4918,7 +4920,9 @@ VReleaseVolumeHandles_r(Volume * vp)
 	
     /* Too time consuming and unnecessary for the volserver */
     if (programType == fileServer) {
+#ifdef AFS_DEMAND_ATTACH_FS
 	CloseRIDatabase(vp);
+#endif
 	IH_CONDSYNC(vp->vnodeIndex[vLarge].handle);
 	IH_CONDSYNC(vp->vnodeIndex[vSmall].handle);
 	IH_CONDSYNC(vp->diskDataHandle);

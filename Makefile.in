@@ -269,7 +269,7 @@ libacl: cmd comerr ptserver libacl_depinstall
 dir: cmd comerr libacl dir_depinstall
 	+${COMPILE_PART1} dir ${COMPILE_PART2}
 
-vol: cmd comerr dir afs $(DIR_roken)
+vol: cmd comerr dir afs okv $(DIR_roken)
 	+${COMPILE_PART1} vol ${COMPILE_PART2}
 
 tsalvaged: vol libafsrpc libafsauthent cmd util

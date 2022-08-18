@@ -54,6 +54,7 @@ all: gi \
 	${TOP_INCDIR}/afs/daemon_com.h \
 	${TOP_INCDIR}/afs/ihandle.h \
 	${TOP_INCDIR}/afs/namei_ops.h \
+	${TOP_INCDIR}/afs/ri-db.h \
 	${TOP_INCDIR}/afs/vol_prototypes.h
 
 ${TOP_LIBDIR}/vlib.a: vlib.a
@@ -108,6 +109,9 @@ ${TOP_INCDIR}/afs/vol-salvage.h: vol-salvage.h
 	${INSTALL_DATA} $? $@
 
 ${TOP_INCDIR}/afs/vol_prototypes.h: vol_prototypes.h
+	${INSTALL_DATA} $? $@
+
+${TOP_INCDIR}/afs/ri-db.h: ri-db.h
 	${INSTALL_DATA} $? $@
 
 #

@@ -26,8 +26,9 @@
 #include <afs/param.h>
 #include <afs/afsutil.h>
 
-#include "okv/okv.h"
+#include "afs/okv.h"
 #include "ri-db.h"
+#include <afs/afsint.h>
 
 
 #define RIDB_log(str) ViceLog(0,str)
@@ -39,10 +40,12 @@ struct ridb_key {
 	afs_uint32 Unique;
 };
 
+#if 0
 static int
 ridb_get_vol_rel_path(struct AFSFid* key, char** path) {
 
 }
+#endif
 
 static void user_to_ridb_key(struct AFSFid *user_key, struct ridb_key * key) {
 
@@ -51,8 +54,7 @@ static void user_to_ridb_key(struct AFSFid *user_key, struct ridb_key * key) {
 }
 
 int
-ridb_create(const char* dir_path, struct okv_dbhandle** hdl) {
-    
+ridb_create(char* dir_path, struct okv_dbhandle** hdl) {
     int retcode = 0;
     struct okv_create_opts c_opts;
 
@@ -72,7 +74,7 @@ ridb_create(const char* dir_path, struct okv_dbhandle** hdl) {
 }
 
 int
-ridb_open(const char* dir_path, struct okv_dbhandle** hdl) {
+ridb_open(char* dir_path, struct okv_dbhandle** hdl) {
     int retcode = 0;
     opr_Assert(dir_path != NULL);
 
@@ -137,7 +139,7 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** value) {
 
     if (!hdl) {
     RIDB_log(("ridb_get: NULL Handle\n"));
-    return;
+    return EIO;
     }
     if (!key) {
     RIDB_log(("ridb_get: NULL key\n"));
@@ -214,13 +216,12 @@ ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value){
     struct okv_trans *txn = NULL;
     int code;
     struct rx_opaque dbkey, dbval;
-    char *path = NULL;
     struct ridb_key rik;
     size_t val_len = 0;
 
     if (!hdl) {
     RIDB_log(("ridb_set: NULL Handle\n"));
-    return;
+    return EIO;
     }
     if (!key) {
     RIDB_log(("ridb_set: NULL key\n"));
@@ -300,12 +301,11 @@ ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key) {
     struct okv_trans *txn = NULL;
     int code;
     struct rx_opaque dbkey;
-    char *path = NULL;
     struct ridb_key rik;
 
     if (!hdl) {
     RIDB_log(("ridb_del: NULL Handle\n"));
-    return;
+    return EIO;
     }
     if (!key) {
     RIDB_log(("ridb_del: NULL key\n"));
