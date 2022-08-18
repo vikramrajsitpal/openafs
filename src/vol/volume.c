@@ -3210,7 +3210,6 @@ void CloseRIDatabase (Volume *vp) {
 	}
 
 	ridb_close(&(V_ridbHandle(vp)));
-	return 0;
 }
 
 
