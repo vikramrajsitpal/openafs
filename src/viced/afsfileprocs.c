@@ -103,7 +103,6 @@
 #include <afs/audit.h>
 #include <afs/afsutil.h>
 #include <afs/dir.h>
-#include "vol/ri-db.h"
 
 extern void SetDirHandle(DirHandle * dir, Vnode * vnode);
 extern void FidZap(DirHandle * file);

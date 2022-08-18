@@ -111,7 +111,7 @@
 #include "common.h"
 #include "vutils.h"
 #include <afs/dir.h>
-#include "ri-db.h"
+
 
 #ifdef AFS_PTHREAD_ENV
 pthread_mutex_t vol_glock_mutex;
