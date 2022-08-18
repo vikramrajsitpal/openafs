@@ -111,7 +111,7 @@
 #include "common.h"
 #include "vutils.h"
 #include <afs/dir.h>
-#include "viced/ri-db.h"
+#include "ri-db.h"
 
 #ifdef AFS_PTHREAD_ENV
 pthread_mutex_t vol_glock_mutex;
@@ -3138,7 +3138,7 @@ attach_check_vop(Error *ec, VolumeId volid, struct DiskPartition64 *partp,
  * Name of the RIDB directory is "ridb_<VolID>.db"
  * 
  * This function creates a database if it does not exist.
- * Then it opens it and adds the handle to vp->ridb_hdl.
+ * Then it opens it and adds the handle to V_ridbHandle(vp).
  * 
  * Otherwise, it just opens up the database.
  * 
@@ -3151,10 +3151,9 @@ OpenRIDatabase (Volume *vp) {
 	int code = 0;
 	namei_t name;
 	char *basedir;
-	int retry = 0;
 	char dbdir[AFSPATHMAX] = {0};
 
-	if (vp->ridb_hdl != NULL) {
+	if (V_ridbHandle(vp) != NULL) {
 	Log("OpenRIDatabase: RIDB handle in Volume ptr is not NULL\n");
 	return EIO;
 	}
@@ -3177,26 +3176,23 @@ OpenRIDatabase (Volume *vp) {
 	
 	snprintf(dbdir, AFSPATHMAX, "%s/ridb_%u.db", basedir, V_id(vp));
 
-	ridb_retry:
-	code = ridb_create(dbdir, &(vp->ridb_hdl));
-
-	if (!retry && code == EEXIST) {
-	/* EEXIST - need to open since the dir exists, so ignore that error */
-	code = ridb_open(dbdir, &(vp->ridb_hdl));
+	code = ridb_open(dbdir, &(V_ridbHandle(vp)));
+	
+	if ( code == ENOENT) {
+	/* ENOENT - need to create since the dir exists, so ignore that error */
+	code = ridb_create(dbdir, &(V_ridbHandle(vp)));
 
 	if (code) {
-	Log("OpenRIDatabase: Incorrect base directory format: '%s'\n", dbdir);
-	ridb_purge_db(dbdir);
-	
-	/* Since the dir format is not as expected, delete the DB dir and retry 
-	 * creation only ONE more time.
-	 */
-	if (!retry) {
-	++retry;
-	goto ridb_retry;
+	Log("OpenRIDatabase: Unable to create DB at '%s'\n", dbdir);
+	code = EIO;
 	}
 	}
+	else if (code) {
+	Log("OpenRIDatabase: Unable to open DB:"
+		"Incorrect base directory format: '%s'\n", dbdir);
+	code = EIO;
 	}
+
 	return code;
 	
 }
@@ -3209,11 +3205,11 @@ OpenRIDatabase (Volume *vp) {
 
 void CloseRIDatabase (Volume *vp) {
 
-	if (NULL == vp->ridb_hdl) {
+	if (NULL == V_ridbHandle(vp)) {
 	Log("CloseRIDatabase: RIDB handle in Volume ptr is NULL\n");
 	}
 
-	ridb_close(&(vp->ridb_hdl));
+	ridb_close(&(V_ridbHandle(vp)));
 	return 0;
 }
 

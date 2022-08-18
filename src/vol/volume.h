@@ -29,7 +29,7 @@ typedef bit32 FileOffset;	/* Offset in this file */
 #include "daemon_com.h"
 #include "fssync.h"
 /* for Reverse Index */
-#include "okv.h"
+#include "okv/okv.h"
 
 /** turn on VOL_LOCK_DEBUG if you suspect a volume package locking bug */
 
@@ -719,6 +719,7 @@ struct volHeader {
 #define V_nextVnodeUnique(vp)	((vp)->nextVnodeUnique)
 #define V_linkHandle(vp)	((vp)->linkHandle)
 #define V_checkoutMode(vp)      ((vp)->checkoutMode)
+#define V_ridbHandle(vp)        ((vp)->ridb_hdl)
 #ifdef AFS_DEMAND_ATTACH_FS
 #define V_attachState(vp)       ((vp)->attach_state)
 #define V_attachFlags(vp)       ((vp)->attach_flags)

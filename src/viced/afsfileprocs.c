@@ -103,7 +103,7 @@
 #include <afs/audit.h>
 #include <afs/afsutil.h>
 #include <afs/dir.h>
-#include "ri-db.h"
+#include "vol/ri-db.h"
 
 extern void SetDirHandle(DirHandle * dir, Vnode * vnode);
 extern void FidZap(DirHandle * file);
@@ -206,9 +206,12 @@ static afs_int32 StoreData_RXStyle(Volume * volptr, Vnode * targetptr,
 				   afs_sfsize_t * a_bytesToStoreP,
 				   afs_sfsize_t * a_bytesStoredP);
 
-static int _ri_afs_dir_Create(dir_file_t dir, char *entry,
+static int 
+_ri_afs_dir_Create(dir_file_t dir, char *entry,
                               struct AFSFid *OutFid, Volume *volptr);
-static int _ri_afs_dir_Delete (dir_file_t dir, char *entry, Volume *volptr);
+static int 
+_ri_afs_dir_Delete (dir_file_t dir, char *entry, struct AFSFid *delFid,
+                    Volume *volptr);
 
 #ifdef AFS_SGI_XFS_IOPS_ENV
 #include <afs/xfsattrs.h>
@@ -1475,39 +1478,54 @@ _ri_afs_dir_Create(dir_file_t dir, char *entry, struct AFSFid *Fid,
 {
 
     int ret;
+    opr_Assert(volptr);
+
     ret = afs_dir_Create(dir, entry, Fid);
 
-    if (ret == 0) {
+    if (!strcmp(entry, ".") || !strcmp(entry, "..")) {
+    goto done;
+    }
 
-    ret = ridb_set()
+    if (ret == 0) {
+    opr_Assert(V_ridbHandle(vp));
+    /* Maybe change entry size and remove NULL char? */
+    ret = ridb_set(V_ridbHandle(vp), Fid, entry);
     ViceLog(0,
     ("afs_dir_Create: Added entry: %s | FID (Volume: Vnode: Vunique):" 
     "%d:%d:%d | Parent Dir FID (Vol:Vnode:Vunique): %d:%d:%d\n", entry, 
     Fid->Volume, Fid->Vnode, Fid->Unique, dir->dirh_vid, dir->dirh_vnode, 
     dir->dirh_unique));
-
-
     }
 
-
+    done:
     return ret;
 }
 
 
 static int
-_ri_afs_dir_Delete(dir_file_t dir, char *entry, Volume *volptr)
+_ri_afs_dir_Delete(dir_file_t dir, char *entry, struct AFSFid *delFid, 
+                   Volume *volptr)
 {
 
     int ret;
-    
-
+    opr_Assert(volptr);
     ret = afs_dir_Delete(dir, entry);
+    
+    if (!strcmp(entry, ".") || !strcmp(entry, "..") || !delFid) {
+    goto done;
+    }
 
-    if (ret == 0)
-        ViceLog(0,
+    if (ret == 0) {
+    opr_Assert(V_ridbHandle(vp));
+    opr_Assert(delFid);
+    /* Maybe change entry size and remove NULL char? */
+    ret = ridb_del(V_ridbHandle(vp), Fid);
+    ViceLog(0,
 		("afs_dir_Delete: Deleted entry: %s | Parent Dir FID (Vol:Vnode:Vunique): %d:%d:%d\n", entry, dir->dirh_vid, dir->dirh_vnode, dir->dirh_unique));
     
+    }
 
+    done:
     return ret;
 
 }
@@ -1629,7 +1647,7 @@ DeleteTarget(Vnode * parentptr, Volume * volptr, Vnode ** targetptr,
 
     (*targetptr)->changed_newTime = 1;	/* Status change of deleted file/dir */
 
-    code = _ri_afs_dir_Delete(dir, Name, volptr);
+    code = _ri_afs_dir_Delete(dir, Name, fileFid, volptr);
     if (code) {
 	ViceLog(0,
 		("Error %d deleting %s\n", code,
@@ -3967,7 +3985,7 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
     doDelete = 0;
     if (newfileptr) {
 	/* Delete NewName from its directory */
-	code = _ri_afs_dir_Delete(&newdir, NewName, volptr);
+	code = _ri_afs_dir_Delete(&newdir, NewName, &newFileFid, volptr);
 	opr_Assert(code == 0);
 
 	/* Drop the link count */
@@ -4015,7 +4033,7 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
 	goto Bad_Rename;
 
     /* Delete the old name */
-    opr_Assert(_ri_afs_dir_Delete(&olddir, OldName, volptr) == 0);
+    opr_Assert(_ri_afs_dir_Delete(&olddir, OldName, NULL, volptr) == 0);
 
     /* if the directory length changes, reflect it in the statistics */
     Update_ParentVnodeStatus(oldvptr, volptr, &olddir, client->z.ViceId,
@@ -4039,7 +4057,8 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
 	fileptr->changed_newTime = 1;	/* status change of moved file */
 
 	/* fix .. to point to the correct place */
-	_ri_afs_dir_Delete(&filedir, "..", volptr);	/* No assert--some directories may be bad */
+	_ri_afs_dir_Delete(&filedir, "..", OldDirFid, volptr);	/* No assert--some 
+    directories may be bad */
 	opr_Assert(_ri_afs_dir_Create(&filedir, "..", NewDirFid, volptr) == 0);
 	fileptr->disk.dataVersion++;
 
