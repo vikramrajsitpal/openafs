@@ -38,6 +38,7 @@
 struct ridb_key {
     afs_uint32 Vnode;
 	afs_uint32 Unique;
+    char Name[AFSNAMEMAX];
 };
 
 #if 0
@@ -47,10 +48,17 @@ ridb_get_vol_rel_path(struct AFSFid* key, char** path) {
 }
 #endif
 
-static void user_to_ridb_key(struct AFSFid *user_key, struct ridb_key * key) {
+static void user_to_ridb_key(struct AFSFid *user_key, struct ridb_key * key, 
+                            char *name) {
 
     key->Vnode = user_key->Vnode;
     key->Unique = user_key->Unique;
+
+    if (strlen(name) > AFSNAMEMAX) {
+    RIDB_log(("ridb_key: Filename too long: %lu\n", strlen(name)));
+    }
+
+    strncpy(key->Name, name, AFSNAMEMAX);
 }
 
 int
@@ -136,6 +144,7 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** value) {
     struct rx_opaque dbkey, dbval;
     char *path = NULL;
     struct ridb_key rik;
+    char name[AFSNAMEMAX] = {0};
 
     if (!hdl) {
     RIDB_log(("ridb_get: NULL Handle\n"));
@@ -153,7 +162,7 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** value) {
     memset(&dbval, 0, sizeof(dbval));
     memset(&dbkey, 0, sizeof(dbkey));
 
-    user_to_ridb_key(key, &rik);
+    user_to_ridb_key(key, &rik, name);
 
     dbkey.len = sizeof(struct ridb_key);
     dbkey.val = &rik;
@@ -235,7 +244,7 @@ ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value){
     memset(&dbval, 0, sizeof(dbval));
     memset(&dbkey, 0, sizeof(dbkey));
 
-    user_to_ridb_key(key, &rik);
+    user_to_ridb_key(key, &rik, value);
 
     dbkey.len = sizeof(struct ridb_key);
     dbkey.val = &rik;
@@ -247,13 +256,8 @@ ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value){
     return EIO;
     }
 
-    dbval.len = val_len - 1;
+    dbval.len = val_len;
     dbval.val = value;
-
-    if ( dbval.len == 0 ) {
-    RIDB_log(("ridb_set: val_len=1? Needs to be NULL terminated\n"));
-    return EIO;
-    }
 
     /* Start txn */
     code = okv_begin(hdl, OKV_BEGIN_RW, &txn);
@@ -289,14 +293,12 @@ ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value){
  *
  * @param[in]  hdl     DB Handle
  * @param[in]  key     The key to delete
- 
+ * @param[in]  name    Name of the entry to be deleted (added for links)
  * 
- * @returns errno error codes
- * @retval RIDB_BAD_KEY   The given key does not exist or is invalid
- * @retval RIDB_BAD_HDL   The given handle is not valid
+ * @returns EIO on any error
  */
 int
-ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key) {
+ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key, char *name) {
 
     struct okv_trans *txn = NULL;
     int code;
@@ -314,10 +316,15 @@ ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key) {
     
     memset(&dbkey, 0, sizeof(dbkey));
     
-    user_to_ridb_key(key, &rik);
+    user_to_ridb_key(key, &rik, name);
 
     dbkey.len = sizeof(struct ridb_key);
     dbkey.val = &rik;
+
+    if ( strlen(name) == 0 ) {
+    RIDB_log(("ridb_del: Value Length is zero (0)\n"));
+    return EIO;
+    }
 
     /* Start txn */
     code = okv_begin(hdl, OKV_BEGIN_RW, &txn);

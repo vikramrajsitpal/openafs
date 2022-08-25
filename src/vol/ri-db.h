@@ -43,7 +43,7 @@ int ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** value);
 
 int ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value);
 
-int ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key);
+int ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key, char *name);
 
 
 

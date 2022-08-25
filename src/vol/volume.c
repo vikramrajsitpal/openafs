@@ -3168,7 +3168,7 @@ OpenRIDatabase (Volume *vp) {
 	basedir = dirname((char *)name.n_path);
 
 	/* Expected basedir is neither "." NOR "/" */
-	if (basedir[0] == '.' || basedir[0] == '/') {
+	if (!strcmp(".", basedir) || !strcmp("/", basedir)) {
 	Log("OpenRIDatabase: Wrong base directory: '%s'\n", basedir);
 	return EIO;
 	}

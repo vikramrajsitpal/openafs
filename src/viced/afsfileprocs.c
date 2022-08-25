@@ -1521,7 +1521,7 @@ _ri_afs_dir_Delete(dir_file_t dir, char *entry, struct AFSFid *delFid,
     opr_Assert(V_ridbHandle(vp));
     opr_Assert(delFid);
     /* Maybe change entry size and remove NULL char? */
-    ret = ridb_del(V_ridbHandle(vp), delFid);
+    ret = ridb_del(V_ridbHandle(vp), delFid, entry);
     ViceLog(0,
 		("afs_dir_Delete: Deleted entry: %s | Parent Dir FID (Vol:Vnode:Vunique): %d:%d:%d\n", entry, dir->dirh_vid, dir->dirh_vnode, dir->dirh_unique));
     
