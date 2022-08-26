@@ -28,6 +28,10 @@
 struct okv_dbhandle;
 struct AFSFid;
 
+typedef struct {
+    char **names;
+    size_t names_len;
+} results;
 
 /* PROTOTYPES */
 
@@ -39,7 +43,7 @@ void ridb_close(struct okv_dbhandle** hdl);
 
 int ridb_purge_db(char* dir_path);
 
-int ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** value);
+int ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, results *results);
 
 int ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value);
 

@@ -3679,6 +3679,7 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
     VnodeId testnode;		/* used in directory tree walk */
     AFSFid fileFid;		/* Fid of file to move */
     AFSFid newFileFid;		/* Fid of new file */
+    AFSFid *oldDelFid;   /* Fid to be deleted in case file name changes */
     DirHandle olddir;		/* Handle for dir package I/O */
     DirHandle newdir;		/* Handle for dir package I/O */
     DirHandle filedir;		/* Handle for dir package I/O */
@@ -4036,7 +4037,9 @@ SAFSS_Rename(struct rx_call *acall, struct AFSFid *OldDirFid, char *OldName,
 	goto Bad_Rename;
 
     /* Delete the old name */
-    opr_Assert(_ri_afs_dir_Delete(&olddir, OldName, NULL, volptr) == 0);
+    oldDelFid = strcmp(NewName, OldName) ? (&fileFid) : (NULL);
+
+    opr_Assert(_ri_afs_dir_Delete(&olddir, OldName, oldDelFid, volptr) == 0);
 
     /* if the directory length changes, reflect it in the statistics */
     Update_ParentVnodeStatus(oldvptr, volptr, &olddir, client->z.ViceId,

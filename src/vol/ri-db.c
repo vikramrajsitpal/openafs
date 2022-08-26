@@ -137,10 +137,10 @@ ridb_purge_db(char* dir_path) {
  */
 
 int
-ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** value) {
+ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, results *result) {
     
     struct okv_trans *txn = NULL;
-    int code;
+    int code, eof = 0;
     struct rx_opaque dbkey, dbval;
     char *path = NULL;
     struct ridb_key rik;
@@ -154,8 +154,8 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** value) {
     RIDB_log(("ridb_get: NULL key\n"));
     return EIO;
     }
-    if (!value) {
-    RIDB_log(("ridb_get: NULL value\n"));
+    if (!result) {
+    RIDB_log(("ridb_get: Nowhere to store results\n"));
     return EIO;
     }
 
@@ -175,18 +175,27 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** value) {
     return EIO;
     }
 
-    code = okv_get(txn, &dbkey, &dbval, NULL);
+    memset(result, 0, sizeof(results));
+
+    while(!eof) {
+    code = okv_next(txn, &dbkey, &dbval, &eof);
     if (code != 0) {
-    /* Handle get txn error here and abort */
+    /* Handle get txn error here and abort, should not reach here */
     okv_abort(&txn);
-    RIDB_log(("ridb_get: BAD Key\n"));
-    return EIO;
     }
-    
+    if (!eof) {
+    path = (char *) calloc(dbval.len+1, sizeof(char)); 
+    memcpy(path, dbval.val, dbval.len);
+    //results->names = ;
+    (result->names_len)++;
+    }
+    }
+
     /* Commit */
     code = okv_commit(&txn);
-    if( dbval.len == 0 ) {
-    RIDB_log(("ridb_get: Value Length zero (0)\n"));
+
+    if( result->names_len == 0 ) {
+    RIDB_log(("ridb_get: Invalid Key\n"));
     return EIO;
     }
     if (code) {
@@ -194,9 +203,7 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** value) {
     return EIO;
     }
 
-    path = (char *) calloc(dbval.len+1, sizeof(char)); 
-    memcpy(path, dbval.val, dbval.len);
-    *value = path;
+    
 
     return code;
 }
