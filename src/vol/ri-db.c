@@ -34,7 +34,7 @@
 #define RIDB_log(str) ViceLog(0,str)
 #define RIDB_ENGINE "lmdb\0"
 
-/* Just for ignoring the 'Volume' field in AFSFid */
+
 struct ridb_key {
     afs_uint32 Vnode;
 	afs_uint32 Unique;
@@ -137,7 +137,7 @@ ridb_purge_db(char* dir_path) {
  */
 
 int
-ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, results *result) {
+ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** name) {
     
     struct okv_trans *txn = NULL;
     int code, eof = 0;
@@ -154,8 +154,8 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, results *result) {
     RIDB_log(("ridb_get: NULL key\n"));
     return EIO;
     }
-    if (!result) {
-    RIDB_log(("ridb_get: Nowhere to store results\n"));
+    if (!name) {
+    RIDB_log(("ridb_get: Nowhere to store the path\n"));
     return EIO;
     }
 
@@ -174,37 +174,37 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, results *result) {
     RIDB_log(("ridb_get: BAD handle\n"));
     return EIO;
     }
-
-    memset(result, 0, sizeof(results));
-
-    while(!eof) {
+    
     code = okv_next(txn, &dbkey, &dbval, &eof);
     if (code != 0) {
     /* Handle get txn error here and abort, should not reach here */
+    RIDB_log(("ridb_get: Internal error: TXN Abort!"));
     okv_abort(&txn);
+    return EIO;
     }
-    if (!eof) {
+
+    /* There was at least one match! */
+    if ((!eof) &&
+        (key->Vnode == ((struct ridb_key *)dbkey.val)->Vnode) &&
+        (key->Unique == ((struct ridb_key *)dbkey.val)->Unique)
+        ) {
     path = (char *) calloc(dbval.len+1, sizeof(char)); 
     memcpy(path, dbval.val, dbval.len);
-    //results->names = ;
-    (result->names_len)++;
+    *name = path;
     }
+    else {
+    RIDB_log(("ridb_get: Invalid Key: %u:%u\n", key->Vnode, key->Unique));
+    *name = NULL;
     }
 
     /* Commit */
     code = okv_commit(&txn);
 
-    if( result->names_len == 0 ) {
-    RIDB_log(("ridb_get: Invalid Key\n"));
-    return EIO;
-    }
     if (code) {
     RIDB_log(("ridb_get: Internal error occurred: %d\n", code));
     return EIO;
     }
-
     
-
     return code;
 }
 
