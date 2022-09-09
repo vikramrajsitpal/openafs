@@ -2212,6 +2212,17 @@ FileNameOK(char *aname)
 
 }				/*FileNameOK */
 
+
+afs_int32
+SRXAFS_InverseLookup2(struct rx_call *call, AFSFid *Fid, char **filename,
+		      AFSFid *ParentFid)
+{
+    *filename = strdup("fake_filename");
+    ParentFid->Volume = 1;
+    ParentFid->Vnode = 1;
+    ParentFid->Unique = 1;
+    return 0; /* XXX */
+}
 #if 0
 static int
 ridb_get_vol_rel_path(struct AFSFid* key, char** path) {

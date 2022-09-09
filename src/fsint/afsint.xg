@@ -654,3 +654,9 @@ GetOsdMetadata(
   IN AFSFid *Fid
 ) split = 65562;
 */
+
+InverseLookup2(
+  IN AFSFid *Fid,
+  OUT string Filename<AFSNAMEMAX>,
+  AFSFid *ParentFid
+) = 69654;
