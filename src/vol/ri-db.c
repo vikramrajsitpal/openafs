@@ -37,16 +37,10 @@
 
 struct ridb_key {
     afs_uint32 Vnode;
-	afs_uint32 Unique;
+    afs_uint32 Unique;
     char Name[AFSNAMEMAX];
 };
 
-#if 0
-static int
-ridb_get_vol_rel_path(struct AFSFid* key, char** path) {
-
-}
-#endif
 
 static void user_to_ridb_key(struct AFSFid *user_key, struct ridb_key * key, 
                             char *name) {

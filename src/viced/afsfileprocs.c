@@ -2212,6 +2212,76 @@ FileNameOK(char *aname)
 
 }				/*FileNameOK */
 
+#if 0
+static int
+ridb_get_vol_rel_path(struct AFSFid* key, char** path) {
+
+    Vnode *targetptr = 0;	/* vnode of the base file */
+    Vnode *parentptr = 0;	/* parent vnode */
+    Volume *volptr = 0;		/* pointer to the volume header */
+    Error errorCode = 0;	/* error code */
+    struct client *client = 0;	/* pointer to client structure */
+    afs_int32 rights, anyrights;	/* rights for this and any user */
+    struct client *t_client;	/* tmp ptr to client data */
+    struct AFSFid k;
+
+    char *temp_path = calloc(AFSPATHMAX , sizeof(char));
+    char *key_path = NULL;
+    int ret = 0;
+
+    /* Get the name for "base" FID and volume */
+    if ((errorCode =
+	 GetVolumePackage(acall, key, &volptr, &targetptr, DONTCHECK,
+			  &parentptr, &client, READ_LOCK,
+			  &rights, &anyrights))) {
+	ret = -1;
+	goto Bad_Path;
+    }
+
+    if (ridb_get(V_ridbHandle(volptr), key, &key_path)) {
+	ret = -1
+	goto Bad_Path;
+    }
+    
+    snprintf(temp_path, AFSPATHMAX, "%s", key_path);
+    free(key_path);
+    key_path = NULL;
+
+    /* Populate parent's FID and repeat */
+    k.Volume = V_id(volptr);
+    k.Vnode  = parentptr->vnodeNumber;
+    k.Unique = parentptr->disk.uniquifier;
+
+    while (1) {
+    if (ridb_get(V_ridbHandle(volptr), &k, &key_path)) {
+	break;
+    }
+    snprintf(temp_path, AFSPATHMAX, "%s", key_path);
+    free(key_path);
+    key_path = NULL;
+
+
+    if ((errorCode =
+	       	GetVolumePackage(acall, key, &volptr, &targetptr, MustBeDIR,
+			  &parentptr, &client, READ_LOCK,
+			  &rights, &anyrights))) {
+	ret = -1;
+	break;
+    }
+    memset(&k, 0, sizeof(struct AFSFid));
+
+    k.Volume = V_id(volptr);
+    k.Vnode  = parentptr->vnodeNumber;
+    k.Unique = parentptr->disk.uniquifier;
+    }
+    
+    *path = temp_path;
+Bad_Path:
+    return ret;
+  
+}
+
+#endif
 
 /*
  * This variant of symlink is expressly to support the AFS/DFS translator
