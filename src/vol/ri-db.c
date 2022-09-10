@@ -138,7 +138,7 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** name) {
     struct rx_opaque dbkey, dbval;
     char *path = NULL;
     struct ridb_key rik;
-    char name[AFSNAMEMAX] = {0};
+    char temp_name[AFSNAMEMAX] = {0};
 
     if (!hdl) {
     RIDB_log(("ridb_get: NULL Handle\n"));
@@ -156,7 +156,7 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** name) {
     memset(&dbval, 0, sizeof(dbval));
     memset(&dbkey, 0, sizeof(dbkey));
 
-    user_to_ridb_key(key, &rik, name);
+    user_to_ridb_key(key, &rik, temp_name);
 
     dbkey.len = sizeof(struct ridb_key);
     dbkey.val = &rik;

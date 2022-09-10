@@ -2217,11 +2217,44 @@ afs_int32
 SRXAFS_InverseLookup2(struct rx_call *call, AFSFid *Fid, char **filename,
 		      AFSFid *ParentFid)
 {
-    *filename = strdup("fake_filename");
-    ParentFid->Volume = 1;
-    ParentFid->Vnode = 1;
-    ParentFid->Unique = 1;
-    return 0; /* XXX */
+    Vnode *targetptr = NULL;	/* vnode of the base file */
+    Vnode *parentptr = NULL;	/* parent vnode */
+    Volume *volptr = NULL;		/* pointer to the volume header */
+    Error errorCode = 0;	    /* error code */
+    struct client *client = NULL;	/* pointer to client structure */
+    struct client *t_client;	/* tmp ptr to client data */
+    afs_int32 ret = 0;
+
+    if (!Fid || !call || !filename || !ParentFid)
+        return EINVAL;
+
+    if ((errorCode =
+	    CheckVnode(Fid, &volptr, &targetptr, READ_LOCK))) {
+    ret = EINVAL;
+    goto lookup_done;
+    }
+
+    if (ridb_get(V_ridbHandle(volptr), Fid, filename)) {
+    ret = EINVAL;
+    goto lookup_done;
+    }
+
+    
+	parentptr = VGetVnode(&errorCode, volptr, targetptr->disk.parent,      
+                          READ_LOCK);
+    if (errorCode) {
+    ret = EINVAL;
+    goto lookup_done;
+    }
+
+    ParentFid->Volume = V_id(volptr);
+    ParentFid->Vnode = targetptr->disk.parent;
+    ParentFid->Unique = parentptr->disk.uniquifier;
+
+    lookup_done:
+    (void)PutVolumePackage(call, NULL, targetptr, parentptr, volptr, &client);
+
+    return ret;
 }
 #if 0
 static int
