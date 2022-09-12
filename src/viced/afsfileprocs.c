@@ -2217,12 +2217,12 @@ afs_int32
 SRXAFS_InverseLookup2(struct rx_call *call, AFSFid *Fid, char **filename,
 		      AFSFid *ParentFid)
 {
+#ifdef AFS_DEMAND_ATTACH_FS
     Vnode *targetptr = NULL;	/* vnode of the base file */
     Vnode *parentptr = NULL;	/* parent vnode */
     Volume *volptr = NULL;		/* pointer to the volume header */
     Error errorCode = 0;	    /* error code */
     struct client *client = NULL;	/* pointer to client structure */
-    struct client *t_client;	/* tmp ptr to client data */
     afs_int32 ret = 0;
 
     if (!Fid || !call || !filename || !ParentFid)
@@ -2255,6 +2255,9 @@ SRXAFS_InverseLookup2(struct rx_call *call, AFSFid *Fid, char **filename,
     (void)PutVolumePackage(call, NULL, targetptr, parentptr, volptr, &client);
 
     return ret;
+#else
+    return RXGEN_OPCODE;
+#endif
 }
 #if 0
 static int
