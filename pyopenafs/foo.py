@@ -11,9 +11,12 @@ def main(argv):
     
     f = argv[0].strip().split(":")
     fid = types.SimpleNamespace(volume=int(f[0]), vnode=int(f[1]), unique=int(f[2]))
-    print(fid)
-    (fname, parent) = rx.RXAFS_InverseLookup2(conn, fid)
-    print("Received: fname %r, parent %r\n" % (fname, parent))
+    print("Sent:\t", fid)
+    try:
+        (fname, parent) = rx.RXAFS_InverseLookup2(conn, fid)
+        print("Received\t: Filename: %r, Parent: %r\n" % (fname, parent))
+    except rx.RxError as err:
+        print("Received:\t", err)
 
 if __name__ == '__main__':
     main(sys.argv[1:])
