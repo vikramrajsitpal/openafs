@@ -183,7 +183,9 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** name) {
         (key->Unique == ((struct ridb_key *)dbkey.val)->Unique)
         ) {
     path = (char *) calloc(dbval.len+1, sizeof(char)); 
-    memcpy(path, dbval.val, dbval.len);
+    if (path)
+        memcpy(path, dbval.val, dbval.len);
+    
     *name = path;
     }
     else {
@@ -199,7 +201,10 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** name) {
     return EIO;
     }
     
-    return code;
+   if (NULL == (*name))
+      code = EINVAL;
+
+   return code;
 }
 
 

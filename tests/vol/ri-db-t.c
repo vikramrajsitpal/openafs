@@ -30,6 +30,12 @@
 static char *prefix;
 static char *dbdir;
 
+struct AFSFid {
+	afs_uint32 Volume;
+	afs_uint32 Vnode;
+	afs_uint32 Unique;
+};
+
 #define KEY_FID(vol, vnode, vunique) { \
     .Volume = vol,                     \
     .Vnode = vnode,                    \
@@ -39,9 +45,49 @@ static char *dbdir;
 /* Basic get-set-del tests */
 void
 test1()
-{
+{   
+    int code;
+    struct okv_dbhandle *dbh = NULL;
+    char *name = NULL;
+
     struct AFSFid k1 = KEY_FID(1, 2, 2);
     struct AFSFid k2 = KEY_FID(1, 2, 4);
+
+    code = ridb_open(dbdir, &dbh);
+    is_int(code, 0, "test1: ridb_open");
+    if (!code)
+        sysbail("test1 ridb_open failed: %d", code);
+
+    code = ridb_set(dbh, &k1, "key1");
+    is_int(code, 0, "test1: ridb_set key1");
+
+    code = ridb_set(dbh, &k2, "key2");
+    is_int(code, 0, "test1: ridb_set key2");
+
+    code = ridb_get(dbh, &k1, &name);
+    is_int(code, 0, "test1: ridb_get key1");
+    is_string("key1", name, "test1:name check key1");
+    free(name);
+
+    code = ridb_get(dbh, &k2, &name);
+    is_int(code, 0, "test1: ridb_get key2");
+    is_string("key2", name, "test1:name check key2");
+    free(name);
+
+    code = ridb_del(dbh, &k1, "key1");
+    is_int (code, 0, "test1: ridb_del key1");
+
+    code = ridb_get(dbh, &k1, &name);
+    is_string(name, NULL, "test1: ridb_get confirm key1 is deleted");
+
+    code = ridb_del(dbh, &k2, "key2");
+    is_int (code, 0, "test1: ridb_del key2");
+
+    code = ridb_get(dbh, &k2, &name);
+    is_string(name, NULL, "test1: ridb_get confirm key2 is deleted");
+
+    ridb_close(&dbh);
+
 }
 
 
@@ -49,7 +95,47 @@ test1()
 void
 test2()
 {
+    int code;
+    struct okv_dbhandle *dbh = NULL;
+    char *name = NULL;
 
+    struct AFSFid k1 = KEY_FID(1, 2, 2);
+    struct AFSFid k2 = KEY_FID(1, 2, 4);
+
+
+    code = ridb_open(dbdir, &dbh);
+    is_int(code, 0, "test2: ridb_open");
+    if (!code)
+        sysbail("test2 ridb_open failed: %d", code);
+
+    code = ridb_set(dbh, &k1, "key1");
+    is_int(code, 0, "test2: ridb_set key1");
+
+    code = ridb_set(dbh, &k2, "key2");
+    is_int(code, 0, "test2: ridb_set key2");
+
+    code = ridb_set(dbh, &k1, "key3");
+    is_int(code, 0, "test2: ridb_set key3");
+
+    code = ridb_get(dbh, &k2, &name);
+    is_int(code, 0, "test2: ridb_get key2");
+    is_string("key2", name, "test2: name check key2");
+    free(name);
+
+    code = ridb_get(dbh, &k1, &name);
+    is_int(code, 0, "test2: ridb_get ");
+    is_string("key1", name, "test2: name check key1");
+    free(name);
+
+    code = ridb_del(dbh, &k1, "key1");
+    is_int (code, 0, "test2: ridb_del key1");
+
+    code = ridb_get(dbh, &k1, &name);
+    is_int(code, 0, "test2: ridb_get key3");
+    is_string("key3", name, "test2: name check key3");
+    free(name);
+
+    ridb_close(&dbh);
 
 }
 
@@ -57,6 +143,36 @@ test2()
 void
 test3()
 {
+    int code;
+    struct okv_dbhandle *dbh = NULL;
+    char *name = NULL;
+
+    struct AFSFid k1 = KEY_FID(1, 2, 2);
+    code = ridb_open(dbdir, &dbh);
+    is_int(code, 0, "test3: ridb_open");
+    if (!code)
+        sysbail("test3 ridb_open failed: %d", code);
+
+    code = ridb_set(dbh, &k1, "key1");
+    is_int(code, 0, "test3: ridb_set key1");
+
+    code = ridb_get(dbh, &k1, &name);
+    is_int(code, 0, "test3: ridb_get key1");
+    is_string(name, "key1", "test3: name check key1");
+    free(name);
+
+    code = ridb_del(dbh, &k1, "key1");
+    is_int (code, 0, "test3: ridb_del key1");
+
+    code = ridb_set(dbh, &k1, "key4");
+    is_int(code, 0, "test3: ridb_set key4");
+
+    code = ridb_get(dbh, &k1, &name);
+    is_int(code, 0, "test3: ridb_get key4");
+    is_string("key4", name, "test3:name check key4");
+    free(name);
+
+    ridb_close(&dbh);
 
 }
 
@@ -64,7 +180,48 @@ test3()
 void
 test4()
 {
+    int code;
+    struct okv_dbhandle *dbh = NULL;
+    char *name = NULL;
+    struct AFSFid k1 = KEY_FID(1, 2, 2);
+    struct AFSFid k1 = KEY_FID(1, 2, 5);
 
+    code = ridb_purge_db(dbdir);
+    is_int(code, 0, "test4: ridb_purge_db");
+    if (!code)
+        sysbail("test4: purge failed");
+
+    code = ridb_create(dbdir, &dbh);
+    is_int(code, 0, "test4: ridb_create");
+     if (!code)
+        sysbail("test4: create failed");
+
+    code = ridb_open(dbdir, &dbh);
+    is_int(code, 0, "test4: ridb_open");
+    if (!code)
+        sysbail("test4 ridb_open failed: %d", code);
+
+    code = ridb_get(dbh, &k1, &name);
+    is_int(code, EINVAL, "test4: ridb_get key1");
+    is_string("key4", name, "test4:name check key1");
+
+    code = ridb_set(dbh, &k1, NULL);
+    is_int(code, EIO, "test4: ridb_set key1 NULL name");
+
+    code = ridb_set(NULL, &k1, &name);
+    is_int(code, EIO, "test4: ridb_set key1 NULL handle");
+
+    code = ridb_get(dbh, &k1, NULL);
+    is_int(code, EIO, "test4: ridb_get key1 NULL name");
+    
+    code = ridb_del(dbh, &k1, NULL);
+    is_int(code, EIO, "test4: ridb_del key1 NULL name");
+
+    
+    code = ridb_del(dbh, &k2, "haha");
+    is_int(code, EIO, "test4: ridb_del key2 invalid key");
+    
+    ridb_close(&dbh);
 }
 
 
@@ -83,8 +240,17 @@ main(void)
     is_int(ENOENT, code, "ridb_open fails with ENOENT");
 
     code = ridb_create(dbdir, &dbh);
-    ok(code == 0, "ridb_create successful");
+    is_int(code, 0, "ridb_create");
 
+    ridb_close(&dbh);
+
+    test1();
+    test2();
+    test3();
+    test4();
+
+    code = ridb_purge_db(dbdir);
+    is_int(code, 0, "ridb_purge_db");
 
 
     return 0;
