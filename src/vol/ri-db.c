@@ -319,6 +319,12 @@ ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key, char *name) {
     RIDB_log(("ridb_del: NULL key\n"));
     return EIO;
     }
+
+    if (!name) {
+    RIDB_log(("ridb_del: NULL name\n"));
+    return EIO;
+    }
+
     
     memset(&dbkey, 0, sizeof(dbkey));
     

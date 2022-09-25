@@ -24,7 +24,7 @@
 
 #include <afsconfig.h>
 #include <afs/param.h>
-#include <afs/volume.h>
+#include "src/vol/ri-db.h"
 #include "common.h"
 
 static char *prefix;
@@ -42,9 +42,17 @@ struct AFSFid {
     .Unique = vunique                  \
 }
 
+
+/* Prototypes */
+
+void test1(void);
+void test2(void);
+void test3(void);
+void test4(void);
+
 /* Basic get-set-del tests */
 void
-test1()
+test1(void)
 {   
     int code;
     struct okv_dbhandle *dbh = NULL;
@@ -55,7 +63,7 @@ test1()
 
     code = ridb_open(dbdir, &dbh);
     is_int(code, 0, "test1: ridb_open");
-    if (!code)
+    if (code)
         sysbail("test1 ridb_open failed: %d", code);
 
     code = ridb_set(dbh, &k1, "key1");
@@ -93,7 +101,7 @@ test1()
 
 /* Link get-set-del tests */
 void
-test2()
+test2(void)
 {
     int code;
     struct okv_dbhandle *dbh = NULL;
@@ -105,7 +113,7 @@ test2()
 
     code = ridb_open(dbdir, &dbh);
     is_int(code, 0, "test2: ridb_open");
-    if (!code)
+    if (code)
         sysbail("test2 ridb_open failed: %d", code);
 
     code = ridb_set(dbh, &k1, "key1");
@@ -134,6 +142,13 @@ test2()
     is_int(code, 0, "test2: ridb_get key3");
     is_string("key3", name, "test2: name check key3");
     free(name);
+    
+    code = ridb_del(dbh, &k1, "key3");
+    is_int (code, 0, "test2: ridb_del key3");
+
+    code = ridb_del(dbh, &k2, "key2");
+    is_int (code, 0, "test2: ridb_del key2");
+
 
     ridb_close(&dbh);
 
@@ -141,7 +156,7 @@ test2()
 
 /* Overwrite key value tests */
 void
-test3()
+test3(void)
 {
     int code;
     struct okv_dbhandle *dbh = NULL;
@@ -150,7 +165,7 @@ test3()
     struct AFSFid k1 = KEY_FID(1, 2, 2);
     code = ridb_open(dbdir, &dbh);
     is_int(code, 0, "test3: ridb_open");
-    if (!code)
+    if (code)
         sysbail("test3 ridb_open failed: %d", code);
 
     code = ridb_set(dbh, &k1, "key1");
@@ -178,50 +193,56 @@ test3()
 
 /* Invalid get-set-del tests */
 void
-test4()
+test4(void)
 {
     int code;
     struct okv_dbhandle *dbh = NULL;
     char *name = NULL;
     struct AFSFid k1 = KEY_FID(1, 2, 2);
-    struct AFSFid k1 = KEY_FID(1, 2, 5);
+    struct AFSFid k2 = KEY_FID(1, 2, 5);
 
     code = ridb_purge_db(dbdir);
     is_int(code, 0, "test4: ridb_purge_db");
-    if (!code)
+    if (code)
         sysbail("test4: purge failed");
 
     code = ridb_create(dbdir, &dbh);
     is_int(code, 0, "test4: ridb_create");
-     if (!code)
+     if (code)
         sysbail("test4: create failed");
 
     code = ridb_open(dbdir, &dbh);
     is_int(code, 0, "test4: ridb_open");
-    if (!code)
+    if (code)
         sysbail("test4 ridb_open failed: %d", code);
 
     code = ridb_get(dbh, &k1, &name);
     is_int(code, EINVAL, "test4: ridb_get key1");
-    is_string("key4", name, "test4:name check key1");
+    is_string(NULL, name, "test4:name check key1");
 
     code = ridb_set(dbh, &k1, NULL);
     is_int(code, EIO, "test4: ridb_set key1 NULL name");
 
-    code = ridb_set(NULL, &k1, &name);
+    code = ridb_set(NULL, &k1, "key1");
     is_int(code, EIO, "test4: ridb_set key1 NULL handle");
+
+    code = ridb_set(dbh, NULL, "key1");
+    is_int(code, EIO, "test4: ridb_set key1 NULL key");
 
     code = ridb_get(dbh, &k1, NULL);
     is_int(code, EIO, "test4: ridb_get key1 NULL name");
     
     code = ridb_del(dbh, &k1, NULL);
     is_int(code, EIO, "test4: ridb_del key1 NULL name");
-
     
     code = ridb_del(dbh, &k2, "haha");
     is_int(code, EIO, "test4: ridb_del key2 invalid key");
     
     ridb_close(&dbh);
+
+    code = ridb_del(dbh, &k2, "haha");
+    is_int(code, EIO, "test4: ridb_del key2 INVALID handle");
+
 }
 
 
@@ -251,7 +272,8 @@ main(void)
 
     code = ridb_purge_db(dbdir);
     is_int(code, 0, "ridb_purge_db");
-
+    
+    afstest_rmdtemp(prefix);
 
     return 0;
 }
