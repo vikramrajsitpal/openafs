@@ -251,6 +251,7 @@ main(void)
 {
     struct okv_dbhandle *dbh = NULL;
     int code;
+    plan_lazy();
 
     prefix = afstest_mkdtemp();
     opr_Assert(prefix != NULL);
