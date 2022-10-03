@@ -24,7 +24,7 @@
 
 #include <afsconfig.h>
 #include <afs/param.h>
-#include "src/vol/ri-db.h"
+#include "ri-db.h"
 #include "common.h"
 
 static char *prefix;
@@ -86,12 +86,14 @@ test1(void)
     is_int (code, 0, "test1: ridb_del key1");
 
     code = ridb_get(dbh, &k1, &name);
+    is_int(code, EINVAL, "test1: ridb_get key1 failure");
     is_string(name, NULL, "test1: ridb_get confirm key1 is deleted");
 
     code = ridb_del(dbh, &k2, "key2");
     is_int (code, 0, "test1: ridb_del key2");
 
     code = ridb_get(dbh, &k2, &name);
+    is_int(code, EINVAL, "test1: ridb_get key2 failure");
     is_string(name, NULL, "test1: ridb_get confirm key2 is deleted");
 
     ridb_close(&dbh);
@@ -131,7 +133,7 @@ test2(void)
     free(name);
 
     code = ridb_get(dbh, &k1, &name);
-    is_int(code, 0, "test2: ridb_get ");
+    is_int(code, 0, "test2: ridb_get key1");
     is_string("key1", name, "test2: name check key1");
     free(name);
 

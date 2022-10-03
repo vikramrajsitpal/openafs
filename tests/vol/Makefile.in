@@ -13,7 +13,7 @@ tests = ri-db-t
 
 all check test tests: $(tests)
 
-CFLAGS_ri-db-t.o = -I$(TOP_SRCDIR)/okv -I$(TOP_SRCDIR)/src/vol
+CFLAGS_ri-db-t.o = -I$(TOP_SRCDIR)/okv -I$(TOP_SRCDIR)/vol
 ri-db-t: ri-db-t.o
 	$(LT_LDRULE_static) ri-db-t.o $(abs_top_builddir)/src/dvolser/ri-db.o $(LIBS)
 
