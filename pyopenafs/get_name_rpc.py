@@ -15,12 +15,13 @@ def main(argv):
         print("Format: \"volume.vnode.unique\"")
         exit(-1)
     fid = types.SimpleNamespace(volume=int(f[0]), vnode=int(f[1]), unique=int(f[2]))
-    print("Sent:\t", fid)
+    #print("Sent: %d.%d.%d" %(fid.volume, fid.vnode, fid.unique))
     try:
         (fname, parent) = rx.RXAFS_InverseLookup2(conn, fid)
-        print("Received\t: Filename: %r, Parent: %r\n" % (fname, parent))
+        pfid = "%d.%d.%d" %(parent.volume, parent.vnode, parent.unique)
+        print("Received: Filename: %s Parent: %s" % (fname.decode('utf-8'),pfid ))
     except rx.RxError as err:
-        print("Received:\t", err)
+        print("Received:", err)
 
 if __name__ == '__main__':
     main(sys.argv[1:])
