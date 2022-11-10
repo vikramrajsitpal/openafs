@@ -2,7 +2,9 @@
 
 import lmdb
 import sys
-import pprint as pp
+from collections import OrderedDict as od
+
+fname = "/home/vikram/hahahahahahahahahahaha.del"
 
 def interpret_key(key):
     vnode = int.from_bytes(key[0:4], "little")
@@ -16,7 +18,7 @@ def main():
     dbdir = sys.argv[1]
     env = lmdb.open(str(dbdir), readonly=True)
 
-    db = dict()
+    db = od()
 
     with env.begin() as txn:
         with txn.cursor() as curs:
@@ -24,8 +26,11 @@ def main():
                 v1,v2,n = interpret_key(key)
                 db[(v1,v2,n)] = value.decode("utf-8").rstrip('\x00')
     
-    print("(VNODE, VUNIQUE, FILE_NAME): FILE_NAME\n")
-    pp.pprint(db)
+    #print("(VNODE, VUNIQUE, FILE_NAME): FILE_NAME\n")
+    with open(fname, 'w+', encoding="utf-8") as f:
+        for k,v in db.items():
+            f.write(str(k) + ":" + v)
+
 
 
 if __name__ == "__main__":
