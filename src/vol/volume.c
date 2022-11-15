@@ -34,9 +34,9 @@
 #endif
 
 #ifdef AFS_PTHREAD_ENV
-#include <opr/lock.h>
+# include <opr/lock.h>
 #else
-#include <opr/lockstub.h>
+# include <opr/lockstub.h>
 #endif
 #include <opr/ffs.h>
 #include <opr/jhash.h>
@@ -106,12 +106,13 @@
 #include "salvsync.h"
 #include "vnode.h"
 #include "volume.h"
+#include "ri-db.h"
 #include "partition.h"
 #include "volume_inline.h"
 #include "common.h"
 #include "vutils.h"
 #include <afs/dir.h>
-#include <afs/ri-db.h>
+
 
 #ifdef AFS_PTHREAD_ENV
 pthread_mutex_t vol_glock_mutex;
@@ -162,8 +163,8 @@ static void VCloseVolumeHandles_r(Volume * vp);
 static void LoadVolumeHeader(Error * ec, Volume * vp);
 static int VCheckOffline(Volume * vp);
 static int VCheckDetach(Volume * vp);
-static Volume *GetVolume(Error * ec, Error * client_ec, VolumeId volumeId,
-			 Volume * hint, const struct timespec *ts);
+static Volume * GetVolume(Error * ec, Error * client_ec, VolumeId volumeId,
+                          Volume * hint, const struct timespec *ts);
 
 ProgramType programType;	/* The type of program using the package */
 static VolumePackageOptions vol_opts;
@@ -233,7 +234,7 @@ static void VInitVolumeHash(void);
  * disk partition queue element
  */
 typedef struct diskpartition_queue_t {
-    struct rx_queue queue;	       /**< queue header */
+    struct rx_queue queue;             /**< queue header */
     struct DiskPartition64 *diskP;     /**< disk partition table entry */
 } diskpartition_queue_t;
 
@@ -244,16 +245,16 @@ typedef struct vinitvolumepackage_thread_t {
     pthread_cond_t thread_done_cv;
     int n_threads_complete;
 } vinitvolumepackage_thread_t;
-static void *VInitVolumePackageThread(void *args);
+static void * VInitVolumePackageThread(void * args);
 
-#else /* !AFS_DEMAND_ATTTACH_FS */
+#else  /* !AFS_DEMAND_ATTTACH_FS */
 #define VINIT_BATCH_MAX_SIZE 512
 
 /**
  * disk partition work queue
  */
 struct partition_queue {
-    struct rx_queue head;	       /**< diskpartition_queue_t queue */
+    struct rx_queue head;              /**< diskpartition_queue_t queue */
     pthread_mutex_t mutex;
     pthread_cond_t cv;
 };
@@ -262,10 +263,10 @@ struct partition_queue {
  * volumes parameters for preattach
  */
 struct volume_init_batch {
-    struct rx_queue queue;		 /**< queue header */
-    int thread;				 /**< posting worker thread */
-    int last;				 /**< indicates thread is done */
-    int size;				 /**< number of volume ids in batch */
+    struct rx_queue queue;               /**< queue header */
+    int thread;                          /**< posting worker thread */
+    int last;                            /**< indicates thread is done */
+    int size;                            /**< number of volume ids in batch */
     Volume *batch[VINIT_BATCH_MAX_SIZE]; /**< volumes ids to preattach */
 };
 
@@ -273,7 +274,7 @@ struct volume_init_batch {
  * volume parameters work queue
  */
 struct volume_init_queue {
-    struct rx_queue head;		 /**< volume_init_batch queue */
+    struct rx_queue head;                /**< volume_init_batch queue */
     pthread_mutex_t mutex;
     pthread_cond_t cv;
 };
@@ -282,15 +283,15 @@ struct volume_init_queue {
  * volume init worker thread parameters
  */
 struct vinitvolumepackage_thread_param {
-    int nthreads;			 /**< total number of worker threads */
-    int thread;				 /**< thread number for this worker thread */
-    struct partition_queue *pq;		 /**< queue partitions to scan */
-    struct volume_init_queue *vq;	 /**< queue of volume to preattach */
+    int nthreads;                        /**< total number of worker threads */
+    int thread;                          /**< thread number for this worker thread */
+    struct partition_queue *pq;          /**< queue partitions to scan */
+    struct volume_init_queue *vq;        /**< queue of volume to preattach */
 };
 
 static void *VInitVolumePackageThread(void *args);
 static struct DiskPartition64 *VInitNextPartition(struct partition_queue *pq);
-static VolumeId VInitNextVolumeId(DIR * dirp);
+static VolumeId VInitNextVolumeId(DIR *dirp);
 static int VInitPreAttachVolumes(int nthreads, struct volume_init_queue *vq);
 
 #endif /* !AFS_DEMAND_ATTACH_FS */
@@ -298,7 +299,7 @@ static int VInitPreAttachVolumes(int nthreads, struct volume_init_queue *vq);
 
 #ifndef AFS_DEMAND_ATTACH_FS
 static int VAttachVolumesByPartition(struct DiskPartition64 *diskP,
-				     int *nAttached, int *nUnattached);
+				     int * nAttached, int * nUnattached);
 #endif /* AFS_DEMAND_ATTACH_FS */
 
 
@@ -312,19 +313,19 @@ static int VAttachVolumesByPartition(struct DiskPartition64 *diskP,
  * these structures are the beginning of that effort
  */
 struct VLRU_DiskHeader {
-    struct versionStamp stamp;	/* magic and structure version number */
-    afs_uint32 mtime;		/* time of dump to disk */
-    afs_uint32 num_records;	/* number of VLRU_DiskEntry records */
+    struct versionStamp stamp;            /* magic and structure version number */
+    afs_uint32 mtime;                     /* time of dump to disk */
+    afs_uint32 num_records;               /* number of VLRU_DiskEntry records */
 };
 
 struct VLRU_DiskEntry {
-    VolumeId vid;		/* volume ID */
-    afs_uint32 idx;		/* generation */
-    afs_uint32 last_get;	/* timestamp of last get */
+    VolumeId vid;                       /* volume ID */
+    afs_uint32 idx;                       /* generation */
+    afs_uint32 last_get;                  /* timestamp of last get */
 };
 
 struct VLRU_StartupQueue {
-    struct VLRU_DiskEntry *entry;
+    struct VLRU_DiskEntry * entry;
     int num_entries;
     int next_idx;
 };
@@ -341,31 +342,31 @@ typedef struct vshutdown_thread_t {
     int pass;
     byte n_parts;
     byte n_parts_done_pass;
-    byte part_thread_target[VOLMAXPARTS + 1];
-    byte part_done_pass[VOLMAXPARTS + 1];
-    struct rx_queue *part_pass_head[VOLMAXPARTS + 1];
-    int stats[4][VOLMAXPARTS + 1];
+    byte part_thread_target[VOLMAXPARTS+1];
+    byte part_done_pass[VOLMAXPARTS+1];
+    struct rx_queue * part_pass_head[VOLMAXPARTS+1];
+    int stats[4][VOLMAXPARTS+1];
 } vshutdown_thread_t;
-static void *VShutdownThread(void *args);
+static void * VShutdownThread(void * args);
 
 
-static Volume *VAttachVolumeByVp_r(Error * ec, Volume * vp, int mode);
+static Volume * VAttachVolumeByVp_r(Error * ec, Volume * vp, int mode);
 static int VCheckFree(Volume * vp);
 
 /* VByP List */
 static void AddVolumeToVByPList_r(Volume * vp);
 static void DeleteVolumeFromVByPList_r(Volume * vp);
-static void VVByPListBeginExclusive_r(struct DiskPartition64 *dp);
-static void VVByPListEndExclusive_r(struct DiskPartition64 *dp);
-static void VVByPListWait_r(struct DiskPartition64 *dp);
+static void VVByPListBeginExclusive_r(struct DiskPartition64 * dp);
+static void VVByPListEndExclusive_r(struct DiskPartition64 * dp);
+static void VVByPListWait_r(struct DiskPartition64 * dp);
 
 /* online salvager */
 typedef enum {
-    VCHECK_SALVAGE_OK = 0,	   /**< no pending salvage */
+    VCHECK_SALVAGE_OK = 0,         /**< no pending salvage */
     VCHECK_SALVAGE_SCHEDULED = 1,  /**< salvage has been scheduled */
-    VCHECK_SALVAGE_ASYNC = 2,	   /**< salvage being scheduled */
-    VCHECK_SALVAGE_DENIED = 3,	   /**< salvage not scheduled; denied */
-    VCHECK_SALVAGE_FAIL = 4	   /**< salvage not scheduled; failed */
+    VCHECK_SALVAGE_ASYNC = 2,      /**< salvage being scheduled */
+    VCHECK_SALVAGE_DENIED = 3,     /**< salvage not scheduled; denied */
+    VCHECK_SALVAGE_FAIL = 4        /**< salvage not scheduled; failed */
 } vsalvage_check;
 static int VCheckSalvage(Volume * vp);
 #if defined(SALVSYNC_BUILD_CLIENT) || defined(FSSYNC_BUILD_CLIENT)
@@ -373,16 +374,15 @@ static int VScheduleSalvage_r(Volume * vp);
 #endif
 
 /* Volume hash table */
-static void VReorderHash_r(VolumeHashChainHead * head, Volume * pp,
-			   Volume * vp);
+static void VReorderHash_r(VolumeHashChainHead * head, Volume * pp, Volume * vp);
 static void VHashBeginExclusive_r(VolumeHashChainHead * head);
 static void VHashEndExclusive_r(VolumeHashChainHead * head);
 static void VHashWait_r(VolumeHashChainHead * head);
 
 /* shutdown */
-static int ShutdownVByPForPass_r(struct DiskPartition64 *dp, int pass);
-static int ShutdownVolumeWalk_r(struct DiskPartition64 *dp, int pass,
-				struct rx_queue **idx);
+static int ShutdownVByPForPass_r(struct DiskPartition64 * dp, int pass);
+static int ShutdownVolumeWalk_r(struct DiskPartition64 * dp, int pass,
+				struct rx_queue ** idx);
 static void ShutdownController(vshutdown_thread_t * params);
 static void ShutdownCreateSchedule(vshutdown_thread_t * params);
 
@@ -393,7 +393,7 @@ static void VLRU_Init_Node_r(Volume * vp);
 static void VLRU_Add_r(Volume * vp);
 static void VLRU_Delete_r(Volume * vp);
 static void VLRU_UpdateAccess_r(Volume * vp);
-static void *VLRU_ScannerThread(void *args);
+static void * VLRU_ScannerThread(void * args);
 static void VLRU_Scan_r(int idx);
 static void VLRU_Promote_r(int idx);
 static void VLRU_Demote_r(int idx);
@@ -407,7 +407,7 @@ static int VSoftDetachVolume_r(Volume * vp, afs_uint32 thresh);
 
 pthread_key_t VThread_key;
 VThreadOptions_t VThread_defaults = {
-    0				/**< allow salvsync */
+    0                           /**< allow salvsync */
 };
 #endif /* AFS_DEMAND_ATTACH_FS */
 
@@ -444,7 +444,7 @@ bit32 VolumeCacheCheck;		/* Incremented everytime a volume goes on line--
 /***************************************************/
 
 #if defined(FAST_RESTART) && defined(AFS_DEMAND_ATTACH_FS)
-#error FAST_RESTART and DAFS are incompatible. For the DAFS equivalent \
+# error FAST_RESTART and DAFS are incompatible. For the DAFS equivalent \
         of FAST_RESTART, use the -unsafe-nosalvage fileserver argument
 #endif
 
@@ -458,7 +458,7 @@ bit32 VolumeCacheCheck;		/* Incremented everytime a volume goes on line--
  * @param[out] opts volume package options
  */
 void
-VOptDefaults(ProgramType pt, VolumePackageOptions * opts)
+VOptDefaults(ProgramType pt, VolumePackageOptions *opts)
 {
     memset(opts, 0, sizeof(*opts));
 
@@ -522,8 +522,7 @@ VLogOfflineTimeout(const char *type, afs_int32 timeout)
 	    "immediately\n", type);
     } else {
 	Log("VInitVolumePackage: Interrupting clients accessing %s "
-	    "after %ld second%s\n", type, (long)timeout,
-	    timeout == 1 ? "" : "s");
+	    "after %ld second%s\n", type, (long)timeout, timeout==1?"":"s");
     }
 }
 
@@ -545,7 +544,7 @@ VInitVolumePackage2(ProgramType pt, VolumePackageOptions * opts)
 #endif
     VLogOfflineTimeout("volumes going offline", opts->offline_timeout);
     VLogOfflineTimeout("volumes going offline during shutdown",
-		       opts->offline_shutdown_timeout);
+                       opts->offline_shutdown_timeout);
 
     memset(&VStats, 0, sizeof(VStats));
     VStats.hdr_cache_size = 200;
@@ -614,10 +613,10 @@ VInitVolumePackage2(ProgramType pt, VolumePackageOptions * opts)
 	return -1;
 
     if (programType != fileServer) {
-	errors = VInitAttachVolumes(programType);
-	if (errors) {
-	    return -1;
-	}
+        errors = VInitAttachVolumes(programType);
+        if (errors) {
+            return -1;
+        }
     }
 
 #ifdef FSSYNC_BUILD_CLIENT
@@ -651,7 +650,7 @@ VInitVolumePackage2(ProgramType pt, VolumePackageOptions * opts)
 int
 VInitAttachVolumes(ProgramType pt)
 {
-    opr_Assert(VInit == 1);
+    opr_Assert(VInit==1);
     if (pt == fileServer) {
 	struct DiskPartition64 *diskP;
 	/* Attach all the volumes in this partition */
@@ -659,11 +658,11 @@ VInitAttachVolumes(ProgramType pt)
 	    int nAttached = 0, nUnattached = 0;
 	    opr_Verify(VAttachVolumesByPartition(diskP,
 						 &nAttached, &nUnattached)
-		       == 0);
+			    == 0);
 	}
     }
     VOL_LOCK;
-    VSetVInit_r(2);		/* Initialized, and all volumes have been attached */
+    VSetVInit_r(2);			/* Initialized, and all volumes have been attached */
     LWP_NoYieldSignal(VInitAttachVolumes);
     VOL_UNLOCK;
     return 0;
@@ -684,11 +683,11 @@ VInitAttachVolumes(ProgramType pt)
 int
 VInitAttachVolumes(ProgramType pt)
 {
-    opr_Assert(VInit == 1);
+    opr_Assert(VInit==1);
     if (pt == fileServer) {
 	struct DiskPartition64 *diskP;
 	struct vinitvolumepackage_thread_t params;
-	struct diskpartition_queue_t *dpq;
+	struct diskpartition_queue_t * dpq;
 	int i, threads, parts;
 	pthread_t tid;
 	pthread_attr_t attrs;
@@ -698,12 +697,11 @@ VInitAttachVolumes(ProgramType pt)
 	params.n_threads_complete = 0;
 
 	/* create partition work queue */
-	for (parts = 0, diskP = DiskPartitionList; diskP;
-	     diskP = diskP->next, parts++) {
+	for (parts=0, diskP = DiskPartitionList; diskP; diskP = diskP->next, parts++) {
 	    dpq = malloc(sizeof(struct diskpartition_queue_t));
 	    opr_Assert(dpq != NULL);
 	    dpq->diskP = diskP;
-	    queue_Append(&params, dpq);
+	    queue_Append(&params,dpq);
 	}
 
 	threads = min(parts, vol_attach_threads);
@@ -713,22 +711,23 @@ VInitAttachVolumes(ProgramType pt)
 	    opr_Verify(pthread_attr_init(&attrs) == 0);
 	    opr_Verify(pthread_attr_setdetachstate(&attrs,
 						   PTHREAD_CREATE_DETACHED)
-		       == 0);
+			    == 0);
 
 	    Log("VInitVolumePackage: beginning parallel fileserver startup\n");
-	    Log("VInitVolumePackage: using %d threads to attach volumes on %d partitions\n", threads, parts);
+	    Log("VInitVolumePackage: using %d threads to attach volumes on %d partitions\n",
+		threads, parts);
 
 	    VOL_LOCK;
-	    for (i = 0; i < threads; i++) {
-		AFS_SIGSET_DECL;
-		AFS_SIGSET_CLEAR();
+	    for (i=0; i < threads; i++) {
+                AFS_SIGSET_DECL;
+                AFS_SIGSET_CLEAR();
 		opr_Verify(pthread_create(&tid, &attrs,
 					  &VInitVolumePackageThread,
 					  &params) == 0);
-		AFS_SIGSET_RESTORE();
+                AFS_SIGSET_RESTORE();
 	    }
 
-	    while (params.n_threads_complete < threads) {
+	    while(params.n_threads_complete < threads) {
 		VOL_CV_WAIT(&params.thread_done_cv);
 	    }
 	    VOL_UNLOCK;
@@ -738,7 +737,8 @@ VInitAttachVolumes(ProgramType pt)
 	    /* if we're only going to run one init thread, don't bother creating
 	     * another LWP */
 	    Log("VInitVolumePackage: beginning single-threaded fileserver startup\n");
-	    Log("VInitVolumePackage: using 1 thread to attach volumes on %d partition(s)\n", parts);
+	    Log("VInitVolumePackage: using 1 thread to attach volumes on %d partition(s)\n",
+		parts);
 
 	    VInitVolumePackageThread(&params);
 	}
@@ -746,19 +746,18 @@ VInitAttachVolumes(ProgramType pt)
 	opr_cv_destroy(&params.thread_done_cv);
     }
     VOL_LOCK;
-    VSetVInit_r(2);		/* Initialized, and all volumes have been attached */
+    VSetVInit_r(2);			/* Initialized, and all volumes have been attached */
     opr_cv_broadcast(&vol_init_attach_cond);
     VOL_UNLOCK;
     return 0;
 }
 
 static void *
-VInitVolumePackageThread(void *args)
-{
+VInitVolumePackageThread(void * args) {
 
     struct DiskPartition64 *diskP;
-    struct vinitvolumepackage_thread_t *params;
-    struct diskpartition_queue_t *dpq;
+    struct vinitvolumepackage_thread_t * params;
+    struct diskpartition_queue_t * dpq;
 
     params = (vinitvolumepackage_thread_t *) args;
 
@@ -766,14 +765,14 @@ VInitVolumePackageThread(void *args)
     VOL_LOCK;
     /* Attach all the volumes in this partition */
     while (queue_IsNotEmpty(params)) {
-	int nAttached = 0, nUnattached = 0;
+        int nAttached = 0, nUnattached = 0;
 
-	if (vinit_attach_abort) {
-	    Log("Aborting initialization\n");
-	    goto done;
-	}
+        if (vinit_attach_abort) {
+            Log("Aborting initialization\n");
+            goto done;
+        }
 
-	dpq = queue_First(params, diskpartition_queue_t);
+        dpq = queue_First(params,diskpartition_queue_t);
 	queue_Remove(dpq);
 	VOL_UNLOCK;
 	diskP = dpq->diskP;
@@ -785,7 +784,7 @@ VInitVolumePackageThread(void *args)
 	VOL_LOCK;
     }
 
-  done:
+done:
     params->n_threads_complete++;
     opr_cv_signal(&params->thread_done_cv);
     VOL_UNLOCK;
@@ -807,23 +806,22 @@ VInitVolumePackageThread(void *args)
 int
 VInitAttachVolumes(ProgramType pt)
 {
-    opr_Assert(VInit == 1);
+    opr_Assert(VInit==1);
     if (pt == fileServer) {
 
 	struct DiskPartition64 *diskP;
 	struct partition_queue pq;
-	struct volume_init_queue vq;
+        struct volume_init_queue vq;
 
 	int i, threads, parts;
 	pthread_t tid;
 	pthread_attr_t attrs;
 
 	/* create partition work queue */
-	queue_Init(&pq);
+        queue_Init(&pq);
 	opr_cv_init(&pq.cv);
 	opr_mutex_init(&pq.mutex);
-	for (parts = 0, diskP = DiskPartitionList; diskP;
-	     diskP = diskP->next, parts++) {
+	for (parts = 0, diskP = DiskPartitionList; diskP; diskP = diskP->next, parts++) {
 	    struct diskpartition_queue_t *dp;
 	    dp = malloc(sizeof(struct diskpartition_queue_t));
 	    opr_Assert(dp != NULL);
@@ -831,43 +829,44 @@ VInitAttachVolumes(ProgramType pt)
 	    queue_Append(&pq, dp);
 	}
 
-	/* number of worker threads; at least one, not to exceed the number of partitions */
+        /* number of worker threads; at least one, not to exceed the number of partitions */
 	threads = min(parts, vol_attach_threads);
 
-	/* create volume work queue */
-	queue_Init(&vq);
+        /* create volume work queue */
+        queue_Init(&vq);
 	opr_cv_init(&vq.cv);
 	opr_mutex_init(&vq.mutex);
 
-	opr_Verify(pthread_attr_init(&attrs) == 0);
-	opr_Verify(pthread_attr_setdetachstate(&attrs,
+        opr_Verify(pthread_attr_init(&attrs) == 0);
+        opr_Verify(pthread_attr_setdetachstate(&attrs,
 					       PTHREAD_CREATE_DETACHED) == 0);
 
-	Log("VInitVolumePackage: beginning parallel fileserver startup\n");
-	Log("VInitVolumePackage: using %d threads to pre-attach volumes on %d partitions\n", threads, parts);
+        Log("VInitVolumePackage: beginning parallel fileserver startup\n");
+        Log("VInitVolumePackage: using %d threads to pre-attach volumes on %d partitions\n",
+		threads, parts);
 
-	/* create threads to scan disk partitions. */
-	for (i = 0; i < threads; i++) {
+        /* create threads to scan disk partitions. */
+	for (i=0; i < threads; i++) {
 	    struct vinitvolumepackage_thread_param *params;
-	    AFS_SIGSET_DECL;
+            AFS_SIGSET_DECL;
 
-	    params = malloc(sizeof(struct vinitvolumepackage_thread_param));
-	    opr_Assert(params);
-	    params->pq = &pq;
-	    params->vq = &vq;
-	    params->nthreads = threads;
-	    params->thread = i + 1;
+            params = malloc(sizeof(struct vinitvolumepackage_thread_param));
+            opr_Assert(params);
+            params->pq = &pq;
+            params->vq = &vq;
+            params->nthreads = threads;
+            params->thread = i+1;
 
-	    AFS_SIGSET_CLEAR();
+            AFS_SIGSET_CLEAR();
 	    opr_Verify(pthread_create(&tid, &attrs,
 				      &VInitVolumePackageThread,
-				      (void *)params) == 0);
-	    AFS_SIGSET_RESTORE();
+				      (void*)params) == 0);
+            AFS_SIGSET_RESTORE();
 	}
 
-	VInitPreAttachVolumes(threads, &vq);
+        VInitPreAttachVolumes(threads, &vq);
 
-	opr_Verify(pthread_attr_destroy(&attrs) == 0);
+        opr_Verify(pthread_attr_destroy(&attrs) == 0);
 	opr_cv_destroy(&pq.cv);
 	opr_mutex_destroy(&pq.mutex);
 	opr_cv_destroy(&vq.cv);
@@ -875,7 +874,7 @@ VInitAttachVolumes(ProgramType pt)
     }
 
     VOL_LOCK;
-    VSetVInit_r(2);		/* Initialized, and all volumes have been attached */
+    VSetVInit_r(2);			/* Initialized, and all volumes have been attached */
     opr_cv_broadcast(&vol_init_attach_cond);
     VOL_UNLOCK;
 
@@ -910,44 +909,42 @@ VInitVolumePackageThread(void *args)
     vb->last = 0;
     vb->size = 0;
 
-    Log("Scanning partitions on thread %d of %d\n", params->thread,
-	params->nthreads);
-    while ((partition = VInitNextPartition(pq))) {
-	DIR *dirp;
-	VolumeId vid;
+    Log("Scanning partitions on thread %d of %d\n", params->thread, params->nthreads);
+    while((partition = VInitNextPartition(pq))) {
+        DIR *dirp;
+        VolumeId vid;
 
-	Log("Partition %s: pre-attaching volumes\n", partition->name);
-	dirp = opendir(VPartitionPath(partition));
-	if (!dirp) {
-	    Log("opendir on Partition %s failed, errno=%d!\n",
-		partition->name, errno);
-	    continue;
-	}
-	while ((vid = VInitNextVolumeId(dirp))) {
-	    Volume *vp = calloc(1, sizeof(Volume));
-	    opr_Assert(vp);
-	    vp->device = partition->device;
-	    vp->partition = partition;
-	    vp->hashid = vid;
-	    queue_Init(&vp->vnode_list);
-	    queue_Init(&vp->rx_call_list);
+        Log("Partition %s: pre-attaching volumes\n", partition->name);
+        dirp = opendir(VPartitionPath(partition));
+        if (!dirp) {
+            Log("opendir on Partition %s failed, errno=%d!\n", partition->name, errno);
+            continue;
+        }
+        while ((vid = VInitNextVolumeId(dirp))) {
+            Volume *vp = calloc(1, sizeof(Volume));
+            opr_Assert(vp);
+            vp->device = partition->device;
+            vp->partition = partition;
+            vp->hashid = vid;
+            queue_Init(&vp->vnode_list);
+            queue_Init(&vp->rx_call_list);
 	    opr_cv_init(&V_attachCV(vp));
 
-	    vb->batch[vb->size++] = vp;
-	    if (vb->size == VINIT_BATCH_MAX_SIZE) {
+            vb->batch[vb->size++] = vp;
+            if (vb->size == VINIT_BATCH_MAX_SIZE) {
 		opr_mutex_enter(&vq->mutex);
-		queue_Append(vq, vb);
+                queue_Append(vq, vb);
 		opr_cv_broadcast(&vq->cv);
 		opr_mutex_exit(&vq->mutex);
 
-		vb = malloc(sizeof(struct volume_init_batch));
-		opr_Assert(vb);
-		vb->thread = params->thread;
-		vb->size = 0;
-		vb->last = 0;
-	    }
-	}
-	closedir(dirp);
+                vb = malloc(sizeof(struct volume_init_batch));
+                opr_Assert(vb);
+                vb->thread = params->thread;
+                vb->size = 0;
+                vb->last = 0;
+            }
+        }
+        closedir(dirp);
     }
 
     vb->last = 1;
@@ -956,8 +953,7 @@ VInitVolumePackageThread(void *args)
     opr_cv_broadcast(&vq->cv);
     opr_mutex_exit(&vq->mutex);
 
-    Log("Partition scan thread %d of %d ended\n", params->thread,
-	params->nthreads);
+    Log("Partition scan thread %d of %d ended\n", params->thread, params->nthreads);
     free(params);
     return NULL;
 }
@@ -965,22 +961,22 @@ VInitVolumePackageThread(void *args)
 /**
  * Read next element from the pre-populated partition list.
  */
-static struct DiskPartition64 *
+static struct DiskPartition64*
 VInitNextPartition(struct partition_queue *pq)
 {
     struct DiskPartition64 *partition;
-    struct diskpartition_queue_t *dp;	/* queue element */
+    struct diskpartition_queue_t *dp; /* queue element */
 
     if (vinit_attach_abort) {
-	Log("Aborting volume preattach thread.\n");
-	return NULL;
+        Log("Aborting volume preattach thread.\n");
+        return NULL;
     }
 
     /* get next partition to scan */
     opr_mutex_enter(&pq->mutex);
     if (queue_IsEmpty(pq)) {
 	opr_mutex_exit(&pq->mutex);
-	return NULL;
+        return NULL;
     }
     dp = queue_First(pq, diskpartition_queue_t);
     queue_Remove(dp);
@@ -998,25 +994,25 @@ VInitNextPartition(struct partition_queue *pq)
  * Find next volume id on the partition.
  */
 static VolumeId
-VInitNextVolumeId(DIR * dirp)
+VInitNextVolumeId(DIR *dirp)
 {
     struct dirent *d;
     VolumeId vid = 0;
     char *ext;
 
-    while ((d = readdir(dirp))) {
-	if (vinit_attach_abort) {
-	    Log("Aborting volume preattach thread.\n");
-	    break;
-	}
-	ext = strrchr(d->d_name, '.');
-	if (d->d_name[0] == 'V' && ext && strcmp(ext, VHDREXT) == 0) {
-	    vid = VolumeNumber(d->d_name);
-	    if (vid) {
-		break;
-	    }
-	    Log("Warning: bogus volume header file: %s\n", d->d_name);
-	}
+    while((d = readdir(dirp))) {
+        if (vinit_attach_abort) {
+            Log("Aborting volume preattach thread.\n");
+            break;
+        }
+        ext = strrchr(d->d_name, '.');
+        if (d->d_name[0] == 'V' && ext && strcmp(ext, VHDREXT) == 0) {
+            vid = VolumeNumber(d->d_name);
+            if (vid) {
+               break;
+            }
+            Log("Warning: bogus volume header file: %s\n", d->d_name);
+        }
     }
     return vid;
 }
@@ -1031,46 +1027,46 @@ VInitPreAttachVolumes(int nthreads, struct volume_init_queue *vq)
     int i;
 
     while (nthreads) {
-	/* dequeue next volume */
+        /* dequeue next volume */
 	opr_mutex_enter(&vq->mutex);
-	if (queue_IsEmpty(vq)) {
+        if (queue_IsEmpty(vq)) {
 	    opr_cv_wait(&vq->cv, &vq->mutex);
-	}
-	vb = queue_First(vq, volume_init_batch);
-	queue_Remove(vb);
+        }
+        vb = queue_First(vq, volume_init_batch);
+        queue_Remove(vb);
 	opr_mutex_exit(&vq->mutex);
 
-	if (vb->size) {
-	    VOL_LOCK;
-	    for (i = 0; i < vb->size; i++) {
-		Volume *vp;
-		Volume *dup;
-		Error ec = 0;
+        if (vb->size) {
+            VOL_LOCK;
+            for (i = 0; i<vb->size; i++) {
+                Volume *vp;
+                Volume *dup;
+                Error ec = 0;
 
-		vp = vb->batch[i];
-		dup = VLookupVolume_r(&ec, vp->hashid, NULL);
-		if (ec) {
-		    Log("Error looking up volume, code=%d\n", ec);
-		} else if (dup) {
-		    Log("Warning: Duplicate volume id %" AFS_VOLID_FMT
-			" detected.\n",
-			afs_printable_VolumeId_lu(vp->hashid));
-		} else {
-		    /* put pre-attached volume onto the hash table
-		     * and bring it up to the pre-attached state */
-		    AddVolumeToHashTable(vp, vp->hashid);
-		    AddVolumeToVByPList_r(vp);
-		    VLRU_Init_Node_r(vp);
-		    VChangeState_r(vp, VOL_STATE_PREATTACHED);
-		}
-	    }
-	    VOL_UNLOCK;
-	}
+                vp = vb->batch[i];
+	        dup = VLookupVolume_r(&ec, vp->hashid, NULL);
+                if (ec) {
+                    Log("Error looking up volume, code=%d\n", ec);
+                }
+                else if (dup) {
+                    Log("Warning: Duplicate volume id %" AFS_VOLID_FMT " detected.\n", afs_printable_VolumeId_lu(vp->hashid));
+                }
+                else {
+                    /* put pre-attached volume onto the hash table
+                     * and bring it up to the pre-attached state */
+                    AddVolumeToHashTable(vp, vp->hashid);
+                    AddVolumeToVByPList_r(vp);
+                    VLRU_Init_Node_r(vp);
+                    VChangeState_r(vp, VOL_STATE_PREATTACHED);
+                }
+            }
+            VOL_UNLOCK;
+        }
 
-	if (vb->last) {
-	    nthreads--;
-	}
-	free(vb);
+        if (vb->last) {
+            nthreads--;
+        }
+        free(vb);
     }
     return 0;
 }
@@ -1081,53 +1077,51 @@ VInitPreAttachVolumes(int nthreads, struct volume_init_queue *vq)
  * attach all volumes on a given disk partition
  */
 static int
-VAttachVolumesByPartition(struct DiskPartition64 *diskP, int *nAttached,
-			  int *nUnattached)
+VAttachVolumesByPartition(struct DiskPartition64 *diskP, int * nAttached, int * nUnattached)
 {
-    DIR *dirp;
-    struct dirent *dp;
-    int ret = 0;
+  DIR * dirp;
+  struct dirent * dp;
+  int ret = 0;
 
-    Log("Partition %s: attaching volumes\n", diskP->name);
-    dirp = opendir(VPartitionPath(diskP));
-    if (!dirp) {
-	Log("opendir on Partition %s failed!\n", diskP->name);
-	return 1;
+  Log("Partition %s: attaching volumes\n", diskP->name);
+  dirp = opendir(VPartitionPath(diskP));
+  if (!dirp) {
+    Log("opendir on Partition %s failed!\n", diskP->name);
+    return 1;
+  }
+
+  while ((dp = readdir(dirp))) {
+    char *p;
+    p = strrchr(dp->d_name, '.');
+
+    if (vinit_attach_abort) {
+      Log("Partition %s: abort attach volumes\n", diskP->name);
+      goto done;
     }
 
-    while ((dp = readdir(dirp))) {
-	char *p;
-	p = strrchr(dp->d_name, '.');
-
-	if (vinit_attach_abort) {
-	    Log("Partition %s: abort attach volumes\n", diskP->name);
-	    goto done;
-	}
-
-	if (p != NULL && strcmp(p, VHDREXT) == 0) {
-	    Error error;
-	    Volume *vp;
-	    vp = VAttachVolumeByName(&error, diskP->name, dp->d_name,
-				     V_VOLUPD);
-	    (*(vp ? nAttached : nUnattached))++;
-	    if (error == VOFFLINE)
-		Log("Volume %d stays offline (/vice/offline/%s exists)\n",
-		    VolumeNumber(dp->d_name), dp->d_name);
-	    else if (GetLogLevel() >= 5) {
-		Log("Partition %s: attached volume %d (%s)\n",
-		    diskP->name, VolumeNumber(dp->d_name), dp->d_name);
-	    }
-	    if (vp) {
-		VPutVolume(vp);
-	    }
-	}
+    if (p != NULL && strcmp(p, VHDREXT) == 0) {
+      Error error;
+      Volume *vp;
+      vp = VAttachVolumeByName(&error, diskP->name, dp->d_name,
+			       V_VOLUPD);
+      (*(vp ? nAttached : nUnattached))++;
+      if (error == VOFFLINE)
+	Log("Volume %d stays offline (/vice/offline/%s exists)\n", VolumeNumber(dp->d_name), dp->d_name);
+      else if (GetLogLevel() >= 5) {
+	Log("Partition %s: attached volume %d (%s)\n",
+	    diskP->name, VolumeNumber(dp->d_name),
+	    dp->d_name);
+      }
+      if (vp) {
+	VPutVolume(vp);
+      }
     }
+  }
 
-    Log("Partition %s: attached %d volumes; %d volumes not attached\n",
-	diskP->name, *nAttached, *nUnattached);
-  done:
-    closedir(dirp);
-    return ret;
+  Log("Partition %s: attached %d volumes; %d volumes not attached\n", diskP->name, *nAttached, *nUnattached);
+done:
+  closedir(dirp);
+  return ret;
 }
 #endif /* !AFS_DEMAND_ATTACH_FS */
 
@@ -1194,8 +1188,8 @@ void
 VShutdown_r(void)
 {
     int i;
-    struct DiskPartition64 *diskP;
-    struct diskpartition_queue_t *dpq;
+    struct DiskPartition64 * diskP;
+    struct diskpartition_queue_t * dpq;
     vshutdown_thread_t params;
     pthread_t tid;
     pthread_attr_t attrs;
@@ -1203,12 +1197,12 @@ VShutdown_r(void)
     memset(&params, 0, sizeof(vshutdown_thread_t));
 
     if (VInit < 2) {
-	Log("VShutdown:  aborting attach volumes\n");
-	vinit_attach_abort = 1;
-	VOL_CV_WAIT(&vol_init_attach_cond);
+        Log("VShutdown:  aborting attach volumes\n");
+        vinit_attach_abort = 1;
+        VOL_CV_WAIT(&vol_init_attach_cond);
     }
 
-    for (params.n_parts = 0, diskP = DiskPartitionList;
+    for (params.n_parts=0, diskP = DiskPartitionList;
 	 diskP; diskP = diskP->next, params.n_parts++);
 
     Log("VShutdown:  shutting down on-line volumes on %d partition%s...\n",
@@ -1231,8 +1225,8 @@ VShutdown_r(void)
 	 * parallel shutdown */
 	for (diskP = DiskPartitionList; diskP; diskP = diskP->next) {
 	    /* XXX debug */
-	    struct rx_queue *qp, *nqp;
-	    Volume *vp;
+	    struct rx_queue * qp, * nqp;
+	    Volume * vp;
 	    int count = 0;
 
 	    VVByPListWait_r(diskP);
@@ -1240,11 +1234,12 @@ VShutdown_r(void)
 
 	    /* XXX debug */
 	    for (queue_Scan(&diskP->vol_list, qp, nqp, rx_queue)) {
-		vp = (Volume *) ((char *)qp - offsetof(Volume, vol_list));
+		vp = (Volume *)((char *)qp - offsetof(Volume, vol_list));
 		if (vp->header)
 		    count++;
 	    }
-	    Log("VShutdown: partition %s has %d volumes with attached headers\n", VPartitionPath(diskP), count);
+	    Log("VShutdown: partition %s has %d volumes with attached headers\n",
+		VPartitionPath(diskP), count);
 
 
 	    /* build up the pass 0 shutdown work queue */
@@ -1253,16 +1248,16 @@ VShutdown_r(void)
 	    dpq->diskP = diskP;
 	    queue_Prepend(&params, dpq);
 
-	    params.part_pass_head[diskP->index] =
-		queue_First(&diskP->vol_list, rx_queue);
+	    params.part_pass_head[diskP->index] = queue_First(&diskP->vol_list, rx_queue);
 	}
 
 	Log("VShutdown:  beginning parallel fileserver shutdown\n");
-	Log("VShutdown:  using %d threads to offline volumes on %d partition%s\n", vol_attach_threads, params.n_parts, params.n_parts > 1 ? "s" : "");
+	Log("VShutdown:  using %d threads to offline volumes on %d partition%s\n",
+	    vol_attach_threads, params.n_parts, params.n_parts > 1 ? "s" : "" );
 
 	/* do pass 0 shutdown */
 	opr_mutex_enter(&params.lock);
-	for (i = 0; i < params.n_threads; i++) {
+	for (i=0; i < params.n_threads; i++) {
 	    opr_Verify(pthread_create(&tid, &attrs, &VShutdownThread,
 				      &params) == 0);
 	}
@@ -1295,11 +1290,15 @@ VShutdown_r(void)
 	/* drop the VByPList exclusive reservations */
 	for (diskP = DiskPartitionList; diskP; diskP = diskP->next) {
 	    VVByPListEndExclusive_r(diskP);
-	    Log("VShutdown:  %s stats : (pass[0]=%d, pass[1]=%d, pass[2]=%d, pass[3]=%d)\n", VPartitionPath(diskP), params.stats[0][diskP->index], params.stats[1][diskP->index], params.stats[2][diskP->index], params.stats[3][diskP->index]);
+	    Log("VShutdown:  %s stats : (pass[0]=%d, pass[1]=%d, pass[2]=%d, pass[3]=%d)\n",
+		VPartitionPath(diskP),
+		params.stats[0][diskP->index],
+		params.stats[1][diskP->index],
+		params.stats[2][diskP->index],
+		params.stats[3][diskP->index]);
 	}
 
-	Log("VShutdown:  shutdown finished using %d threads\n",
-	    params.n_threads);
+	Log("VShutdown:  shutdown finished using %d threads\n", params.n_threads);
     } else {
 	/* if we're only going to run one shutdown thread, don't bother creating
 	 * another LWP */
@@ -1323,12 +1322,12 @@ VShutdown_r(void)
     afs_int32 code;
 
     if (VInit < 2) {
-	Log("VShutdown:  aborting attach volumes\n");
-	vinit_attach_abort = 1;
+        Log("VShutdown:  aborting attach volumes\n");
+        vinit_attach_abort = 1;
 #ifdef AFS_PTHREAD_ENV
-	VOL_CV_WAIT(&vol_init_attach_cond);
+        VOL_CV_WAIT(&vol_init_attach_cond);
 #else
-	LWP_WaitProcess(VInitAttachVolumes);
+        LWP_WaitProcess(VInitAttachVolumes);
 #endif /* AFS_PTHREAD_ENV */
     }
 
@@ -1336,12 +1335,11 @@ VShutdown_r(void)
     vol_shutting_down = 1;
     for (i = 0; i < VolumeHashTable.Size; i++) {
 	/* try to hold first volume in the hash table */
-	for (queue_Scan(&VolumeHashTable.Table[i], vp, np, Volume)) {
+	for (queue_Scan(&VolumeHashTable.Table[i],vp,np,Volume)) {
 	    code = VHold_r(vp);
 	    if (code == 0) {
 		if (GetLogLevel() >= 5)
-		    Log("VShutdown:  Attempting to take volume %"
-			AFS_VOLID_FMT " offline.\n",
+		    Log("VShutdown:  Attempting to take volume %" AFS_VOLID_FMT " offline.\n",
 			afs_printable_VolumeId_lu(vp->hashid));
 
 		/* next, take the volume offline (drops reference count) */
@@ -1357,7 +1355,7 @@ VShutdown_r(void)
 void
 VShutdown(void)
 {
-    opr_Assert(VInit > 0);
+    opr_Assert(VInit>0);
     VOL_LOCK;
     VShutdown_r();
     VOL_UNLOCK;
@@ -1392,7 +1390,7 @@ static void
 ShutdownController(vshutdown_thread_t * params)
 {
     /* XXX debug */
-    struct DiskPartition64 *diskP;
+    struct DiskPartition64 * diskP;
     Device id;
     vshutdown_thread_t shadow;
 
@@ -1406,11 +1404,18 @@ ShutdownController(vshutdown_thread_t * params)
 
 	VOL_UNLOCK;
 	/* XXX debug */
-	Log("ShutdownController:  schedule version=%d, vol_remaining=%d, pass=%d\n", shadow.schedule_version, shadow.vol_remaining, shadow.pass);
-	Log("ShutdownController:  n_threads_complete=%d, n_parts_done_pass=%d\n", shadow.n_threads_complete, shadow.n_parts_done_pass);
-	for (diskP = DiskPartitionList; diskP; diskP = diskP->next) {
+	Log("ShutdownController:  schedule version=%d, vol_remaining=%d, pass=%d\n",
+	    shadow.schedule_version, shadow.vol_remaining, shadow.pass);
+	Log("ShutdownController:  n_threads_complete=%d, n_parts_done_pass=%d\n",
+	    shadow.n_threads_complete, shadow.n_parts_done_pass);
+	for (diskP = DiskPartitionList; diskP; diskP=diskP->next) {
 	    id = diskP->index;
-	    Log("ShutdownController:  part[%d] : (len=%d, thread_target=%d, done_pass=%d, pass_head=%p)\n", id, diskP->vol_list.len, shadow.part_thread_target[id], shadow.part_done_pass[id], shadow.part_pass_head[id]);
+	    Log("ShutdownController:  part[%d] : (len=%d, thread_target=%d, done_pass=%d, pass_head=%p)\n",
+		id,
+		diskP->vol_list.len,
+		shadow.part_thread_target[id],
+		shadow.part_done_pass[id],
+		shadow.part_pass_head[id]);
 	}
 
 	sleep(1);
@@ -1430,9 +1435,9 @@ ShutdownController(vshutdown_thread_t * params)
 static void
 ShutdownCreateSchedule(vshutdown_thread_t * params)
 {
-    struct DiskPartition64 *diskP;
+    struct DiskPartition64 * diskP;
     int sum, thr_workload, thr_left;
-    int part_residue[VOLMAXPARTS + 1];
+    int part_residue[VOLMAXPARTS+1];
     Device id;
 
     /* compute the total number of outstanding volumes */
@@ -1471,8 +1476,7 @@ ShutdownCreateSchedule(vshutdown_thread_t * params)
 	/* compute length-weighted workloads */
 	int delta;
 
-	for (diskP = DiskPartitionList; diskP && thr_left;
-	     diskP = diskP->next) {
+	for (diskP = DiskPartitionList; diskP && thr_left; diskP = diskP->next) {
 	    id = diskP->index;
 	    delta = (diskP->vol_list.len / thr_workload) -
 		params->part_thread_target[id];
@@ -1537,8 +1541,7 @@ ShutdownCreateSchedule(vshutdown_thread_t * params)
 	}
 
 	/* finish off the last of the threads */
-	for (diskP = DiskPartitionList; thr_left && diskP;
-	     diskP = diskP->next) {
+	for (diskP = DiskPartitionList; thr_left && diskP; diskP = diskP->next) {
 	    id = diskP->index;
 	    params->part_thread_target[id]++;
 	    thr_left--;
@@ -1548,12 +1551,12 @@ ShutdownCreateSchedule(vshutdown_thread_t * params)
 
 /* worker thread for parallel shutdown */
 static void *
-VShutdownThread(void *args)
+VShutdownThread(void * args)
 {
-    vshutdown_thread_t *params;
+    vshutdown_thread_t * params;
     int found, pass, schedule_version_save, count;
     struct DiskPartition64 *diskP;
-    struct diskpartition_queue_t *dpq;
+    struct diskpartition_queue_t * dpq;
     Device id;
 
     params = (vshutdown_thread_t *) args;
@@ -1620,7 +1623,8 @@ VShutdownThread(void *args)
 		    params->part_done_pass[id] = 1;
 		    params->n_parts_done_pass++;
 		    if (pass == 3) {
-			Log("VShutdown:  done shutting down volumes on partition %s.\n", VPartitionPath(diskP));
+			Log("VShutdown:  done shutting down volumes on partition %s.\n",
+			    VPartitionPath(diskP));
 		    }
 		}
 	    }
@@ -1634,13 +1638,13 @@ VShutdownThread(void *args)
 	    while (!params->part_done_pass[id] &&
 		   (schedule_version_save == params->schedule_version)) {
 		/* ShutdownVolumeWalk_r will drop the glock internally */
-		if (!ShutdownVolumeWalk_r
-		    (diskP, pass, &params->part_pass_head[id])) {
+		if (!ShutdownVolumeWalk_r(diskP, pass, &params->part_pass_head[id])) {
 		    if (!params->part_done_pass[id]) {
 			params->part_done_pass[id] = 1;
 			params->n_parts_done_pass++;
 			if (pass == 3) {
-			    Log("VShutdown:  done shutting down volumes on partition %s.\n", VPartitionPath(diskP));
+			    Log("VShutdown:  done shutting down volumes on partition %s.\n",
+				VPartitionPath(diskP));
 			}
 		    }
 		    break;
@@ -1661,12 +1665,10 @@ VShutdownThread(void *args)
 		    params->n_threads_complete = 0;
 		    params->n_parts_done_pass = 0;
 		    params->pass++;
-		    for (diskP = DiskPartitionList; diskP;
-			 diskP = diskP->next) {
+		    for (diskP = DiskPartitionList; diskP; diskP = diskP->next) {
 			id = diskP->index;
 			params->part_done_pass[id] = 0;
-			params->part_pass_head[id] =
-			    queue_First(&diskP->vol_list, rx_queue);
+			params->part_pass_head[id] = queue_First(&diskP->vol_list, rx_queue);
 		    }
 
 		    /* compute a new thread schedule before releasing all the workers */
@@ -1676,7 +1678,8 @@ VShutdownThread(void *args)
 		    opr_cv_broadcast(&params->cv);
 
 		    VOL_UNLOCK;
-		    Log("VShutdown:  pass %d completed using %d threads on %d partitions\n", pass, params->n_threads, params->n_parts);
+		    Log("VShutdown:  pass %d completed using %d threads on %d partitions\n",
+			pass, params->n_threads, params->n_parts);
 		    VOL_LOCK;
 		} else {
 		    VOL_CV_WAIT(&params->cv);
@@ -1701,7 +1704,7 @@ VShutdownThread(void *args)
  * note that this function will not allow mp-fast
  * shutdown of a partition */
 int
-VShutdownByPartition_r(struct DiskPartition64 *dp)
+VShutdownByPartition_r(struct DiskPartition64 * dp)
 {
     int pass;
     int pass_stats[4];
@@ -1717,7 +1720,7 @@ VShutdownByPartition_r(struct DiskPartition64 *dp)
      * then do the complicated ones last
      * (has the advantage of keeping
      *  in-use volumes up until the bitter end) */
-    for (pass = 0, total = 0; pass < 4; pass++) {
+    for (pass = 0, total=0; pass < 4; pass++) {
 	pass_stats[pass] = ShutdownVByPForPass_r(dp, pass);
 	total += pass_stats[pass];
     }
@@ -1725,7 +1728,8 @@ VShutdownByPartition_r(struct DiskPartition64 *dp)
     /* end exclusive access */
     VVByPListEndExclusive_r(dp);
 
-    Log("VShutdownByPartition:  shut down %d volumes on %s (pass[0]=%d, pass[1]=%d, pass[2]=%d, pass[3]=%d)\n", total, VPartitionPath(dp), pass_stats[0], pass_stats[1], pass_stats[2], pass_stats[3]);
+    Log("VShutdownByPartition:  shut down %d volumes on %s (pass[0]=%d, pass[1]=%d, pass[2]=%d, pass[3]=%d)\n",
+	total, VPartitionPath(dp), pass_stats[0], pass_stats[1], pass_stats[2], pass_stats[3]);
 
     return 0;
 }
@@ -1751,17 +1755,15 @@ VShutdownByPartition_r(struct DiskPartition64 *dp)
  * traversal
  */
 static int
-ShutdownVByPForPass_r(struct DiskPartition64 *dp, int pass)
+ShutdownVByPForPass_r(struct DiskPartition64 * dp, int pass)
 {
-    struct rx_queue *q = queue_First(&dp->vol_list, rx_queue);
+    struct rx_queue * q = queue_First(&dp->vol_list, rx_queue);
     int i = 0;
-    const char *pass_strs[4] =
-	{ "{un/pre}attached vols", "vols w/ vol header loaded",
-"vols w/o vol header loaded", "vols with exclusive state" };
+    const char *pass_strs[4] = {"{un/pre}attached vols", "vols w/ vol header loaded", "vols w/o vol header loaded", "vols with exclusive state"};
 
     while (ShutdownVolumeWalk_r(dp, pass, &q)) {
 	i++;
-	if (0 == i % 100) {
+	if (0 == i%100) {
 	    Log("VShutdownByPartition:  ... shut down %d volumes on %s in pass %d (%s)\n", i, VPartitionPath(dp), pass, pass_strs[pass]);
 	}
     }
@@ -1773,11 +1775,11 @@ ShutdownVByPForPass_r(struct DiskPartition64 *dp, int pass)
  * returns 1 if a volume was shutdown in this pass,
  * 0 otherwise */
 static int
-ShutdownVolumeWalk_r(struct DiskPartition64 *dp, int pass,
-		     struct rx_queue **idx)
+ShutdownVolumeWalk_r(struct DiskPartition64 * dp, int pass,
+		     struct rx_queue ** idx)
 {
     struct rx_queue *qp, *nqp;
-    Volume *vp;
+    Volume * vp;
 
     qp = *idx;
 
@@ -1828,9 +1830,9 @@ VShutdownVolume_r(Volume * vp)
     VCreateReservation_r(vp);
 
     if (GetLogLevel() >= 5) {
-	Log("VShutdownVolume_r:  vid=%" AFS_VOLID_FMT
-	    ", device=%d, state=%u\n", afs_printable_VolumeId_lu(vp->hashid),
-	    vp->partition->device, (unsigned int)V_attachState(vp));
+	Log("VShutdownVolume_r:  vid=%" AFS_VOLID_FMT ", device=%d, state=%u\n",
+	    afs_printable_VolumeId_lu(vp->hashid), vp->partition->device,
+	    (unsigned int) V_attachState(vp));
     }
 
     /* wait for other blocking ops to finish */
@@ -1838,7 +1840,7 @@ VShutdownVolume_r(Volume * vp)
 
     opr_Assert(VIsValidState(V_attachState(vp)));
 
-    switch (V_attachState(vp)) {
+    switch(V_attachState(vp)) {
     case VOL_STATE_SALVAGING:
 	/* Leave salvaging volumes alone. Any in-progress salvages will
 	 * continue working after viced shuts down. This is intentional.
@@ -1857,8 +1859,8 @@ VShutdownVolume_r(Volume * vp)
 	code = VHold_r(vp);
 	if (!code) {
 	    if (GetLogLevel() >= 5)
-		Log("VShutdown:  Attempting to take volume %" AFS_VOLID_FMT
-		    " offline.\n", afs_printable_VolumeId_lu(vp->hashid));
+		Log("VShutdown:  Attempting to take volume %" AFS_VOLID_FMT " offline.\n",
+		    afs_printable_VolumeId_lu(vp->hashid));
 
 	    /* take the volume offline (drops reference count) */
 	    VOffline_r(vp, "File server was shut down");
@@ -1920,8 +1922,7 @@ ReadHeader(Error * ec, IHandle_t * h, char *to, int size, bit32 magic,
     fdP = IH_OPEN(h);
     if (fdP == NULL) {
 	Log("ReadHeader: Failed to open %s header file "
-	    "(volume=%" AFS_VOLID_FMT ", inode=%s); errno=%d\n",
-	    HeaderName(magic), afs_printable_VolumeId_lu(h->ih_vid),
+	    "(volume=%" AFS_VOLID_FMT ", inode=%s); errno=%d\n", HeaderName(magic), afs_printable_VolumeId_lu(h->ih_vid),
 	    PrintInode(stmp, h->ih_ino), errno);
 	*ec = VSALVAGE;
 	return;
@@ -1931,8 +1932,7 @@ ReadHeader(Error * ec, IHandle_t * h, char *to, int size, bit32 magic,
     nbytes = FDH_PREAD(fdP, to, size, 0);
     if (nbytes < 0) {
 	Log("ReadHeader: Failed to read %s header file "
-	    "(volume=%" AFS_VOLID_FMT ", inode=%s); errno=%d\n",
-	    HeaderName(magic), afs_printable_VolumeId_lu(h->ih_vid),
+	    "(volume=%" AFS_VOLID_FMT ", inode=%s); errno=%d\n", HeaderName(magic), afs_printable_VolumeId_lu(h->ih_vid),
 	    PrintInode(stmp, h->ih_ino), errno);
 	*ec = VSALVAGE;
 	FDH_REALLYCLOSE(fdP);
@@ -1941,7 +1941,7 @@ ReadHeader(Error * ec, IHandle_t * h, char *to, int size, bit32 magic,
     if (nbytes != size) {
 	Log("ReadHeader: Incorrect number of bytes read from %s header file "
 	    "(volume=%" AFS_VOLID_FMT ", inode=%s); expected=%d, read=%d\n",
-	    HeaderName(magic), afs_printable_VolumeId_lu(h->ih_vid),
+	    HeaderName(magic), afs_printable_VolumeId_lu(h->ih_vid), 
 	    PrintInode(stmp, h->ih_ino), size, (int)nbytes);
 	*ec = VSALVAGE;
 	FDH_REALLYCLOSE(fdP);
@@ -1949,10 +1949,9 @@ ReadHeader(Error * ec, IHandle_t * h, char *to, int size, bit32 magic,
     }
     if (vsn->magic != magic) {
 	Log("ReadHeader: Incorrect magic for %s header file "
-	    "(volume=%" AFS_VOLID_FMT
-	    ", inode=%s); expected=0x%x, read=0x%x\n", HeaderName(magic),
-	    afs_printable_VolumeId_lu(h->ih_vid), PrintInode(stmp, h->ih_ino),
-	    magic, vsn->magic);
+	    "(volume=%" AFS_VOLID_FMT ", inode=%s); expected=0x%x, read=0x%x\n",
+	    HeaderName(magic), afs_printable_VolumeId_lu(h->ih_vid),
+	    PrintInode(stmp, h->ih_ino), magic, vsn->magic);
 	*ec = VSALVAGE;
 	FDH_REALLYCLOSE(fdP);
 	return;
@@ -1964,8 +1963,8 @@ ReadHeader(Error * ec, IHandle_t * h, char *to, int size, bit32 magic,
     if (version && vsn->version != version) {
 	Log("ReadHeader: Incorrect version for %s header file "
 	    "(volume=%" AFS_VOLID_FMT ", inode=%s); expected=%x, read=%x\n",
-	    HeaderName(magic), afs_printable_VolumeId_lu(h->ih_vid),
-	    PrintInode(stmp, h->ih_ino), version, vsn->version);
+	    HeaderName(magic), afs_printable_VolumeId_lu(h->ih_vid), PrintInode(stmp, h->ih_ino),
+	    version, vsn->version);
 	*ec = VSALVAGE;
     }
 }
@@ -2047,12 +2046,12 @@ DiskToVolumeHeader(VolumeHeader_t * h, VolumeDiskHeader_t * dh)
 	(Inode) dh->volumeInfo_lo | ((Inode) dh->volumeInfo_hi << 32);
 
     h->smallVnodeIndex =
-	(Inode) dh->
-	smallVnodeIndex_lo | ((Inode) dh->smallVnodeIndex_hi << 32);
+	(Inode) dh->smallVnodeIndex_lo | ((Inode) dh->
+					  smallVnodeIndex_hi << 32);
 
     h->largeVnodeIndex =
-	(Inode) dh->
-	largeVnodeIndex_lo | ((Inode) dh->largeVnodeIndex_hi << 32);
+	(Inode) dh->largeVnodeIndex_lo | ((Inode) dh->
+					  largeVnodeIndex_hi << 32);
     h->linkTable =
 	(Inode) dh->linkTable_lo | ((Inode) dh->linkTable_hi << 32);
 #else
@@ -2086,7 +2085,7 @@ DiskToVolumeHeader(VolumeHeader_t * h, VolumeDiskHeader_t * dh)
 Volume *
 VPreAttachVolumeByName(Error * ec, char *partition, char *name)
 {
-    Volume *vp;
+    Volume * vp;
     VOL_LOCK;
     vp = VPreAttachVolumeByName_r(ec, partition, name);
     VOL_UNLOCK;
@@ -2109,7 +2108,9 @@ VPreAttachVolumeByName(Error * ec, char *partition, char *name)
 Volume *
 VPreAttachVolumeByName_r(Error * ec, char *partition, char *name)
 {
-    return VPreAttachVolumeById_r(ec, partition, VolumeNumber(name));
+    return VPreAttachVolumeById_r(ec,
+				  partition,
+				  VolumeNumber(name));
 }
 
 /**
@@ -2126,7 +2127,9 @@ VPreAttachVolumeByName_r(Error * ec, char *partition, char *name)
  * @internal volume package internal use only.
  */
 Volume *
-VPreAttachVolumeById_r(Error * ec, char *partition, VolumeId volumeId)
+VPreAttachVolumeById_r(Error * ec,
+		       char * partition,
+		       VolumeId volumeId)
 {
     Volume *vp;
     struct DiskPartition64 *partp;
@@ -2137,15 +2140,14 @@ VPreAttachVolumeById_r(Error * ec, char *partition, VolumeId volumeId)
 
     if (!(partp = VGetPartition_r(partition, 0))) {
 	*ec = VNOVOL;
-	Log("VPreAttachVolumeById_r:  Error getting partition (%s)\n",
-	    partition);
+	Log("VPreAttachVolumeById_r:  Error getting partition (%s)\n", partition);
 	return NULL;
     }
 
     /* ensure that any vp we pass to VPreAttachVolumeByVp_r
      * is NOT in exclusive state.
      */
-  retry:
+ retry:
     vp = VLookupVolume_r(ec, volumeId, NULL);
 
     if (*ec) {
@@ -2157,7 +2159,7 @@ VPreAttachVolumeById_r(Error * ec, char *partition, VolumeId volumeId)
 	VWaitExclusiveState_r(vp);
 	VCancelReservation_r(vp);
 	vp = NULL;
-	goto retry;		/* look up volume again */
+	goto retry;    /* look up volume again */
     }
 
     /* vp == NULL or vp not exclusive both OK */
@@ -2195,8 +2197,9 @@ VPreAttachVolumeById_r(Error * ec, char *partition, VolumeId volumeId)
  */
 Volume *
 VPreAttachVolumeByVp_r(Error * ec,
-		       struct DiskPartition64 *partp,
-		       Volume * vp, VolumeId vid)
+		       struct DiskPartition64 * partp,
+		       Volume * vp,
+		       VolumeId vid)
 {
     Volume *nvp = NULL;
 
@@ -2220,8 +2223,7 @@ VPreAttachVolumeByVp_r(Error * ec,
 	 *   - volume is in an error state
 	 *   - volume is pre-attached
 	 */
-	Log("VPreattachVolumeByVp_r: volume %" AFS_VOLID_FMT
-	    " not in quiescent state (state %u flags 0x%x)\n",
+	Log("VPreattachVolumeByVp_r: volume %" AFS_VOLID_FMT " not in quiescent state (state %u flags 0x%x)\n",
 	    afs_printable_VolumeId_lu(vid), V_attachState(vp),
 	    V_attachFlags(vp));
 	goto done;
@@ -2265,14 +2267,14 @@ VPreAttachVolumeByVp_r(Error * ec,
 	    free(vp);
 	    vp = NULL;
 	    goto done;
-	} else if (nvp) {	/* race detected */
+	} else if (nvp) { /* race detected */
 	    free(vp);
 	    vp = nvp;
 	    goto done;
 	} else {
-	    /* hack to make up for VChangeState_r() decrementing
-	     * the old state counter */
-	    VStats.state_levels[0]++;
+	  /* hack to make up for VChangeState_r() decrementing
+	   * the old state counter */
+	  VStats.state_levels[0]++;
 	}
     }
 
@@ -2284,8 +2286,7 @@ VPreAttachVolumeByVp_r(Error * ec,
     VChangeState_r(vp, VOL_STATE_PREATTACHED);
 
     if (GetLogLevel() >= 5)
-	Log("VPreAttachVolumeByVp_r:  volume %" AFS_VOLID_FMT
-	    " pre-attached\n", afs_printable_VolumeId_lu(vp->hashid));
+	Log("VPreAttachVolumeByVp_r:  volume %" AFS_VOLID_FMT " pre-attached\n", afs_printable_VolumeId_lu(vp->hashid));
 
   done:
     if (*ec)
@@ -2388,7 +2389,7 @@ VAttachVolumeByName_r(Error * ec, char *partition, char *name, int mode)
 		}
 	    } else {
 		/* if it isn't fully attached, delete from the hash tables,
-		 * and let the refcounter handle the rest */
+		   and let the refcounter handle the rest */
 		DeleteVolumeFromHashTable(vp);
 		DeleteVolumeFromVByPList_r(vp);
 	    }
@@ -2469,15 +2470,15 @@ VAttachVolumeByName_r(Error * ec, char *partition, char *name, int mode)
     strcat(path, name);
 
     if (!vp) {
-	vp = (Volume *) calloc(1, sizeof(Volume));
-	opr_Assert(vp != NULL);
-	vp->hashid = volumeId;
-	vp->device = partp->device;
-	vp->partition = partp;
-	queue_Init(&vp->vnode_list);
-	queue_Init(&vp->rx_call_list);
+      vp = (Volume *) calloc(1, sizeof(Volume));
+      opr_Assert(vp != NULL);
+      vp->hashid = volumeId;
+      vp->device = partp->device;
+      vp->partition = partp;
+      queue_Init(&vp->vnode_list);
+      queue_Init(&vp->rx_call_list);
 #ifdef AFS_DEMAND_ATTACH_FS
-	opr_cv_init(&V_attachCV(vp));
+      opr_cv_init(&V_attachCV(vp));
 #endif /* AFS_DEMAND_ATTACH_FS */
     }
 
@@ -2493,7 +2494,7 @@ VAttachVolumeByName_r(Error * ec, char *partition, char *name, int mode)
 	    VUpdateVolume_r(ec, vp, 0);
 	}
 	/* for dafs, we should tell the fileserver, except for V_PEEK
-	 * where we know it is not necessary */
+         * where we know it is not necessary */
 	if (mode == V_PEEK) {
 	    vp->needsPutBack = 0;
 	} else {
@@ -2518,11 +2519,11 @@ VAttachVolumeByName_r(Error * ec, char *partition, char *name, int mode)
     if (VCanUseFSSYNC() && vp == NULL && checkedOut) {
 
 #ifdef AFS_DEMAND_ATTACH_FS
-	/* If we couldn't attach but we scheduled a salvage, we already
-	 * notified the fileserver; don't online it now */
-	if (*ec != VSALVAGING)
+        /* If we couldn't attach but we scheduled a salvage, we already
+         * notified the fileserver; don't online it now */
+        if (*ec != VSALVAGING)
 #endif /* AFS_DEMAND_ATTACH_FS */
-	    FSYNC_VolOp(volumeId, partition, FSYNC_VOL_ON, 0, NULL);
+	FSYNC_VolOp(volumeId, partition, FSYNC_VOL_ON, 0, NULL);
     } else
 #endif
     if (programType == fileServer && vp) {
@@ -2564,9 +2565,8 @@ VAttachVolumeByName_r(Error * ec, char *partition, char *name, int mode)
 	    }
 	}
 	if (GetLogLevel() != 0)
-	    Log("VOnline:  volume %" AFS_VOLID_FMT
-		" (%s) attached and online\n",
-		afs_printable_VolumeId_lu(V_id(vp)), V_name(vp));
+	  Log("VOnline:  volume %" AFS_VOLID_FMT " (%s) attached and online\n", afs_printable_VolumeId_lu(V_id(vp)),
+		V_name(vp));
     }
 
   done:
@@ -2602,7 +2602,7 @@ VAttachVolumeByVp_r(Error * ec, Volume * vp, int mode)
     char path[64];
     int isbusy = 0;
     VolumeId volumeId;
-    Volume *nvp = NULL;
+    Volume * nvp = NULL;
     VolumeStats stats_save;
     int checkedOut;
     *ec = 0;
@@ -2680,7 +2680,9 @@ VAttachVolumeByVp_r(Error * ec, Volume * vp, int mode)
      * for any reason, skip to the end.  We cannot
      * safely call VUpdateVolume unless we "own" it.
      */
-    if (*ec || (vp == NULL) || (V_attachState(vp) != VOL_STATE_ATTACHED)) {
+    if (*ec ||
+	(vp == NULL) ||
+	(V_attachState(vp) != VOL_STATE_ATTACHED)) {
 	goto done;
     }
 
@@ -2705,8 +2707,8 @@ VAttachVolumeByVp_r(Error * ec, Volume * vp, int mode)
 #endif /* !AFS_DEMAND_ATTACH_FS */
 	VAddToVolumeUpdateList_r(ec, vp);
 	if (*ec) {
-	    Log("VAttachVolume: Error adding volume %" AFS_VOLID_FMT
-		" to update list\n", afs_printable_VolumeId_lu(vp->hashid));
+	    Log("VAttachVolume: Error adding volume %" AFS_VOLID_FMT " to update list\n",
+		afs_printable_VolumeId_lu(vp->hashid));
 	    if (vp)
 		VPutVolume_r(vp);
 	    goto done;
@@ -2746,7 +2748,7 @@ VAttachVolumeByVp_r(Error * ec, Volume * vp, int mode)
  * @pre vp is not already locked
  */
 static int
-VLockVolumeNB(Volume * vp, int locktype)
+VLockVolumeNB(Volume *vp, int locktype)
 {
     int code;
 
@@ -2772,7 +2774,7 @@ VLockVolumeNB(Volume * vp, int locktype)
  * @pre vp has already been locked
  */
 static void
-VUnlockVolume(Volume * vp)
+VUnlockVolume(Volume *vp)
 {
     opr_Assert(programType != fileServer
 	       || VIsExclusiveState(V_attachState(vp)));
@@ -2811,8 +2813,8 @@ VUnlockVolume(Volume * vp)
  *       lock, and read the header in again.
  */
 static void
-attach_volume_header(Error * ec, Volume * vp, struct DiskPartition64 *partp,
-		     int mode, int peek, int *acheckedOut)
+attach_volume_header(Error *ec, Volume *vp, struct DiskPartition64 *partp,
+                     int mode, int peek, int *acheckedOut)
 {
     struct VolumeDiskHeader diskHeader;
     struct VolumeHeader header;
@@ -2828,7 +2830,7 @@ attach_volume_header(Error * ec, Volume * vp, struct DiskPartition64 *partp,
     int locktype = 0, use_locktype = -1;
 #endif /* AFS_DEMAND_ATTACH_FS */
 
-  retry:
+ retry:
     retry = 0;
     *ec = 0;
 
@@ -2857,19 +2859,21 @@ attach_volume_header(Error * ec, Volume * vp, struct DiskPartition64 *partp,
     checkout = !done_checkout;
     done_checkout = 1;
     if (!peek && checkout && VMustCheckoutVolume(mode)) {
-	SYNC_response res;
-	memset(&res, 0, sizeof(res));
+        SYNC_response res;
+        memset(&res, 0, sizeof(res));
 
 	if (FSYNC_VolOp(volid, partp->name, FSYNC_VOL_NEEDVOLUME, mode, &res)
 	    != SYNC_OK) {
 
-	    if (res.hdr.reason == FSYNC_SALVAGE) {
-		Log("VAttachVolume: file server says volume %lu is salvaging\n", afs_printable_uint32_lu(volid));
-		*ec = VSALVAGING;
-	    } else {
-		Log("VAttachVolume: attach of volume %lu apparently denied by file server\n", afs_printable_uint32_lu(volid));
-		*ec = VNOVOL;	/* XXXX */
-	    }
+            if (res.hdr.reason == FSYNC_SALVAGE) {
+                Log("VAttachVolume: file server says volume %lu is salvaging\n",
+                     afs_printable_uint32_lu(volid));
+                *ec = VSALVAGING;
+            } else {
+	        Log("VAttachVolume: attach of volume %lu apparently denied by file server\n",
+                     afs_printable_uint32_lu(volid));
+	        *ec = VNOVOL;	/* XXXX */
+            }
 	    goto done;
 	}
 	*acheckedOut = 1;
@@ -2893,10 +2897,10 @@ attach_volume_header(Error * ec, Volume * vp, struct DiskPartition64 *partp,
 	if (code) {
 	    if (code == EBUSY) {
 		Log("VAttachVolume: another program has vol %lu locked\n",
-		    afs_printable_uint32_lu(volid));
+	            afs_printable_uint32_lu(volid));
 	    } else {
 		Log("VAttachVolume: error %d trying to lock vol %lu\n",
-		    code, afs_printable_uint32_lu(volid));
+	            code, afs_printable_uint32_lu(volid));
 	    }
 
 	    *ec = VNOVOL;
@@ -2950,7 +2954,8 @@ attach_volume_header(Error * ec, Volume * vp, struct DiskPartition64 *partp,
 	if (FSYNC_VolOp(vp->hashid,
 			partp->name,
 			FSYNC_VOL_QUERY_HDR,
-			FSYNC_WHATEVER, &res) == SYNC_OK) {
+			FSYNC_WHATEVER,
+			&res) == SYNC_OK) {
 	    goto disk_header_loaded;
 	}
     }
@@ -2973,9 +2978,9 @@ attach_volume_header(Error * ec, Volume * vp, struct DiskPartition64 *partp,
     }
 
 #ifdef AFS_DEMAND_ATTACH_FS
-#ifdef FSSYNC_BUILD_CLIENT
-  disk_header_loaded:
-#endif /* FSSYNC_BUILD_CLIENT */
+# ifdef FSSYNC_BUILD_CLIENT
+ disk_header_loaded:
+# endif /* FSSYNC_BUILD_CLIENT */
 
     /* if the lock type we actually used to lock the volume is different than
      * the lock type we should have used, retry with the lock type we should
@@ -2989,13 +2994,11 @@ attach_volume_header(Error * ec, Volume * vp, struct DiskPartition64 *partp,
 
     *ec = 0;
 
-  done:
+ done:
 #if defined(AFS_DEMAND_ATTACH_FS) && defined(FSSYNC_BUILD_CLIENT)
     if (!peek && *ec == 0 && retry == 0 && VMustCheckoutVolume(mode)) {
 
-	code =
-	    FSYNC_VerifyCheckout(volid, partp->name, FSYNC_VOL_NEEDVOLUME,
-				 mode);
+	code = FSYNC_VerifyCheckout(volid, partp->name, FSYNC_VOL_NEEDVOLUME, mode);
 
 	if (code == SYNC_DENIED) {
 	    /* must retry checkout; fileserver no longer thinks we have
@@ -3041,8 +3044,8 @@ attach_volume_header(Error * ec, Volume * vp, struct DiskPartition64 *partp,
 
 #ifdef AFS_DEMAND_ATTACH_FS
 static void
-attach_check_vop(Error * ec, VolumeId volid, struct DiskPartition64 *partp,
-		 Volume * vp, int *acheckedOut)
+attach_check_vop(Error *ec, VolumeId volid, struct DiskPartition64 *partp,
+                 Volume *vp, int *acheckedOut)
 {
     *ec = 0;
 
@@ -3075,11 +3078,9 @@ attach_check_vop(Error * ec, VolumeId volid, struct DiskPartition64 *partp,
 		VOL_LOCK;
 
 		if (VVolOpLeaveOnline_r(vp, vp->pending_vol_op)) {
-		    vp->pending_vol_op->vol_op_state =
-			FSSYNC_VolOpRunningOnline;
+		    vp->pending_vol_op->vol_op_state = FSSYNC_VolOpRunningOnline;
 		} else {
-		    vp->pending_vol_op->vol_op_state =
-			FSSYNC_VolOpRunningOffline;
+		    vp->pending_vol_op->vol_op_state = FSSYNC_VolOpRunningOffline;
 		}
 
 		/* make sure we grab a new vol header and re-open stuff on
@@ -3094,13 +3095,13 @@ attach_check_vop(Error * ec, VolumeId volid, struct DiskPartition64 *partp,
 	case FSSYNC_VolOpPending:
 	    /* this should never happen */
 	    opr_Assert(vp->pending_vol_op->vol_op_state
-		       != FSSYNC_VolOpPending);
+			    != FSSYNC_VolOpPending);
 	    break;
 
 	case FSSYNC_VolOpRunningUnknown:
 	    /* this should never happen; we resolved 'unknown' above */
 	    opr_Assert(vp->pending_vol_op->vol_op_state
-		       != FSSYNC_VolOpRunningUnknown);
+			    != FSSYNC_VolOpRunningUnknown);
 	    break;
 
 	case FSSYNC_VolOpRunningOffline:
@@ -3145,55 +3146,56 @@ attach_check_vop(Error * ec, VolumeId volid, struct DiskPartition64 *partp,
  */
 
 int
-OpenRIDatabase(Volume * vp)
-{
+OpenRIDatabase (Volume *vp) {
 
-    int code = 0;
-    namei_t name;
-    char *basedir;
-    char dbdir[AFSPATHMAX] = { 0 };
+	int code = 0;
+	namei_t name;
+	char *basedir;
+	char dbdir[AFSPATHMAX] = {0};
 
-    if (V_ridbHandle(vp) != NULL) {
-	Log("OpenRIDatabase: RIDB handle in Volume ptr is not NULL\n");
-	return EIO;
-    }
+	if (V_ridbHandle(vp) != NULL) {
+	    Log("OpenRIDatabase: RIDB handle in Volume ptr is not NULL\n");
+	    return EIO;
+	}
 
-    /* Get the directory path to create RIDB */
-    if (!V_linkHandle(vp)) {
-	Log("OpenRIDatabase: Link handle in Volume ptr is NULL\n");
-	return EIO;
-    }
+	/* Get the directory path to create RIDB */
+	if (!V_linkHandle(vp)) {
+	    Log("OpenRIDatabase: Link handle in Volume ptr is NULL\n");
+	    return EIO;
+	}
+	
+	namei_HandleToName(&name, V_linkHandle(vp));
 
-    namei_HandleToName(&name, V_linkHandle(vp));
+	basedir = dirname((char *)name.n_path);
 
-    basedir = dirname((char *)name.n_path);
+	/* Expected basedir is neither "." NOR "/" */
+	if (!strcmp(".", basedir) || !strcmp("/", basedir)) {
+	    Log("OpenRIDatabase: Wrong base directory: '%s'\n", basedir);
+	    return EIO;
+	}
+	
+	snprintf(dbdir, AFSPATHMAX, "%s/ridb_%u.db", basedir, V_id(vp));
 
-    /* Expected basedir is neither "." NOR "/" */
-    if (!strcmp(".", basedir) || !strcmp("/", basedir)) {
-	Log("OpenRIDatabase: Wrong base directory: '%s'\n", basedir);
-	return EIO;
-    }
+	code = ridb_open(dbdir, &(V_ridbHandle(vp)));
+	
+	if ( code == ENOENT) {
+	    /* ENOENT - need to create since the dir exists,
+	     * so ignore that error */
+	    code = ridb_create(dbdir, &(V_ridbHandle(vp)));
 
-    snprintf(dbdir, AFSPATHMAX, "%s/ridb_%u.db", basedir, V_id(vp));
-
-    code = ridb_open(dbdir, &(V_ridbHandle(vp)));
-
-    if (code == ENOENT) {
-	/* ENOENT - need to create since the dir exists, so ignore that error */
-	code = ridb_create(dbdir, &(V_ridbHandle(vp)));
-
-	if (code) {
-	    Log("OpenRIDatabase: Unable to create DB at '%s'\n", dbdir);
+	    if (code) {
+		Log("OpenRIDatabase: Unable to create DB at '%s'\n", dbdir);
+		code = EIO;
+	    }   
+	}
+	else if (code) {
+	    Log("OpenRIDatabase: Unable to open DB:"
+		"Incorrect base directory format: '%s'\n", dbdir);
 	    code = EIO;
 	}
-    } else if (code) {
-	Log("OpenRIDatabase: Unable to open DB:"
-	    "Incorrect base directory format: '%s'\n", dbdir);
-	code = EIO;
-    }
 
-    return code;
-
+	return code;
+	
 }
 
 
@@ -3202,15 +3204,13 @@ OpenRIDatabase(Volume * vp)
  * @param[in] vp       volume object;
  */
 
-void
-CloseRIDatabase(Volume * vp)
-{
+void CloseRIDatabase (Volume *vp) {
 
-    if (NULL == V_ridbHandle(vp)) {
-	Log("CloseRIDatabase: RIDB handle in Volume ptr is NULL\n");
-    }
+	if (NULL == V_ridbHandle(vp)) {
+	    Log("CloseRIDatabase: RIDB handle in Volume ptr is NULL\n");
+	}
 
-    ridb_close(&(V_ridbHandle(vp)));
+	ridb_close(&(V_ridbHandle(vp)));
 }
 #endif /* AFS_DEMAND_ATTACH_FS */
 
@@ -3244,9 +3244,8 @@ CloseRIDatabase(Volume * vp)
  * @post VOL_LOCK held
  */
 static Volume *
-attach2(Error * ec, VolumeId volumeId, char *path,
-	struct DiskPartition64 *partp, Volume * vp, int isbusy, int mode,
-	int *acheckedOut)
+attach2(Error * ec, VolumeId volumeId, char *path, struct DiskPartition64 *partp,
+        Volume * vp, int isbusy, int mode, int *acheckedOut)
 {
     /* have we read in the header successfully? */
     int read_header = 0;
@@ -3363,10 +3362,8 @@ attach2(Error * ec, VolumeId volumeId, char *path,
 #endif /* AFS_NAMEI_ENV */
 
 #if defined(AFS_DEMAND_ATTACH_FS)
-    if (*ec
-	&& ((*ec != VOFFLINE)
-	    || (V_attachState(vp) != VOL_STATE_UNATTACHED))) {
-	VOL_LOCK;
+    if (*ec && ((*ec != VOFFLINE) || (V_attachState(vp) != VOL_STATE_UNATTACHED))) {
+        VOL_LOCK;
 	if (!VCanScheduleSalvage()) {
 	    Log("VAttachVolume: Error attaching volume %s; volume needs salvage; error=%u\n", path, *ec);
 	}
@@ -3392,7 +3389,7 @@ attach2(Error * ec, VolumeId volumeId, char *path,
     if (V_needsSalvaged(vp)) {
 	if (vp->specialStatus)
 	    vp->specialStatus = 0;
-	VOL_LOCK;
+        VOL_LOCK;
 #if defined(AFS_DEMAND_ATTACH_FS)
 	if (!VCanScheduleSalvage()) {
 	    Log("VAttachVolume: volume salvage flag is ON for %s; volume needs salvage\n", path);
@@ -3423,8 +3420,7 @@ attach2(Error * ec, VolumeId volumeId, char *path,
 	vp->nUsers = 0;
 
 #else /* AFS_DEMAND_ATTACH_FS */
-	Log("VAttachVolume: volume %s needs to be salvaged; not attached.\n",
-	    path);
+	Log("VAttachVolume: volume %s needs to be salvaged; not attached.\n", path);
 	*ec = VSALVAGE;
 #endif /* AFS_DEMAND_ATTACH_FS */
 
@@ -3460,8 +3456,7 @@ attach2(Error * ec, VolumeId volumeId, char *path,
 	    VGetBitmap_r(ec, vp, i);
 	    if (*ec) {
 #ifdef AFS_DEMAND_ATTACH_FS
-		VRequestSalvage_r(ec, vp, SALVSYNC_ERROR,
-				  VOL_SALVAGE_NO_OFFLINE);
+		VRequestSalvage_r(ec, vp, SALVSYNC_ERROR, VOL_SALVAGE_NO_OFFLINE);
 		vp->nUsers = 0;
 #endif /* AFS_DEMAND_ATTACH_FS */
 		Log("VAttachVolume: error getting bitmap for volume (%s)\n",
@@ -3474,7 +3469,8 @@ attach2(Error * ec, VolumeId volumeId, char *path,
 
     if (VInit >= 2 && V_needsCallback(vp)) {
 	if (V_BreakVolumeCallbacks) {
-	    Log("VAttachVolume: Volume %lu was changed externally; breaking callbacks\n", afs_printable_uint32_lu(V_id(vp)));
+	    Log("VAttachVolume: Volume %lu was changed externally; breaking callbacks\n",
+	        afs_printable_uint32_lu(V_id(vp)));
 	    V_needsCallback(vp) = 0;
 	    VOL_UNLOCK;
 	    (*V_BreakVolumeCallbacks) (V_id(vp));
@@ -3488,14 +3484,15 @@ attach2(Error * ec, VolumeId volumeId, char *path,
 
 	    V_needsCallback(vp) = 0;
 	    VOL_UNLOCK;
-	    fsync_code =
-		FSYNC_VolOp(V_id(vp), NULL, FSYNC_VOL_BREAKCBKS,
-			    FSYNC_WHATEVER, NULL);
+	    fsync_code = FSYNC_VolOp(V_id(vp), NULL, FSYNC_VOL_BREAKCBKS, FSYNC_WHATEVER, NULL);
 	    VOL_LOCK;
 
 	    if (fsync_code) {
-		V_needsCallback(vp) = 1;
-		Log("Error trying to tell the fileserver to break callbacks for " "changed volume %lu; error code %ld\n", afs_printable_uint32_lu(V_id(vp)), afs_printable_int32_ld(fsync_code));
+	        V_needsCallback(vp) = 1;
+		Log("Error trying to tell the fileserver to break callbacks for "
+		    "changed volume %lu; error code %ld\n",
+		    afs_printable_uint32_lu(V_id(vp)),
+		    afs_printable_int32_ld(fsync_code));
 	    } else {
 		VUpdateVolume_r(ec, vp, 0);
 	    }
@@ -3504,8 +3501,8 @@ attach2(Error * ec, VolumeId volumeId, char *path,
 
 	if (*ec) {
 	    Log("VAttachVolume: error %d clearing needsCallback on volume "
-		"%lu; needs salvage\n", (int)*ec,
-		afs_printable_uint32_lu(V_id(vp)));
+	        "%lu; needs salvage\n", (int)*ec,
+	        afs_printable_uint32_lu(V_id(vp)));
 #ifdef AFS_DEMAND_ATTACH_FS
 	    VRequestSalvage_r(ec, vp, SALVSYNC_ERROR, VOL_SALVAGE_NO_OFFLINE);
 	    vp->nUsers = 0;
@@ -3541,24 +3538,20 @@ attach2(Error * ec, VolumeId volumeId, char *path,
 
 	    /* mimic e.g. GetVolume errors */
 	    if (!V_blessed(vp)) {
-		Log("Volume %lu offline: not blessed\n",
-		    afs_printable_uint32_lu(V_id(vp)));
+		Log("Volume %lu offline: not blessed\n", afs_printable_uint32_lu(V_id(vp)));
 		FreeVolumeHeader(vp);
 	    } else if (!V_inService(vp)) {
-		Log("Volume %lu offline: not in service\n",
-		    afs_printable_uint32_lu(V_id(vp)));
+		Log("Volume %lu offline: not in service\n", afs_printable_uint32_lu(V_id(vp)));
 		/* the volume is offline and should be unattached */
 		*ec = VOFFLINE;
 		error_state = VOL_STATE_UNATTACHED;
 		FreeVolumeHeader(vp);
 	    } else {
-		Log("Volume %lu offline: needs salvage\n",
-		    afs_printable_uint32_lu(V_id(vp)));
+		Log("Volume %lu offline: needs salvage\n", afs_printable_uint32_lu(V_id(vp)));
 		*ec = VSALVAGE;
 		error_state = VOL_STATE_ERROR;
 		/* see if we can recover */
-		VRequestSalvage_r(ec, vp, SALVSYNC_NEEDED,
-				  VOL_SALVAGE_NO_OFFLINE);
+		VRequestSalvage_r(ec, vp, SALVSYNC_NEEDED, VOL_SALVAGE_NO_OFFLINE);
 	    }
 	    vp->nUsers = 0;
 	    goto locked_error;
@@ -3577,15 +3570,17 @@ attach2(Error * ec, VolumeId volumeId, char *path,
     if (VCanUnlockAttached() && (V_attachFlags(vp) & VOL_LOCKED)) {
 	VUnlockVolume(vp);
     }
-    if ((programType != fileServer) || (V_inUse(vp) == fileServer)) {
+    if ((programType != fileServer) ||
+	(V_inUse(vp) == fileServer)) {
 	AddVolumeToVByPList_r(vp);
 	VLRU_Add_r(vp);
 
 	/* open reverse-index database here */
 	if (OpenRIDatabase(vp)) {
-	    VChangeState_r(vp, VOL_STATE_UNATTACHED);
-	} else {
-	    VChangeState_r(vp, VOL_STATE_ATTACHED);
+	VChangeState_r(vp, VOL_STATE_UNATTACHED);
+	}
+	else {
+	VChangeState_r(vp, VOL_STATE_ATTACHED);
 	}
     } else {
 	VChangeState_r(vp, VOL_STATE_UNATTACHED);
@@ -3594,9 +3589,9 @@ attach2(Error * ec, VolumeId volumeId, char *path,
 
     return vp;
 
-  unlocked_error:
+unlocked_error:
     VOL_LOCK;
-  locked_error:
+locked_error:
 #ifdef AFS_DEMAND_ATTACH_FS
     if (!VIsErrorState(V_attachState(vp))) {
 	if (programType != fileServer && *ec == VNOVOL) {
@@ -3606,9 +3601,8 @@ attach2(Error * ec, VolumeId volumeId, char *path,
 	     * volume doesn't exist. */
 
 	} else if (VIsErrorState(error_state)) {
-	    Log("attach2: forcing vol %" AFS_VOLID_FMT
-		" to error state (state %u flags 0x%x ec %d)\n",
-		afs_printable_VolumeId_lu(vp->hashid), V_attachState(vp),
+	    Log("attach2: forcing vol %" AFS_VOLID_FMT " to error state (state %u flags 0x%x ec %d)\n",
+	        afs_printable_VolumeId_lu(vp->hashid), V_attachState(vp),
 		V_attachFlags(vp), *ec);
 	}
 	VChangeState_r(vp, error_state);
@@ -3620,7 +3614,7 @@ attach2(Error * ec, VolumeId volumeId, char *path,
     }
 
 #ifdef AFS_DEMAND_ATTACH_FS
-  error_notbroken:
+ error_notbroken:
     if (VCheckSalvage(vp) == VCHECK_SALVAGE_FAIL) {
 	/* The salvage could not be scheduled with the salvage server
 	 * due to a hard error. Reset the error code to prevent retry loops by
@@ -3735,15 +3729,14 @@ VTimedOut(const struct timespec *ts)
 
     code = gettimeofday(&tv, NULL);
     if (code) {
-	Log("Error %d from gettimeofday, assuming we have not timed out\n",
-	    errno);
+	Log("Error %d from gettimeofday, assuming we have not timed out\n", errno);
 	/* assume no timeout; failure mode is we just wait longer than normal
 	 * instead of returning errors when we shouldn't */
 	return 0;
     }
 
     if (tv.tv_sec < ts->tv_sec ||
-	(tv.tv_sec == ts->tv_sec && tv.tv_usec * 1000 < ts->tv_nsec)) {
+        (tv.tv_sec == ts->tv_sec && tv.tv_usec*1000 < ts->tv_nsec)) {
 
 	return 0;
     }
@@ -3781,8 +3774,7 @@ VCalcTimeout(struct timespec *ts, afs_int32 timeout)
 
     code = gettimeofday(&now, NULL);
     if (code) {
-	Log("Error %d from gettimeofday, falling back to 'forever' timeout\n",
-	    errno);
+	Log("Error %d from gettimeofday, falling back to 'forever' timeout\n", errno);
 	return NULL;
     }
 
@@ -3838,8 +3830,8 @@ VOfflineTimeout(struct timespec *ats)
 
 /* Waiting a certain amount of time for offlining volumes is not supported
  * for LWP due to a lack of primitives. So, we never time out */
-#define VTimedOut(x) (0)
-#define VOfflineTimeout(x) (NULL)
+# define VTimedOut(x) (0)
+# define VOfflineTimeout(x) (NULL)
 
 #endif /* !AFS_PTHREAD_ENV */
 
@@ -3901,8 +3893,7 @@ VIsGoingOffline(struct Volume *vp)
  * @internal
  */
 static void
-VRegisterCall_r(Error * ec, Error * client_ec, Volume * vp,
-		struct VCallByVol *cbv)
+VRegisterCall_r(Error *ec, Error *client_ec, Volume *vp, struct VCallByVol *cbv)
 {
     if (vp && cbv) {
 #ifdef AFS_DEMAND_ATTACH_FS
@@ -3939,7 +3930,7 @@ VRegisterCall_r(Error * ec, Error * client_ec, Volume * vp,
  * @internal
  */
 static void
-VDeregisterCall_r(Volume * vp, struct VCallByVol *cbv)
+VDeregisterCall_r(Volume *vp, struct VCallByVol *cbv)
 {
     if (cbv && queue_IsOnQueue(cbv)) {
 #ifdef AFS_DEMAND_ATTACH_FS
@@ -4004,7 +3995,7 @@ VPutVolume(Volume * vp)
  * @pre VOL_LOCK is NOT held
  */
 void
-VPutVolumeWithCall(Volume * vp, struct VCallByVol *cbv)
+VPutVolumeWithCall(Volume *vp, struct VCallByVol *cbv)
 {
     VOL_LOCK;
     VDeregisterCall_r(vp, cbv);
@@ -4048,7 +4039,7 @@ VGetVolume(Error * ec, Error * client_ec, VolumeId volumeId)
  */
 Volume *
 VGetVolumeWithCall(Error * ec, Error * client_ec, VolumeId volumeId,
-		   const struct timespec *ts, struct VCallByVol *cbv)
+                   const struct timespec *ts, struct VCallByVol *cbv)
 {
     Volume *retVal;
     VOL_LOCK;
@@ -4096,11 +4087,11 @@ VGetVolumeByVp_r(Error * ec, Volume * vp)
  */
 static Volume *
 GetVolume(Error * ec, Error * client_ec, VolumeId volumeId, Volume * hint,
-	  const struct timespec *timeout)
+          const struct timespec *timeout)
 {
     Volume *vp = hint;
 #ifdef AFS_DEMAND_ATTACH_FS
-    Volume *avp, *rvp = hint;
+    Volume *avp, * rvp = hint;
 #endif
 
     /*
@@ -4184,19 +4175,19 @@ GetVolume(Error * ec, Error * client_ec, VolumeId volumeId, Volume * hint,
 	 * short circuit with VOFFLINE for VOL_STATE_UNATTACHED/GOING_OFFLINE and
 	 *                    VNOVOL   for VOL_STATE_DELETED
 	 */
-	if ((V_attachState(vp) == VOL_STATE_UNATTACHED) ||
-	    (V_attachState(vp) == VOL_STATE_GOING_OFFLINE) ||
-	    (V_attachState(vp) == VOL_STATE_DELETED)) {
-	    if (vp->specialStatus) {
-		*ec = vp->specialStatus;
-	    } else if (V_attachState(vp) == VOL_STATE_DELETED) {
-		*ec = VNOVOL;
-	    } else {
-		*ec = VOFFLINE;
-	    }
-	    vp = NULL;
-	    break;
-	}
+       if ((V_attachState(vp) == VOL_STATE_UNATTACHED) ||
+           (V_attachState(vp) == VOL_STATE_GOING_OFFLINE) ||
+           (V_attachState(vp) == VOL_STATE_DELETED)) {
+	   if (vp->specialStatus) {
+	       *ec = vp->specialStatus;
+	   } else if (V_attachState(vp) == VOL_STATE_DELETED) {
+	       *ec = VNOVOL;
+	   } else {
+	       *ec = VOFFLINE;
+	   }
+           vp = NULL;
+           break;
+       }
 
 	/* allowable states:
 	 *   - PREATTACHED
@@ -4287,9 +4278,7 @@ GetVolume(Error * ec, Error * client_ec, VolumeId volumeId, Volume * hint,
 	 * conflicting vol op. (attach2 would have errored out if we had one;
 	 * specifically attach_check_vop must have detected a conflicting vop)
 	 */
-	opr_Assert(!vp->pending_vol_op
-		   || vp->pending_vol_op->vol_op_state ==
-		   FSSYNC_VolOpRunningOnline);
+         opr_Assert(!vp->pending_vol_op || vp->pending_vol_op->vol_op_state == FSSYNC_VolOpRunningOnline);
 
 #endif /* AFS_DEMAND_ATTACH_FS */
 
@@ -4298,12 +4287,11 @@ GetVolume(Error * ec, Error * client_ec, VolumeId volumeId, Volume * hint,
 	    /* Only log the error if it was a totally unexpected error.  Simply
 	     * a missing inode is likely to be caused by the volume being deleted */
 	    if (errno != ENXIO || GetLogLevel() != 0)
-		Log("Volume %" AFS_VOLID_FMT
-		    ": couldn't reread volume header\n",
+		Log("Volume %" AFS_VOLID_FMT ": couldn't reread volume header\n",
 		    afs_printable_VolumeId_lu(vp->hashid));
 #ifdef AFS_DEMAND_ATTACH_FS
 	    if (VCanScheduleSalvage()) {
-		VRequestSalvage_r(ec, vp, SALVSYNC_ERROR, 0 /*flags */ );
+		VRequestSalvage_r(ec, vp, SALVSYNC_ERROR, 0 /*flags*/);
 	    } else {
 		FreeVolume(vp);
 		vp = NULL;
@@ -4376,7 +4364,7 @@ GetVolume(Error * ec, Error * client_ec, VolumeId volumeId, Volume * hint,
     }
 #endif /* AFS_DEMAND_ATTACH_FS */
 
-  not_inited:
+ not_inited:
     opr_Assert(vp || *ec);
     return vp;
 }
@@ -4468,8 +4456,7 @@ VForceOffline_r(Volume * vp, int flags)
 
     strcpy(V_offlineMessage(vp),
 	   "Forced offline due to internal error: volume needs to be salvaged");
-    Log("Volume %" AFS_VOLID_FMT " forced offline:  it needs salvaging!\n",
-	afs_printable_VolumeId_lu(V_id(vp)));
+    Log("Volume %" AFS_VOLID_FMT " forced offline:  it needs salvaging!\n", afs_printable_VolumeId_lu(V_id(vp)));
 
     V_inUse(vp) = 0;
     vp->goingOffline = 0;
@@ -4479,7 +4466,7 @@ VForceOffline_r(Volume * vp, int flags)
     }
 
 #ifdef AFS_DEMAND_ATTACH_FS
-    VRequestSalvage_r(&error, vp, SALVSYNC_ERROR, 0 /*flags */ );
+    VRequestSalvage_r(&error, vp, SALVSYNC_ERROR, 0 /*flags*/);
 #endif /* AFS_DEMAND_ATTACH_FS */
 
 #ifdef AFS_PTHREAD_ENV
@@ -4523,12 +4510,12 @@ VScanCalls_r(struct Volume *vp)
 #endif
 
     if (queue_IsEmpty(&vp->rx_call_list))
-	return;			/* no calls to interrupt */
+	return; /* no calls to interrupt */
     if (!vol_opts.interrupt_rxcall)
-	return;			/* we have no function with which to interrupt calls */
+	return; /* we have no function with which to interrupt calls */
     err = VIsGoingOffline_r(vp);
     if (!err)
-	return;			/* we're not going offline anymore */
+	return; /* we're not going offline anymore */
 
 #ifdef AFS_DEMAND_ATTACH_FS
     VWaitExclusiveState_r(vp);
@@ -4536,18 +4523,18 @@ VScanCalls_r(struct Volume *vp)
     VOL_UNLOCK;
 #endif /* AFS_DEMAND_ATTACH_FS */
 
-    for (queue_Scan(&vp->rx_call_list, cbv, ncbv, VCallByVol)) {
+    for(queue_Scan(&vp->rx_call_list, cbv, ncbv, VCallByVol)) {
 	if (GetLogLevel() != 0) {
 	    struct rx_peer *peer;
 	    char hoststr[16];
 	    peer = rx_PeerOf(rx_ConnectionOf(cbv->call));
 
-	    Log("Offlining volume %" AFS_VOLID_FMT
-		" while client %s:%u is trying to read "
-		"from it; kicking client off with error %ld\n",
-		afs_printable_VolumeId_lu(vp->hashid),
-		afs_inet_ntoa_r(rx_HostOf(peer), hoststr),
-		(unsigned)ntohs(rx_PortOf(peer)), (long)err);
+	    Log("Offlining volume %" AFS_VOLID_FMT " while client %s:%u is trying to read "
+	        "from it; kicking client off with error %ld\n",
+	        afs_printable_VolumeId_lu(vp->hashid),
+	        afs_inet_ntoa_r(rx_HostOf(peer), hoststr),
+	        (unsigned) ntohs(rx_PortOf(peer)),
+	        (long) err);
 	}
 	(*vol_opts.interrupt_rxcall) (cbv->call, err);
     }
@@ -4575,7 +4562,7 @@ VScanCalls_r(struct Volume *vp)
  * @note DAFS only
  */
 static void
-VWaitForOfflineByVp_r(Error * ec, struct Volume *vp, int salvok)
+VWaitForOfflineByVp_r(Error *ec, struct Volume *vp, int salvok)
 {
     struct timespec timeout_ts;
     const struct timespec *ts;
@@ -4622,7 +4609,7 @@ VWaitForOfflineByVp_r(Error * ec, struct Volume *vp, int salvok)
  * @note non-DAFS only (for DAFS, use @see WaitForOfflineByVp_r)
  */
 static void
-VWaitForOffline_r(Error * ec, VolumeId volid)
+VWaitForOffline_r(Error *ec, VolumeId volid)
 {
     struct Volume *vp;
     const struct timespec *ts;
@@ -4723,13 +4710,13 @@ VOffline_r(Volume * vp, char *message)
  * @internal volume package internal use only
  */
 void
-VOfflineForVolOp_r(Error * ec, Volume * vp, char *message)
+VOfflineForVolOp_r(Error *ec, Volume *vp, char *message)
 {
     int salvok = 1;
     opr_Assert(vp->pending_vol_op);
     if (!V_inUse(vp)) {
 	VPutVolume_r(vp);
-	*ec = 1;
+        *ec = 1;
 	return;
     }
     if (V_offlineMessage(vp)[0] == '\0')
@@ -4742,7 +4729,7 @@ VOfflineForVolOp_r(Error * ec, Volume * vp, char *message)
     VPutVolume_r(vp);
 
     if (vp->pending_vol_op->com.programType != salvageServer) {
-	/* do not give corrupted volumes to the volserver */
+        /* do not give corrupted volumes to the volserver */
 	salvok = 0;
     }
 
@@ -4775,23 +4762,23 @@ VDetachVolume_r(Error * ec, Volume * vp)
     VolumeId volume;
     struct DiskPartition64 *tpartp;
     int notifyServer = 0;
-    int useDone = FSYNC_VOL_ON;
+    int  useDone = FSYNC_VOL_ON;
 
     if (VCanUseFSSYNC()) {
 	notifyServer = vp->needsPutBack;
 	if (V_destroyMe(vp) == DESTROY_ME)
 	    useDone = FSYNC_VOL_LEAVE_OFF;
-#ifdef AFS_DEMAND_ATTACH_FS
+# ifdef AFS_DEMAND_ATTACH_FS
 	else if (!V_blessed(vp) || !V_inService(vp))
 	    useDone = FSYNC_VOL_LEAVE_OFF;
-#endif
+# endif
     }
-#ifdef AFS_DEMAND_ATTACH_FS
+# ifdef AFS_DEMAND_ATTACH_FS
     if (V_needsSalvaged(vp)) {
 	notifyServer = 0;
 	VRequestSalvage_r(ec, vp, SALVSYNC_NEEDED, 0);
     }
-#endif
+# endif
     tpartp = vp->partition;
     volume = V_id(vp);
 #endif /* FSSYNC_BUILD_CLIENT */
@@ -4927,12 +4914,12 @@ VReleaseVolumeHandles_r(Volume * vp)
     VOL_LOCK;
 #endif
 
-    VReleaseVnodeFiles_r(vp);	/* DAFS: releases the glock internally */
+    VReleaseVnodeFiles_r(vp); /* DAFS: releases the glock internally */
 
 #ifdef AFS_DEMAND_ATTACH_FS
     VOL_UNLOCK;
 #endif
-
+	
     /* Too time consuming and unnecessary for the volserver */
     if (programType == fileServer) {
 #ifdef AFS_DEMAND_ATTACH_FS
@@ -5010,9 +4997,8 @@ VUpdateVolume_r(Error * ec, Volume * vp, int flags)
 #endif
 
     if (*ec) {
-	Log("VUpdateVolume: error updating volume header, volume %"
-	    AFS_VOLID_FMT " (%s)\n", afs_printable_VolumeId_lu(V_id(vp)),
-	    V_name(vp));
+	Log("VUpdateVolume: error updating volume header, volume %" AFS_VOLID_FMT " (%s)\n",
+	    afs_printable_VolumeId_lu(V_id(vp)), V_name(vp));
 	/* try to update on-disk header,
 	 * while preventing infinite recursion */
 	if (!(flags & VOL_UPDATE_NOFORCEOFF)) {
@@ -5130,13 +5116,13 @@ VCheckDetach(Volume * vp)
 	    (V_inUse(vp) == programType) &&
 	    ((V_checkoutMode(vp) == V_VOLUPD) ||
 	     (V_checkoutMode(vp) == V_SECRETLY) ||
-	     ((V_checkoutMode(vp) == V_CLONE) && (VolumeWriteable(vp))))) {
+	     ((V_checkoutMode(vp) == V_CLONE) &&
+	      (VolumeWriteable(vp))))) {
 	    V_inUse(vp) = 0;
 	    VUpdateVolume_r(&ec, vp, VOL_UPDATE_NOFORCEOFF);
 	    if (ec) {
-		Log("VCheckDetach: volume header update for volume %"
-		    AFS_VOLID_FMT " " "failed with errno %d\n",
-		    afs_printable_VolumeId_lu(vp->hashid), errno);
+		Log("VCheckDetach: volume header update for volume %" AFS_VOLID_FMT " "
+		    "failed with errno %d\n", afs_printable_VolumeId_lu(vp->hashid), errno);
 	    }
 	}
 	VReleaseVolumeHandles_r(vp);
@@ -5164,12 +5150,12 @@ VCheckDetach(Volume * vp)
 	    (V_inUse(vp) == programType) &&
 	    ((V_checkoutMode(vp) == V_VOLUPD) ||
 	     (V_checkoutMode(vp) == V_SECRETLY) ||
-	     ((V_checkoutMode(vp) == V_CLONE) && (VolumeWriteable(vp))))) {
+	     ((V_checkoutMode(vp) == V_CLONE) &&
+	      (VolumeWriteable(vp))))) {
 	    V_inUse(vp) = 0;
 	    VUpdateVolume_r(&ec, vp, VOL_UPDATE_NOFORCEOFF);
 	    if (ec) {
-		Log("VCheckDetach: volume header update for volume %"
-		    AFS_VOLID_FMT " failed with errno %d\n",
+		Log("VCheckDetach: volume header update for volume %" AFS_VOLID_FMT " failed with errno %d\n",
 		    afs_printable_VolumeId_lu(vp->hashid), errno);
 	    }
 	}
@@ -5199,10 +5185,10 @@ VCheckOffline(Volume * vp)
 	Error error;
 	opr_Assert(programType == fileServer);
 	opr_Assert((V_attachState(vp) != VOL_STATE_ATTACHED) &&
-		   (V_attachState(vp) != VOL_STATE_FREED) &&
-		   (V_attachState(vp) != VOL_STATE_PREATTACHED) &&
-		   (V_attachState(vp) != VOL_STATE_UNATTACHED) &&
-		   (V_attachState(vp) != VOL_STATE_DELETED));
+	       (V_attachState(vp) != VOL_STATE_FREED) &&
+	       (V_attachState(vp) != VOL_STATE_PREATTACHED) &&
+	       (V_attachState(vp) != VOL_STATE_UNATTACHED) &&
+	       (V_attachState(vp) != VOL_STATE_DELETED));
 
 	/* valid states:
 	 *
@@ -5348,7 +5334,8 @@ VCheckFree(Volume * vp)
 	(vp->nWaiters == 0) &&
 	!(V_attachFlags(vp) & (VOL_IN_HASH |
 			       VOL_ON_VBYP_LIST |
-			       VOL_IS_BUSY | VOL_ON_VLRU))) {
+			       VOL_IS_BUSY |
+			       VOL_ON_VLRU))) {
 	ReallyFreeVolume(vp);
 	ret = 1;
     }
@@ -5380,7 +5367,7 @@ VCheckFree(Volume * vp)
 int
 VRegisterVolOp_r(Volume * vp, FSSYNC_VolOp_info * vopinfo)
 {
-    FSSYNC_VolOp_info *info;
+    FSSYNC_VolOp_info * info;
 
     /* attach a vol op info node to the volume struct */
     info = malloc(sizeof(FSSYNC_VolOp_info));
@@ -5441,10 +5428,10 @@ VVolOpLeaveOnline_r(Volume * vp, FSSYNC_VolOp_info * vopinfo)
 {
     return (vopinfo->vol_op_state == FSSYNC_VolOpRunningOnline ||
 	    (vopinfo->com.command == FSYNC_VOL_NEEDVOLUME &&
-	     (vopinfo->com.reason == V_READONLY ||
-	      (!VolumeWriteable(vp) &&
-	       (vopinfo->com.reason == V_CLONE ||
-		vopinfo->com.reason == V_DUMP)))));
+	    (vopinfo->com.reason == V_READONLY ||
+	     (!VolumeWriteable(vp) &&
+	      (vopinfo->com.reason == V_CLONE ||
+	       vopinfo->com.reason == V_DUMP)))));
 }
 
 /**
@@ -5475,12 +5462,13 @@ VVolOpLeaveOnlineNoHeader_r(Volume * vp, FSSYNC_VolOp_info * vopinfo)
 	return 1;
     }
     if (vopinfo->com.command == FSYNC_VOL_NEEDVOLUME &&
-	vopinfo->com.reason == V_READONLY) {
+        vopinfo->com.reason == V_READONLY) {
 
 	return 1;
     }
     if (vopinfo->com.command == FSYNC_VOL_NEEDVOLUME &&
-	(vopinfo->com.reason == V_CLONE || vopinfo->com.reason == V_DUMP)) {
+        (vopinfo->com.reason == V_CLONE ||
+         vopinfo->com.reason == V_DUMP)) {
 
 	/* must know VolumeWriteable */
 	return -1;
@@ -5506,10 +5494,10 @@ int
 VVolOpSetVBusy_r(Volume * vp, FSSYNC_VolOp_info * vopinfo)
 {
     return ((vopinfo->com.command == FSYNC_VOL_OFF &&
-	     vopinfo->com.reason == FSYNC_SALVAGE) ||
+	    vopinfo->com.reason == FSYNC_SALVAGE) ||
 	    (vopinfo->com.command == FSYNC_VOL_NEEDVOLUME &&
-	     (vopinfo->com.reason == V_CLONE ||
-	      vopinfo->com.reason == V_DUMP)));
+	    (vopinfo->com.reason == V_CLONE ||
+	     vopinfo->com.reason == V_DUMP)));
 }
 
 
@@ -5680,9 +5668,9 @@ VRequestSalvage_r(Error * ec, Volume * vp, int reason, int flags)
     }
 
     if (programType != fileServer && !VCanUseFSSYNC()) {
-	VChangeState_r(vp, VOL_STATE_ERROR);
-	*ec = VSALVAGE;
-	return 1;
+        VChangeState_r(vp, VOL_STATE_ERROR);
+        *ec = VSALVAGE;
+        return 1;
     }
 
     if (!vp->salvage.requested) {
@@ -5724,9 +5712,7 @@ VRequestSalvage_r(Error * ec, Volume * vp, int reason, int flags)
 
 	    *ec = VSALVAGING;
 	} else {
-	    Log("VRequestSalvage: volume %" AFS_VOLID_FMT
-		" online salvaged too many times; forced offline.\n",
-		afs_printable_VolumeId_lu(vp->hashid));
+	    Log("VRequestSalvage: volume %" AFS_VOLID_FMT " online salvaged too many times; forced offline.\n", afs_printable_VolumeId_lu(vp->hashid));
 
 	    /* make sure neither VScheduleSalvage_r nor
 	     * VUpdateSalvagePriority_r try to schedule another salvage */
@@ -5800,7 +5786,7 @@ VRequestSalvage_r(Error * ec, Volume * vp, int reason, int flags)
 int
 VUpdateSalvagePriority_r(Volume * vp)
 {
-    int ret = 0;
+    int ret=0;
 
 #ifdef SALVSYNC_BUILD_CLIENT
     afs_uint32 now;
@@ -5813,12 +5799,13 @@ VUpdateSalvagePriority_r(Volume * vp)
      * frequently requested volumes get moved to the head of the queue
      */
     if ((vp->salvage.scheduled) &&
-	(vp->stats.last_salvage_req < (now - SALVAGE_PRIO_UPDATE_INTERVAL))) {
+	(vp->stats.last_salvage_req < (now-SALVAGE_PRIO_UPDATE_INTERVAL))) {
 	code = SALVSYNC_SalvageVolume(vp->hashid,
 				      VPartitionPath(vp->partition),
 				      SALVSYNC_RAISEPRIO,
 				      vp->salvage.reason,
-				      vp->salvage.prio, NULL);
+				      vp->salvage.prio,
+				      NULL);
 	vp->stats.last_salvage_req = now;
 	if (code != SYNC_OK) {
 	    ret = 1;
@@ -5837,21 +5824,20 @@ VUpdateSalvagePriority_r(Volume * vp)
  */
 
 static_inline int
-try_SALVSYNC(Volume * vp, char *partName, int *code)
-{
+try_SALVSYNC(Volume *vp, char *partName, int *code) {
 #ifdef SALVSYNC_BUILD_CLIENT
     if (VCanUseSALVSYNC()) {
-	Log("Scheduling salvage for volume %" AFS_VOLID_FMT
-	    " on part %s over SALVSYNC\n",
+	Log("Scheduling salvage for volume %" AFS_VOLID_FMT " on part %s over SALVSYNC\n",
 	    afs_printable_VolumeId_lu(vp->hashid), partName);
 
 	/* can't use V_id() since there's no guarantee
 	 * we have the disk data header at this point */
 	*code = SALVSYNC_SalvageVolume(vp->hashid,
-				       partName,
-				       SALVSYNC_SALVAGE,
-				       vp->salvage.reason,
-				       vp->salvage.prio, NULL);
+	                               partName,
+	                               SALVSYNC_SALVAGE,
+	                               vp->salvage.reason,
+	                               vp->salvage.prio,
+	                               NULL);
 	return 1;
     }
 #endif
@@ -5859,12 +5845,10 @@ try_SALVSYNC(Volume * vp, char *partName, int *code)
 }
 
 static_inline int
-try_FSSYNC(Volume * vp, char *partName, int *code)
-{
+try_FSSYNC(Volume *vp, char *partName, int *code) {
 #ifdef FSSYNC_BUILD_CLIENT
     if (VCanUseFSSYNC()) {
-	Log("Scheduling salvage for volume %" AFS_VOLID_FMT
-	    " on part %s over FSSYNC\n",
+	Log("Scheduling salvage for volume %" AFS_VOLID_FMT " on part %s over FSSYNC\n",
 	    afs_printable_VolumeId_lu(vp->hashid), partName);
 
 	/*
@@ -5873,9 +5857,9 @@ try_FSSYNC(Volume * vp, char *partName, int *code)
 	 * salvageserver, but the fileserver keeps track of some stats
 	 * related to salvages, and handles some other salvage-related
 	 * complications for us.
-	 */
-	*code = FSYNC_VolOp(vp->hashid, partName,
-			    FSYNC_VOL_FORCE_ERROR, FSYNC_SALVAGE, NULL);
+         */
+        *code = FSYNC_VolOp(vp->hashid, partName,
+                            FSYNC_VOL_FORCE_ERROR, FSYNC_SALVAGE, NULL);
 	return 1;
     }
 #endif /* FSSYNC_BUILD_CLIENT */
@@ -5918,7 +5902,7 @@ VScheduleSalvage_r(Volume * vp)
     int ret = VCHECK_SALVAGE_SCHEDULED;
     int code = 0;
     VolState state_save;
-    VThreadOptions_t *thread_opts;
+    VThreadOptions_t * thread_opts;
     char partName[16];
 
     opr_Verify(VCanUseSALVSYNC() || VCanUseFSSYNC());
@@ -5983,27 +5967,25 @@ VScheduleSalvage_r(Volume * vp)
 		IncUInt64(&VStats.salvages);
 	    }
 	} else {
-	    switch (code) {
+	    switch(code) {
 	    case SYNC_BAD_COMMAND:
 	    case SYNC_COM_ERROR:
-		ret = VCHECK_SALVAGE_FAIL;
+	        ret = VCHECK_SALVAGE_FAIL;
 		break;
 	    case SYNC_DENIED:
-		ret = VCHECK_SALVAGE_DENIED;
-		Log("VScheduleSalvage_r: Salvage request for volume %"
-		    AFS_VOLID_FMT " " "denied\n",
-		    afs_printable_VolumeId_lu(vp->hashid));
+	        ret = VCHECK_SALVAGE_DENIED;
+		Log("VScheduleSalvage_r: Salvage request for volume %" AFS_VOLID_FMT " "
+		    "denied\n", afs_printable_VolumeId_lu(vp->hashid));
 		break;
 	    case SYNC_FAILED:
-		ret = VCHECK_SALVAGE_FAIL;
-		Log("VScheduleSalvage_r: Salvage request for volume %"
-		    AFS_VOLID_FMT " " "failed\n",
-		    afs_printable_VolumeId_lu(vp->hashid));
+	        ret = VCHECK_SALVAGE_FAIL;
+		Log("VScheduleSalvage_r: Salvage request for volume %" AFS_VOLID_FMT " "
+		    "failed\n", afs_printable_VolumeId_lu(vp->hashid));
 		break;
 	    default:
-		ret = VCHECK_SALVAGE_FAIL;
-		Log("VScheduleSalvage_r: Salvage request for volume %"
-		    AFS_VOLID_FMT " " "received unknown protocol error %d\n",
+	        ret = VCHECK_SALVAGE_FAIL;
+		Log("VScheduleSalvage_r: Salvage request for volume %" AFS_VOLID_FMT " "
+		    "received unknown protocol error %d\n",
 		    afs_printable_VolumeId_lu(vp->hashid), code);
 		break;
 	    }
@@ -6237,7 +6219,8 @@ VConnectFS_r(void)
 {
     int rc;
     opr_Assert((VInit == 2) &&
-	       (programType != fileServer) && (programType != salvager));
+	   (programType != fileServer) &&
+	   (programType != salvager));
     rc = FSYNC_clientInit();
     if (rc) {
 	VSetVInit_r(3);
@@ -6264,7 +6247,8 @@ VConnectFS_r(void)
 void
 VDisconnectFS_r(void)
 {
-    opr_Assert((programType != fileServer) && (programType != salvager));
+    opr_Assert((programType != fileServer) &&
+	   (programType != salvager));
     FSYNC_clientFinis();
     VSetVInit_r(2);
 }
@@ -6449,7 +6433,7 @@ VAllocBitmapEntry_r(Error * ec, Volume * vp,
 		VGetBitmap_r(ec, vp, i);
 		if (*ec) {
 #ifdef AFS_DEMAND_ATTACH_FS
-		    VRequestSalvage_r(ec, vp, SALVSYNC_ERROR, 0 /*flags */ );
+		    VRequestSalvage_r(ec, vp, SALVSYNC_ERROR, 0 /*flags*/);
 #else /* AFS_DEMAND_ATTACH_FS */
 		    DeleteVolumeFromHashTable(vp);
 		    vp->shuttingDown = 1;	/* Let who has it free it. */
@@ -6496,7 +6480,7 @@ VAllocBitmapEntry_r(Error * ec, Volume * vp,
     VOL_LOCK;
 #endif /* AFS_DEMAND_ATTACH_FS */
 
-  done:
+ done:
 #ifdef AFS_DEMAND_ATTACH_FS
     VChangeState_r(vp, state_save);
     if (flags & VOL_ALLOC_BITMAP_WAIT) {
@@ -6507,7 +6491,7 @@ VAllocBitmapEntry_r(Error * ec, Volume * vp,
 }
 
 int
-VAllocBitmapEntry(Error * ec, Volume * vp, struct vnodeIndex *index)
+VAllocBitmapEntry(Error * ec, Volume * vp, struct vnodeIndex * index)
 {
     int retVal;
     VOL_LOCK;
@@ -6517,7 +6501,7 @@ VAllocBitmapEntry(Error * ec, Volume * vp, struct vnodeIndex *index)
 }
 
 void
-VFreeBitMapEntry_r(Error * ec, Volume * vp, struct vnodeIndex *index,
+VFreeBitMapEntry_r(Error * ec, Volume *vp, struct vnodeIndex *index,
 		   unsigned bitNumber, int flags)
 {
     unsigned int offset;
@@ -6548,17 +6532,17 @@ VFreeBitMapEntry_r(Error * ec, Volume * vp, struct vnodeIndex *index,
 	index->bitmapOffset = offset & ~3;	/* Truncate to nearest bit32 */
     *(index->bitmap + offset) &= ~(1 << (bitNumber & 0x7));
 
-  done:
+ done:
 #ifdef AFS_DEMAND_ATTACH_FS
     if (flags & VOL_FREE_BITMAP_WAIT) {
 	VCancelReservation_r(vp);
     }
 #endif
-    return;			/* make the compiler happy for non-DAFS */
+    return; /* make the compiler happy for non-DAFS */
 }
 
 void
-VFreeBitMapEntry(Error * ec, Volume * vp, struct vnodeIndex *index,
+VFreeBitMapEntry(Error * ec, Volume *vp, struct vnodeIndex *index,
 		 unsigned bitNumber)
 {
     VOL_LOCK;
@@ -6790,7 +6774,7 @@ VolumeExternalName(VolumeId volumeId)
  * @note re-entrant equivalent of VolumeExternalName
  */
 int
-VolumeExternalName_r(VolumeId volumeId, char *name, size_t len)
+VolumeExternalName_r(VolumeId volumeId, char * name, size_t len)
 {
     return snprintf(name, len, VFORMAT, afs_printable_VolumeId_lu(volumeId));
 }
@@ -6803,8 +6787,7 @@ VolumeExternalName_r(VolumeId volumeId, char *name, size_t len)
 #define OneDay	(86400)		/* 24 hours' worth of seconds */
 
 static time_t
-Midnight(time_t t)
-{
+Midnight(time_t t) {
     struct tm local, *l;
     time_t midnight;
 
@@ -6816,20 +6799,19 @@ Midnight(time_t t)
 
     if (l != NULL) {
 	/* the following is strictly speaking problematic on the
-	 * switching day to daylight saving time, after the switch,
-	 * as tm_isdst does not match.  Similarly, on the looong day when
-	 * switching back the OneDay check will not do what naively expected!
-	 * The effects are minor, though, and more a matter of interpreting
-	 * the numbers. */
+	   switching day to daylight saving time, after the switch,
+	   as tm_isdst does not match.  Similarly, on the looong day when
+	   switching back the OneDay check will not do what naively expected!
+	   The effects are minor, though, and more a matter of interpreting
+	   the numbers. */
 #ifndef AFS_PTHREAD_ENV
 	local = *l;
 #endif
-	local.tm_hour = local.tm_min = local.tm_sec = 0;
+	local.tm_hour = local.tm_min=local.tm_sec = 0;
 	midnight = mktime(&local);
-	if (midnight != (time_t) - 1)
-	    return (midnight);
+	if (midnight != (time_t) -1) return(midnight);
     }
-    return ((t / OneDay) * OneDay);
+    return( (t/OneDay)*OneDay );
 
 }
 
@@ -6878,7 +6860,7 @@ VAdjustVolumeStatistics_r(Volume * vp)
 	 * the detailed volume statistics area.
 	 */
 	memset((V_stat_area(vp)), 0, VOL_STATS_BYTES);
-    }
+	}
 
     /*It's been more than a day of collection */
     /*
@@ -6981,9 +6963,9 @@ VSetDiskUsage(void)
 
 #ifndef AFS_DEMAND_ATTACH_FS
 static VolumeId *UpdateList = NULL;	/* Pointer to array of Volume ID's */
-static int nUpdatedVolumes = 0;	/* Updated with entry in UpdateList, salvage after crash flag on */
-static int updateSize = 0;	/* number of entries possible */
-#define UPDATE_LIST_SIZE 128	/* initial size increment (must be a power of 2!) */
+static int nUpdatedVolumes = 0;	        /* Updated with entry in UpdateList, salvage after crash flag on */
+static int updateSize = 0;		/* number of entries possible */
+#define UPDATE_LIST_SIZE 128	        /* initial size increment (must be a power of 2!) */
 #endif /* !AFS_DEMAND_ATTACH_FS */
 
 void
@@ -7010,7 +6992,8 @@ VAddToVolumeUpdateList_r(Error * ec, Volume * vp)
 		Log("warning: there is likely a bug in the volume update scanner\n");
 		return;
 	    }
-	    UpdateList = realloc(UpdateList, sizeof(VolumeId) * updateSize);
+	    UpdateList = realloc(UpdateList,
+				 sizeof(VolumeId) * updateSize);
 	}
     }
     opr_Assert(UpdateList != NULL);
@@ -7112,22 +7095,22 @@ struct VLRU {
     /* VLRU config */
     /** time interval (in seconds) between promotion passes for
      *  each young generation queue. */
-    afs_uint32 promotion_interval[VLRU_GENERATIONS - 1];
+    afs_uint32 promotion_interval[VLRU_GENERATIONS-1];
 
     /** time interval (in seconds) between soft detach candidate
      *  scans for each generation queue.
      *
      *  scan_interval[VLRU_QUEUE_CANDIDATE] defines how frequently
      *  we perform a soft detach pass. */
-    afs_uint32 scan_interval[VLRU_GENERATIONS + 1];
+    afs_uint32 scan_interval[VLRU_GENERATIONS+1];
 
     /* scheduler state */
-    int next_idx;					/**< next queue to receive attention */
-    afs_uint32 last_promotion[VLRU_GENERATIONS - 1];	/**< timestamp of last promotion scan */
-    afs_uint32 last_scan[VLRU_GENERATIONS + 1];		/**< timestamp of last detach scan */
+    int next_idx;                                       /**< next queue to receive attention */
+    afs_uint32 last_promotion[VLRU_GENERATIONS-1];      /**< timestamp of last promotion scan */
+    afs_uint32 last_scan[VLRU_GENERATIONS+1];           /**< timestamp of last detach scan */
 
-    int scanner_state;					/**< state of scanner thread */
-    pthread_cond_t cv;					/**< state transition CV */
+    int scanner_state;                                  /**< state of scanner thread */
+    pthread_cond_t cv;                                  /**< state transition CV */
 };
 
 /** global VLRU state */
@@ -7137,19 +7120,19 @@ static struct VLRU volume_LRU;
  * defined states for VLRU scanner thread.
  */
 typedef enum {
-    VLRU_SCANNER_STATE_OFFLINE = 0,	      /**< vlru scanner thread is offline */
-    VLRU_SCANNER_STATE_ONLINE = 1,	      /**< vlru scanner thread is online */
-    VLRU_SCANNER_STATE_SHUTTING_DOWN = 2,     /**< vlru scanner thread is shutting down */
-    VLRU_SCANNER_STATE_PAUSING = 3,	      /**< vlru scanner thread is getting ready to pause */
-    VLRU_SCANNER_STATE_PAUSED = 4	      /**< vlru scanner thread is paused */
+    VLRU_SCANNER_STATE_OFFLINE        = 0,    /**< vlru scanner thread is offline */
+    VLRU_SCANNER_STATE_ONLINE         = 1,    /**< vlru scanner thread is online */
+    VLRU_SCANNER_STATE_SHUTTING_DOWN  = 2,    /**< vlru scanner thread is shutting down */
+    VLRU_SCANNER_STATE_PAUSING        = 3,    /**< vlru scanner thread is getting ready to pause */
+    VLRU_SCANNER_STATE_PAUSED         = 4     /**< vlru scanner thread is paused */
 } vlru_thread_state_t;
 
 /* vlru disk data header stuff */
-#define VLRU_DISK_MAGIC      0x7a8b9cad	       /**< vlru disk entry magic number */
-#define VLRU_DISK_VERSION    1		       /**< vlru disk entry version number */
+#define VLRU_DISK_MAGIC      0x7a8b9cad        /**< vlru disk entry magic number */
+#define VLRU_DISK_VERSION    1                 /**< vlru disk entry version number */
 
 /** vlru default expiration time (for eventual fs state serialization of vlru data) */
-#define VLRU_DUMP_EXPIRATION_TIME   (60*60*24*7)	/* expire vlru data after 1 week */
+#define VLRU_DUMP_EXPIRATION_TIME   (60*60*24*7)  /* expire vlru data after 1 week */
 
 
 /** minimum volume inactivity (in seconds) before a volume becomes eligible for
@@ -7166,9 +7149,9 @@ static afs_uint32 VLRU_offline_max = VLRU_DEFAULT_OFFLINE_MAX;
 static afs_uint32 VLRU_enabled = 1;
 
 /* queue synchronization routines */
-static void VLRU_BeginExclusive_r(struct VLRU_q *q);
-static void VLRU_EndExclusive_r(struct VLRU_q *q);
-static void VLRU_Wait_r(struct VLRU_q *q);
+static void VLRU_BeginExclusive_r(struct VLRU_q * q);
+static void VLRU_EndExclusive_r(struct VLRU_q * q);
+static void VLRU_Wait_r(struct VLRU_q * q);
 
 /**
  * set VLRU subsystem tunable parameters.
@@ -7278,10 +7261,8 @@ VInitVLRU(void)
     /* XXX put inside log level check? */
     Log("VLRU: starting scanner with the following configuration parameters:\n");
     Log("VLRU:  offlining volumes after minimum of %d seconds of inactivity\n", VLRU_offline_thresh);
-    Log("VLRU:  running VLRU soft detach pass every %d seconds\n",
-	VLRU_offline_interval);
-    Log("VLRU:  taking up to %d volumes offline per pass\n",
-	VLRU_offline_max);
+    Log("VLRU:  running VLRU soft detach pass every %d seconds\n", VLRU_offline_interval);
+    Log("VLRU:  taking up to %d volumes offline per pass\n", VLRU_offline_max);
     Log("VLRU:  scanning generation 0 for inactive volumes every %d seconds\n", volume_LRU.scan_interval[0]);
     Log("VLRU:  scanning for promotion/demotion between generations 0 and 1 every %d seconds\n", volume_LRU.promotion_interval[0]);
     Log("VLRU:  scanning for promotion/demotion between generations 1 and 2 every %d seconds\n", volume_LRU.promotion_interval[1]);
@@ -7419,10 +7400,10 @@ VLRU_Delete_r(Volume * vp)
 
     /* handle races */
     do {
-	idx = vp->vlru.idx;
-	if (idx == VLRU_QUEUE_INVALID)
-	    return;
-	VLRU_Wait_r(&volume_LRU.q[idx]);
+      idx = vp->vlru.idx;
+      if (idx == VLRU_QUEUE_INVALID)
+	  return;
+      VLRU_Wait_r(&volume_LRU.q[idx]);
     } while (idx != vp->vlru.idx);
 
     /* now remove from the VLRU and update
@@ -7456,7 +7437,7 @@ VLRU_Delete_r(Volume * vp)
 static void
 VLRU_UpdateAccess_r(Volume * vp)
 {
-    Volume *rvp = NULL;
+    Volume * rvp = NULL;
 
     if (!VLRU_enabled)
 	return;
@@ -7495,9 +7476,9 @@ VLRU_UpdateAccess_r(Volume * vp)
     }
 
     if (rvp) {
-	VLRU_EndExclusive_r(&volume_LRU.q[VLRU_QUEUE_CANDIDATE]);
-	VLRU_EndExclusive_r(&volume_LRU.q[VLRU_QUEUE_NEW]);
-	VCancelReservation_r(rvp);
+      VLRU_EndExclusive_r(&volume_LRU.q[VLRU_QUEUE_CANDIDATE]);
+      VLRU_EndExclusive_r(&volume_LRU.q[VLRU_QUEUE_NEW]);
+      VCancelReservation_r(rvp);
     }
 }
 
@@ -7564,7 +7545,7 @@ VLRU_SwitchQueues(Volume * vp, int new_idx, int append)
  * @internal volume package internal use only.
  */
 static void *
-VLRU_ScannerThread(void *args)
+VLRU_ScannerThread(void * args)
 {
     afs_uint32 now, min_delay, delay;
     int i, min_idx, min_op, overdue, state;
@@ -7572,7 +7553,7 @@ VLRU_ScannerThread(void *args)
     /* set t=0 for promotion cycle to be
      * fileserver startup */
     now = FT_ApproxTime();
-    for (i = 0; i < VLRU_GENERATIONS - 1; i++) {
+    for (i=0; i < VLRU_GENERATIONS-1; i++) {
 	volume_LRU.last_promotion[i] = now;
     }
 
@@ -7584,7 +7565,7 @@ VLRU_ScannerThread(void *args)
 
     /* set t=0 for scan cycle to be now */
     now = FT_ApproxTime();
-    for (i = 0; i < VLRU_GENERATIONS + 1; i++) {
+    for (i=0; i < VLRU_GENERATIONS+1; i++) {
 	volume_LRU.last_scan[i] = now;
     }
 
@@ -7593,8 +7574,7 @@ VLRU_ScannerThread(void *args)
 	volume_LRU.scanner_state = VLRU_SCANNER_STATE_ONLINE;
     }
 
-    while ((state =
-	    volume_LRU.scanner_state) != VLRU_SCANNER_STATE_SHUTTING_DOWN) {
+    while ((state = volume_LRU.scanner_state) != VLRU_SCANNER_STATE_SHUTTING_DOWN) {
 	/* check to see if we've been asked to pause */
 	if (volume_LRU.scanner_state == VLRU_SCANNER_STATE_PAUSING) {
 	    volume_LRU.scanner_state = VLRU_SCANNER_STATE_PAUSED;
@@ -7611,8 +7591,7 @@ VLRU_ScannerThread(void *args)
 
 	/* figure out a potential schedule for the new generation first */
 	overdue = 0;
-	min_delay =
-	    volume_LRU.scan_interval[0] + volume_LRU.last_scan[0] - now;
+	min_delay = volume_LRU.scan_interval[0] + volume_LRU.last_scan[0] - now;
 	min_idx = 0;
 	min_op = 0;
 	if (min_delay > volume_LRU.scan_interval[0]) {
@@ -7624,8 +7603,7 @@ VLRU_ScannerThread(void *args)
 	/* if we're not overdue for gen 0, figure out schedule for candidate gen */
 	if (!overdue) {
 	    i = VLRU_QUEUE_CANDIDATE;
-	    delay =
-		volume_LRU.scan_interval[i] + volume_LRU.last_scan[i] - now;
+	    delay = volume_LRU.scan_interval[i] + volume_LRU.last_scan[i] - now;
 	    if (delay < min_delay) {
 		min_delay = delay;
 		min_idx = i;
@@ -7639,10 +7617,8 @@ VLRU_ScannerThread(void *args)
 	}
 
 	/* if we're still not overdue for something, figure out schedules for promotions */
-	for (i = 0; !overdue && i < VLRU_GENERATIONS - 1; i++) {
-	    delay =
-		volume_LRU.promotion_interval[i] +
-		volume_LRU.last_promotion[i] - now;
+	for (i=0; !overdue && i < VLRU_GENERATIONS-1; i++) {
+	    delay = volume_LRU.promotion_interval[i] + volume_LRU.last_promotion[i] - now;
 	    if (delay < min_delay) {
 		min_delay = delay;
 		min_idx = i;
@@ -7667,7 +7643,7 @@ VLRU_ScannerThread(void *args)
 	VOL_LOCK;
 	if (min_op) {
 	    VLRU_Promote_r(min_idx);
-	    VLRU_Demote_r(min_idx + 1);
+	    VLRU_Demote_r(min_idx+1);
 	} else {
 	    VLRU_Scan_r(min_idx);
 	}
@@ -7714,13 +7690,13 @@ VLRU_Promote_r(int idx)
     int len, chaining, promote;
     afs_uint32 now, thresh;
     struct rx_queue *qp, *nqp;
-    Volume *vp, *start = NULL, *end = NULL;
+    Volume * vp, *start = NULL, *end = NULL;
 
     /* get exclusive access to two chains, and drop the glock */
     VLRU_Wait_r(&volume_LRU.q[idx]);
     VLRU_BeginExclusive_r(&volume_LRU.q[idx]);
-    VLRU_Wait_r(&volume_LRU.q[idx + 1]);
-    VLRU_BeginExclusive_r(&volume_LRU.q[idx + 1]);
+    VLRU_Wait_r(&volume_LRU.q[idx+1]);
+    VLRU_BeginExclusive_r(&volume_LRU.q[idx+1]);
     VOL_UNLOCK;
 
     thresh = volume_LRU.promotion_interval[idx];
@@ -7728,7 +7704,7 @@ VLRU_Promote_r(int idx)
 
     len = chaining = 0;
     for (queue_ScanBackwards(&volume_LRU.q[idx], qp, nqp, rx_queue)) {
-	vp = (Volume *) ((char *)qp - offsetof(Volume, vlru));
+	vp = (Volume *)((char *)qp - offsetof(Volume, vlru));
 	promote = (((vp->stats.last_promote + thresh) <= now) &&
 		   (vp->stats.last_get >= vp->stats.last_promote));
 
@@ -7739,8 +7715,7 @@ VLRU_Promote_r(int idx)
 		start = vp;
 	    } else {
 		/* promote and prepend chain */
-		queue_MoveChainAfter(&volume_LRU.q[idx + 1], &start->vlru,
-				     &end->vlru);
+		queue_MoveChainAfter(&volume_LRU.q[idx+1], &start->vlru, &end->vlru);
 		chaining = 0;
 	    }
 	} else {
@@ -7755,19 +7730,18 @@ VLRU_Promote_r(int idx)
 
     if (chaining) {
 	/* promote and prepend */
-	queue_MoveChainAfter(&volume_LRU.q[idx + 1], &start->vlru,
-			     &end->vlru);
+	queue_MoveChainAfter(&volume_LRU.q[idx+1], &start->vlru, &end->vlru);
     }
 
     if (len) {
 	volume_LRU.q[idx].len -= len;
-	volume_LRU.q[idx + 1].len += len;
+	volume_LRU.q[idx+1].len += len;
     }
 
     /* release exclusive access to the two chains */
     VOL_LOCK;
     volume_LRU.last_promotion[idx] = now;
-    VLRU_EndExclusive_r(&volume_LRU.q[idx + 1]);
+    VLRU_EndExclusive_r(&volume_LRU.q[idx+1]);
     VLRU_EndExclusive_r(&volume_LRU.q[idx]);
 }
 
@@ -7779,15 +7753,15 @@ VLRU_Demote_r(int idx)
     int len, chaining, demote;
     afs_uint32 now, thresh;
     struct rx_queue *qp, *nqp;
-    Volume *vp, *start = NULL, *end = NULL;
-    Volume **salv_flag_vec = NULL;
+    Volume * vp, *start = NULL, *end = NULL;
+    Volume ** salv_flag_vec = NULL;
     int salv_vec_offset = 0;
 
     opr_Assert(idx == VLRU_QUEUE_MID || idx == VLRU_QUEUE_OLD);
 
     /* get exclusive access to two chains, and drop the glock */
-    VLRU_Wait_r(&volume_LRU.q[idx - 1]);
-    VLRU_BeginExclusive_r(&volume_LRU.q[idx - 1]);
+    VLRU_Wait_r(&volume_LRU.q[idx-1]);
+    VLRU_BeginExclusive_r(&volume_LRU.q[idx-1]);
     VLRU_Wait_r(&volume_LRU.q[idx]);
     VLRU_BeginExclusive_r(&volume_LRU.q[idx]);
     VOL_UNLOCK;
@@ -7798,11 +7772,11 @@ VLRU_Demote_r(int idx)
     }
 
     now = FT_ApproxTime();
-    thresh = volume_LRU.promotion_interval[idx - 1];
+    thresh = volume_LRU.promotion_interval[idx-1];
 
     len = chaining = 0;
     for (queue_ScanBackwards(&volume_LRU.q[idx], qp, nqp, rx_queue)) {
-	vp = (Volume *) ((char *)qp - offsetof(Volume, vlru));
+	vp = (Volume *)((char *)qp - offsetof(Volume, vlru));
 	demote = (((vp->stats.last_promote + thresh) <= now) &&
 		  (vp->stats.last_get < (now - thresh)));
 
@@ -7824,8 +7798,7 @@ VLRU_Demote_r(int idx)
 		start = vp;
 	    } else {
 		/* demote and append chain */
-		queue_MoveChainBefore(&volume_LRU.q[idx - 1], &start->vlru,
-				      &end->vlru);
+		queue_MoveChainBefore(&volume_LRU.q[idx-1], &start->vlru, &end->vlru);
 		chaining = 0;
 	    }
 	} else {
@@ -7839,19 +7812,18 @@ VLRU_Demote_r(int idx)
     }
 
     if (chaining) {
-	queue_MoveChainBefore(&volume_LRU.q[idx - 1], &start->vlru,
-			      &end->vlru);
+	queue_MoveChainBefore(&volume_LRU.q[idx-1], &start->vlru, &end->vlru);
     }
 
     if (len) {
 	volume_LRU.q[idx].len -= len;
-	volume_LRU.q[idx - 1].len += len;
+	volume_LRU.q[idx-1].len += len;
     }
 
     /* release exclusive access to the two chains */
     VOL_LOCK;
     VLRU_EndExclusive_r(&volume_LRU.q[idx]);
-    VLRU_EndExclusive_r(&volume_LRU.q[idx - 1]);
+    VLRU_EndExclusive_r(&volume_LRU.q[idx-1]);
 
     /* now go back and set the DONT_SALVAGE flags as appropriate */
     if (salv_flag_vec) {
@@ -7881,7 +7853,7 @@ VLRU_Scan_r(int idx)
 {
     afs_uint32 now, thresh;
     struct rx_queue *qp, *nqp;
-    Volume *vp;
+    Volume * vp;
     int i, locked = 1;
 
     opr_Assert(idx == VLRU_QUEUE_NEW || idx == VLRU_QUEUE_CANDIDATE);
@@ -7905,9 +7877,8 @@ VLRU_Scan_r(int idx)
 	VOL_UNLOCK;
 	locked = 0;
 
-	for (i =
-	     0, queue_ScanBackwards(&volume_LRU.q[idx], qp, nqp, rx_queue)) {
-	    vp = (Volume *) ((char *)qp - offsetof(Volume, vlru));
+	for (i=0,queue_ScanBackwards(&volume_LRU.q[idx], qp, nqp, rx_queue)) {
+	    vp = (Volume *)((char *)qp - offsetof(Volume, vlru));
 	    if (i >= VLRU_offline_max) {
 		break;
 	    }
@@ -7921,17 +7892,15 @@ VLRU_Scan_r(int idx)
 	}
     } else {
 	/* scan for volumes to become soft detach candidates */
-	for (i =
-	     1, queue_ScanBackwards(&volume_LRU.q[idx], qp, nqp, rx_queue),
-	     i++) {
-	    vp = (Volume *) ((char *)qp - offsetof(Volume, vlru));
+	for (i=1,queue_ScanBackwards(&volume_LRU.q[idx], qp, nqp, rx_queue),i++) {
+	    vp = (Volume *)((char *)qp - offsetof(Volume, vlru));
 
 	    /* check timestamp to see if it's a candidate for soft detaching */
 	    if (vp->stats.last_get <= thresh) {
 		VCheckSoftDetachCandidate(vp, thresh);
 	    }
 
-	    if (!(i & 0x7f)) {	/* lock coarsening optimization */
+	    if (!(i&0x7f)) {   /* lock coarsening optimization */
 		VOL_UNLOCK;
 		pthread_yield();
 		VOL_LOCK;
@@ -7955,7 +7924,7 @@ VLRU_Scan_r(int idx)
 static int
 VCheckSoftDetach(Volume * vp, afs_uint32 thresh)
 {
-    int ret = 0;
+    int ret=0;
 
     if (vp->nUsers || vp->nWaiters)
 	return 0;
@@ -7996,7 +7965,7 @@ VCheckSoftDetachCandidate(Volume * vp, afs_uint32 thresh)
 
 /* begin exclusive access on VLRU */
 static void
-VLRU_BeginExclusive_r(struct VLRU_q *q)
+VLRU_BeginExclusive_r(struct VLRU_q * q)
 {
     opr_Assert(q->busy == 0);
     q->busy = 1;
@@ -8004,7 +7973,7 @@ VLRU_BeginExclusive_r(struct VLRU_q *q)
 
 /* end exclusive access on VLRU */
 static void
-VLRU_EndExclusive_r(struct VLRU_q *q)
+VLRU_EndExclusive_r(struct VLRU_q * q)
 {
     opr_Assert(q->busy);
     q->busy = 0;
@@ -8013,9 +7982,9 @@ VLRU_EndExclusive_r(struct VLRU_q *q)
 
 /* wait for another thread to end exclusive access on VLRU */
 static void
-VLRU_Wait_r(struct VLRU_q *q)
+VLRU_Wait_r(struct VLRU_q * q)
 {
-    while (q->busy) {
+    while(q->busy) {
 	VOL_CV_WAIT(&q->cv);
     }
 }
@@ -8078,7 +8047,8 @@ VSoftDetachVolume_r(Volume * vp, afs_uint32 thresh)
 	if (vp->nWaiters ||
 	    (vp->nUsers > 1) ||
 	    (vp->shuttingDown) ||
-	    (vp->goingOffline) || (vp->stats.last_get != ts_save)) {
+	    (vp->goingOffline) ||
+	    (vp->stats.last_get != ts_save)) {
 	    /* looks like we're racing someone else. bail */
 	    VPutVolume_r(vp);
 	    vp = NULL;
@@ -8150,8 +8120,8 @@ VInitVolumeHeaderCache(afs_uint32 howMany)
 
     while (howMany--)
 	/* We are using ReleaseVolumeHeader to initialize the values on the header list
-	 * to ensure they have the right values
-	 */
+ 	 * to ensure they have the right values
+ 	 */
 	ReleaseVolumeHeader(hp++);
 }
 
@@ -8168,7 +8138,7 @@ VInitVolumeHeaderCache(afs_uint32 howMany)
  * @internal volume package internal use only.
  */
 #ifdef AFS_DEMAND_ATTACH_FS
-static struct volHeader *
+static struct volHeader*
 GetVolHeaderFromLRU(void)
 {
     struct volHeader *hd = NULL, *qh, *nqh;
@@ -8188,7 +8158,7 @@ GetVolHeaderFromLRU(void)
     return hd;
 }
 #else /* AFS_DEMAND_ATTACH_FS */
-static struct volHeader *
+static struct volHeader*
 GetVolHeaderFromLRU(void)
 {
     struct volHeader *hd = NULL;
@@ -8265,7 +8235,7 @@ GetVolumeHeader(Volume * vp)
 	    queue_Remove(hd);
 	    opr_Assert(hd->back == vp);
 #ifdef AFS_DEMAND_ATTACH_FS
-	    V_attachFlags(vp) &= ~(VOL_HDR_IN_LRU);
+            V_attachFlags(vp) &= ~(VOL_HDR_IN_LRU);
 #endif
 	} else {
 	    hd = GetVolHeaderFromLRU();
@@ -8312,8 +8282,7 @@ GetVolumeHeader(Volume * vp)
 
 		hd->back->header = NULL;
 #ifdef AFS_DEMAND_ATTACH_FS
-		V_attachFlags(hd->back) &=
-		    ~(VOL_HDR_ATTACHED | VOL_HDR_LOADED | VOL_HDR_IN_LRU);
+		V_attachFlags(hd->back) &= ~(VOL_HDR_ATTACHED | VOL_HDR_LOADED | VOL_HDR_IN_LRU);
 
 		if (hd->diskstuff.inUse) {
 		    VChangeState_r(hd->back, back_save);
@@ -8369,7 +8338,8 @@ LoadVolumeHeader(Error * ec, Volume * vp)
 	VOL_UNLOCK;
 
 	ReadHeader(ec, V_diskDataHandle(vp), (char *)&V_disk(vp),
-		   sizeof(V_disk(vp)), VOLUMEINFOMAGIC, VOLUMEINFOVERSION);
+		   sizeof(V_disk(vp)), VOLUMEINFOMAGIC,
+		   VOLUMEINFOVERSION);
 	IncUInt64(&vp->stats.hdr_loads);
 	now = FT_ApproxTime();
 
@@ -8386,7 +8356,8 @@ LoadVolumeHeader(Error * ec, Volume * vp)
 	IncUInt64(&VStats.hdr_loads);
 
 	ReadHeader(ec, V_diskDataHandle(vp), (char *)&V_disk(vp),
-		   sizeof(V_disk(vp)), VOLUMEINFOMAGIC, VOLUMEINFOVERSION);
+		   sizeof(V_disk(vp)), VOLUMEINFOMAGIC,
+		   VOLUMEINFOVERSION);
     }
 #endif /* AFS_DEMAND_ATTACH_FS */
     if (*ec) {
@@ -8459,8 +8430,7 @@ FreeVolumeHeader(Volume * vp)
 	free(hd);
     }
 #ifdef AFS_DEMAND_ATTACH_FS
-    V_attachFlags(vp) &=
-	~(VOL_HDR_ATTACHED | VOL_HDR_IN_LRU | VOL_HDR_LOADED);
+    V_attachFlags(vp) &= ~(VOL_HDR_ATTACHED | VOL_HDR_IN_LRU | VOL_HDR_LOADED);
 #endif
     volume_hdr_LRU.stats.attached--;
     vp->header = NULL;
@@ -8488,13 +8458,13 @@ int
 VSetVolHashSize(int logsize)
 {
     /* 64 to 268435456 hash buckets seems like a reasonable range */
-    if ((logsize < 6) || (logsize > 28)) {
-	return -1;
+    if ((logsize < 6 ) || (logsize > 28)) {
+        return -1;
     }
 
     if (!VInit) {
-	VolumeHashTable.Size = opr_jhash_size(logsize);
-	VolumeHashTable.Mask = opr_jhash_mask(logsize);
+        VolumeHashTable.Size = opr_jhash_size(logsize);
+        VolumeHashTable.Mask = opr_jhash_mask(logsize);
     } else {
 	/* we can't yet support runtime modification of this
 	 * parameter. we'll need a configuration rwlock to
@@ -8516,12 +8486,11 @@ VInitVolumeHash(void)
 {
     int i;
 
-    VolumeHashTable.Table =
-	(VolumeHashChainHead *) calloc(VolumeHashTable.Size,
-				       sizeof(VolumeHashChainHead));
+    VolumeHashTable.Table = (VolumeHashChainHead *) calloc(VolumeHashTable.Size,
+							   sizeof(VolumeHashChainHead));
     opr_Assert(VolumeHashTable.Table != NULL);
 
-    for (i = 0; i < VolumeHashTable.Size; i++) {
+    for (i=0; i < VolumeHashTable.Size; i++) {
 	queue_Init(&VolumeHashTable.Table[i]);
 #ifdef AFS_DEMAND_ATTACH_FS
 	opr_cv_init(&VolumeHashTable.Table[i].chain_busy_cv);
@@ -8548,7 +8517,7 @@ VInitVolumeHash(void)
 static void
 AddVolumeToHashTable(Volume * vp, VolumeId hashid)
 {
-    VolumeHashChainHead *head;
+    VolumeHashChainHead * head;
 
     if (queue_IsOnQueue(vp))
 	return;
@@ -8586,7 +8555,7 @@ AddVolumeToHashTable(Volume * vp, VolumeId hashid)
 static void
 DeleteVolumeFromHashTable(Volume * vp)
 {
-    VolumeHashChainHead *head;
+    VolumeHashChainHead * head;
 
     if (!queue_IsOnQueue(vp))
 	return;
@@ -8643,11 +8612,11 @@ Volume *
 VLookupVolume_r(Error * ec, VolumeId volumeId, Volume * hint)
 {
     int looks = 0;
-    Volume *vp, *np;
+    Volume * vp, *np;
 #ifdef AFS_DEMAND_ATTACH_FS
     Volume *pp;
 #endif
-    VolumeHashChainHead *head;
+    VolumeHashChainHead * head;
     *ec = 0;
 
     head = &VolumeHashTable.Table[VOLUME_HASH(volumeId)];
@@ -8668,7 +8637,7 @@ VLookupVolume_r(Error * ec, VolumeId volumeId, Volume * hint)
      * (and move to a data structure with better cache locality) */
 
     /* search the chain for this volume id */
-    for (queue_Scan(head, vp, np, Volume)) {
+    for(queue_Scan(head, vp, np, Volume)) {
 	looks++;
 	if (vp->hashid == volumeId) {
 	    break;
@@ -8736,7 +8705,7 @@ VReorderHash_r(VolumeHashChainHead * head, Volume * pp, Volume * vp)
      * in the chain we want to advance */
     FillInt64(move_thresh, 0, VOLUME_HASH_REORDER_CHAIN_THRESH);
     AddUInt64(move_thresh, pp->stats.hash_lookups, &move_thresh);
-    for (queue_ScanFrom(head, vp, tp, np, Volume)) {
+    for(queue_ScanFrom(head, vp, tp, np, Volume)) {
 	if (LTInt64(tp->stats.hash_lookups, move_thresh)) {
 	    break;
 	}
@@ -8745,7 +8714,7 @@ VReorderHash_r(VolumeHashChainHead * head, Volume * pp, Volume * vp)
 
     /* scan backwards from pp to determine where to splice and
      * insert the subchain we're advancing */
-    for (queue_ScanBackwardsFrom(head, pp, tp, np, Volume)) {
+    for(queue_ScanBackwardsFrom(head, pp, tp, np, Volume)) {
 	if (GTInt64(tp->stats.hash_lookups, move_thresh)) {
 	    break;
 	}
@@ -8753,7 +8722,7 @@ VReorderHash_r(VolumeHashChainHead * head, Volume * pp, Volume * vp)
     tp = queue_Next(tp, Volume);
 
     /* rebalance chain(vp,...,lp) ahead of chain(tp,...,pp) */
-    queue_MoveChainBefore(tp, vp, lp);
+    queue_MoveChainBefore(tp,vp,lp);
 
     VOL_LOCK;
     IncUInt64(&VStats.hash_reorders);
@@ -8954,7 +8923,7 @@ DeleteVolumeFromVByPList_r(Volume * vp)
  */
 /* take exclusive control over the list */
 static void
-VVByPListBeginExclusive_r(struct DiskPartition64 *dp)
+VVByPListBeginExclusive_r(struct DiskPartition64 * dp)
 {
     opr_Assert(dp->vol_list.busy == 0);
     dp->vol_list.busy = 1;
@@ -8978,7 +8947,7 @@ VVByPListBeginExclusive_r(struct DiskPartition64 *dp)
  * @internal volume package internal use only.
  */
 static void
-VVByPListEndExclusive_r(struct DiskPartition64 *dp)
+VVByPListEndExclusive_r(struct DiskPartition64 * dp)
 {
     opr_Assert(dp->vol_list.busy);
     dp->vol_list.busy = 0;
@@ -9010,7 +8979,7 @@ VVByPListEndExclusive_r(struct DiskPartition64 *dp)
  * @internal volume package internal use only.
  */
 static void
-VVByPListWait_r(struct DiskPartition64 *dp)
+VVByPListWait_r(struct DiskPartition64 * dp)
 {
     while (dp->vol_list.busy) {
 	VOL_CV_WAIT(&dp->vol_list.cv);
@@ -9030,8 +8999,8 @@ VPrintCacheStats_r(void)
     Log("Large vnode cache, %d entries, %d allocs, %d gets (%d reads), %d writes\n", vcp->cacheSize, vcp->allocs, vcp->gets, vcp->reads, vcp->writes);
     vcp = &VnodeClassInfo[vSmall];
     Log("Small vnode cache,%d entries, %d allocs, %d gets (%d reads), %d writes\n", vcp->cacheSize, vcp->allocs, vcp->gets, vcp->reads, vcp->writes);
-    Log("Volume header cache, %d entries, %" AFS_INT64_FMT " gets, "
-	"%" AFS_INT64_FMT " replacements\n",
+    Log("Volume header cache, %d entries, %"AFS_INT64_FMT" gets, "
+        "%"AFS_INT64_FMT" replacements\n",
 	VStats.hdr_cache_size, VStats.hdr_gets, VStats.hdr_loads);
 }
 
@@ -9050,22 +9019,18 @@ UInt64ToDouble(afs_uint64 * x)
     static double c32 = 4.0 * 1.073741824 * 1000000000.0;
     afs_uint32 h, l;
     SplitInt64(*x, h, l);
-    return (((double)h) * c32) + ((double)l);
+    return (((double)h) * c32) + ((double) l);
 }
 
 static char *
-DoubleToPrintable(double x, char *buf, int len)
+DoubleToPrintable(double x, char * buf, int len)
 {
     static double billion = 1000000000.0;
     afs_uint32 y[3];
 
     y[0] = (afs_uint32) (x / (billion * billion));
-    y[1] =
-	(afs_uint32) ((x - (((double)y[0]) * billion * billion)) / billion);
-    y[2] =
-	(afs_uint32) (x -
-		      ((((double)y[0]) * billion * billion) +
-		       (((double)y[1]) * billion)));
+    y[1] = (afs_uint32) ((x - (((double)y[0]) * billion * billion)) / billion);
+    y[2] = (afs_uint32) (x - ((((double)y[0]) * billion * billion) + (((double)y[1]) * billion)));
 
     if (y[0]) {
 	snprintf(buf, len, "%d%09d%09d", y[0], y[1], y[2]);
@@ -9074,7 +9039,7 @@ DoubleToPrintable(double x, char *buf, int len)
     } else {
 	snprintf(buf, len, "%d", y[2]);
     }
-    buf[len - 1] = '\0';
+    buf[len-1] = '\0';
     return buf;
 }
 
@@ -9089,7 +9054,7 @@ struct VLRUExtStats {
 	afs_uint32 start;
 	afs_uint32 len;
     } queue_info[VLRU_QUEUE_INVALID];
-    struct VLRUExtStatsEntry *vec;
+    struct VLRUExtStatsEntry * vec;
 };
 
 /**
@@ -9113,15 +9078,16 @@ struct VLRUExtStats {
  *    @retval 1 failure
  */
 static int
-VVLRUExtStats_r(struct VLRUExtStats *stats, afs_uint32 nvols)
+VVLRUExtStats_r(struct VLRUExtStats * stats, afs_uint32 nvols)
 {
     afs_uint32 cur, idx, len;
-    struct rx_queue *qp, *nqp;
-    Volume *vp;
-    struct VLRUExtStatsEntry *vec;
+    struct rx_queue * qp, * nqp;
+    Volume * vp;
+    struct VLRUExtStatsEntry * vec;
 
     len = nvols + VLRU_EXT_STATS_VEC_LEN_FUDGE;
-    vec = stats->vec = calloc(len, sizeof(struct VLRUExtStatsEntry));
+    vec = stats->vec = calloc(len,
+			      sizeof(struct VLRUExtStatsEntry));
     if (vec == NULL) {
 	return 1;
     }
@@ -9139,7 +9105,7 @@ VVLRUExtStats_r(struct VLRUExtStats *stats, afs_uint32 nvols)
 		/* out of space in vec */
 		break;
 	    }
-	    vp = (Volume *) ((char *)qp - offsetof(Volume, vlru));
+	    vp = (Volume *)((char *)qp - offsetof(Volume, vlru));
 	    vec[cur].volid = vp->hashid;
 	    cur++;
 	}
@@ -9208,32 +9174,32 @@ VPrintExtendedCacheStats_r(int flags)
 	VHashBeginExclusive_r(head);
 	VOL_UNLOCK;
 
-	ch_looks.sum = UInt64ToDouble(&head->looks);
-	ch_gets.sum = UInt64ToDouble(&head->gets);
+	ch_looks.sum    = UInt64ToDouble(&head->looks);
+	ch_gets.sum     = UInt64ToDouble(&head->gets);
 	ch_reorders.sum = UInt64ToDouble(&head->reorders);
 
 	/* update global statistics */
 	{
-	    looks.sum += ch_looks.sum;
-	    gets.sum += ch_gets.sum;
+	    looks.sum    += ch_looks.sum;
+	    gets.sum     += ch_gets.sum;
 	    reorders.sum += ch_reorders.sum;
-	    len.sum += (double)head->len;
-	    vol_sum += head->len;
+	    len.sum      += (double)head->len;
+	    vol_sum      += head->len;
 
 	    if (i == 0) {
-		len.min = (double)head->len;
-		len.max = (double)head->len;
-		looks.min = ch_looks.sum;
-		looks.max = ch_looks.sum;
-		gets.min = ch_gets.sum;
-		gets.max = ch_gets.sum;
+		len.min      = (double) head->len;
+		len.max      = (double) head->len;
+		looks.min    = ch_looks.sum;
+		looks.max    = ch_looks.sum;
+		gets.min     = ch_gets.sum;
+		gets.max     = ch_gets.sum;
 		reorders.min = ch_reorders.sum;
 		reorders.max = ch_reorders.sum;
 	    } else {
 		if (((double)head->len) < len.min)
-		    len.min = (double)head->len;
+		    len.min = (double) head->len;
 		if (((double)head->len) > len.max)
-		    len.max = (double)head->len;
+		    len.max = (double) head->len;
 		if (ch_looks.sum < looks.min)
 		    looks.min = ch_looks.sum;
 		else if (ch_looks.sum > looks.max)
@@ -9258,7 +9224,7 @@ VPrintExtendedCacheStats_r(int flags)
 	    vp = queue_First(head, Volume);
 	    v_looks = UInt64ToDouble(&vp->stats.hash_lookups);
 	    v_loads = UInt64ToDouble(&vp->stats.hdr_loads);
-	    v_gets = UInt64ToDouble(&vp->stats.hdr_gets);
+	    v_gets  = UInt64ToDouble(&vp->stats.hdr_gets);
 	    ch_gets.min = ch_gets.max = v_looks;
 	    hdr_loads.min = hdr_loads.max = v_loads;
 	    hdr_gets.min = hdr_gets.max = v_gets;
@@ -9270,7 +9236,7 @@ VPrintExtendedCacheStats_r(int flags)
 	    for (queue_ScanFrom(head, vp, vp, np, Volume)) {
 		v_looks = UInt64ToDouble(&vp->stats.hash_lookups);
 		v_loads = UInt64ToDouble(&vp->stats.hdr_loads);
-		v_gets = UInt64ToDouble(&vp->stats.hdr_gets);
+		v_gets  = UInt64ToDouble(&vp->stats.hdr_gets);
 
 		hdr_loads.sum += v_loads;
 		hdr_gets.sum += v_gets;
@@ -9300,8 +9266,7 @@ VPrintExtendedCacheStats_r(int flags)
 	    Log("Volume hash chain %d : len=%d, looks=%s, reorders=%s\n",
 		i, head->len,
 		DoubleToPrintable(ch_looks.sum, pr_buf[0], sizeof(pr_buf[0])),
-		DoubleToPrintable(ch_reorders.sum, pr_buf[1],
-				  sizeof(pr_buf[1])));
+		DoubleToPrintable(ch_reorders.sum, pr_buf[1], sizeof(pr_buf[1])));
 	    Log("\tVolume gets : min=%s, max=%s, avg=%s, total=%s\n",
 		DoubleToPrintable(ch_gets.min, pr_buf[0], sizeof(pr_buf[0])),
 		DoubleToPrintable(ch_gets.max, pr_buf[1], sizeof(pr_buf[1])),
@@ -9311,20 +9276,19 @@ VPrintExtendedCacheStats_r(int flags)
 		DoubleToPrintable(hdr_gets.min, pr_buf[0], sizeof(pr_buf[0])),
 		DoubleToPrintable(hdr_gets.max, pr_buf[1], sizeof(pr_buf[1])),
 		DoubleToPrintable(hdr_gets.avg, pr_buf[2], sizeof(pr_buf[2])),
-		DoubleToPrintable(hdr_gets.sum, pr_buf[3],
-				  sizeof(pr_buf[3])));
+		DoubleToPrintable(hdr_gets.sum, pr_buf[3], sizeof(pr_buf[3])));
 	    Log("\tHDR loads : min=%s, max=%s, avg=%s, total=%s\n",
-		DoubleToPrintable(hdr_loads.min, pr_buf[0],
-				  sizeof(pr_buf[0])),
-		DoubleToPrintable(hdr_loads.max, pr_buf[1],
-				  sizeof(pr_buf[1])),
-		DoubleToPrintable(hdr_loads.avg, pr_buf[2],
-				  sizeof(pr_buf[2])),
-		DoubleToPrintable(hdr_loads.sum, pr_buf[3],
-				  sizeof(pr_buf[3])));
+		DoubleToPrintable(hdr_loads.min, pr_buf[0], sizeof(pr_buf[0])),
+		DoubleToPrintable(hdr_loads.max, pr_buf[1], sizeof(pr_buf[1])),
+		DoubleToPrintable(hdr_loads.avg, pr_buf[2], sizeof(pr_buf[2])),
+		DoubleToPrintable(hdr_loads.sum, pr_buf[3], sizeof(pr_buf[3])));
 	} else if (flags & VOL_STATS_PER_CHAIN) {
 	    /* dump simple per-chain stats */
-	    Log("Volume hash chain %d : len=%d, looks=%s, gets=%s, reorders=%s\n", i, head->len, DoubleToPrintable(ch_looks.sum, pr_buf[0], sizeof(pr_buf[0])), DoubleToPrintable(ch_gets.sum, pr_buf[1], sizeof(pr_buf[1])), DoubleToPrintable(ch_reorders.sum, pr_buf[2], sizeof(pr_buf[2])));
+	    Log("Volume hash chain %d : len=%d, looks=%s, gets=%s, reorders=%s\n",
+		i, head->len,
+		DoubleToPrintable(ch_looks.sum, pr_buf[0], sizeof(pr_buf[0])),
+		DoubleToPrintable(ch_gets.sum, pr_buf[1], sizeof(pr_buf[1])),
+		DoubleToPrintable(ch_reorders.sum, pr_buf[2], sizeof(pr_buf[2])));
 	}
 
 	VOL_LOCK;
@@ -9334,9 +9298,9 @@ VPrintExtendedCacheStats_r(int flags)
     VOL_UNLOCK;
 
     /* compute global averages */
-    len.avg = len.sum / ((double)VolumeHashTable.Size);
-    looks.avg = looks.sum / ((double)VolumeHashTable.Size);
-    gets.avg = gets.sum / ((double)VolumeHashTable.Size);
+    len.avg      = len.sum      / ((double)VolumeHashTable.Size);
+    looks.avg    = looks.sum    / ((double)VolumeHashTable.Size);
+    gets.avg     = gets.sum     / ((double)VolumeHashTable.Size);
     reorders.avg = reorders.sum / ((double)VolumeHashTable.Size);
 
     /* dump global stats */
@@ -9364,9 +9328,9 @@ VPrintExtendedCacheStats_r(int flags)
 
     /* print extended disk related statistics */
     {
-	struct DiskPartition64 *diskP;
-	afs_uint32 vol_count[VOLMAXPARTS + 1];
-	byte part_exists[VOLMAXPARTS + 1];
+	struct DiskPartition64 * diskP;
+	afs_uint32 vol_count[VOLMAXPARTS+1];
+	byte part_exists[VOLMAXPARTS+1];
 	Device id;
 	int i;
 
@@ -9401,7 +9365,7 @@ VPrintExtendedCacheStats_r(int flags)
 	afs_uint32 idx, cur, lpos;
 	VolumeId line[5];
 
-	VOL_UNLOCK;
+        VOL_UNLOCK;
 
 	Log("VLRU State Dump:\n\n");
 
@@ -9410,9 +9374,10 @@ VPrintExtendedCacheStats_r(int flags)
 
 	    lpos = 0;
 	    for (cur = vlru_stats.queue_info[idx].start;
-		 cur < vlru_stats.queue_info[idx].len; cur++) {
+		 cur < vlru_stats.queue_info[idx].len;
+		 cur++) {
 		line[lpos++] = vlru_stats.vec[cur].volid;
-		if (lpos == 5) {
+		if (lpos==5) {
 		    Log("\t\t%u, %u, %u, %u, %u,\n",
 			line[0], line[1], line[2], line[3], line[4]);
 		    lpos = 0;
