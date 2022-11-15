@@ -28,8 +28,6 @@ typedef bit32 FileOffset;	/* Offset in this file */
 #define Date afs_uint32
 #include "daemon_com.h"
 #include "fssync.h"
-/* for Reverse Index */
-#include "ri-db.h"
 
 /** turn on VOL_LOCK_DEBUG if you suspect a volume package locking bug */
 

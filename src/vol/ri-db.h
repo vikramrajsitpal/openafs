@@ -35,19 +35,19 @@ typedef struct {
 
 /* PROTOTYPES */
 
-int ridb_create(char *dir_path, struct okv_dbhandle** hdl);
+int ridb_create(char *dir_path, struct okv_dbhandle **hdl);
 
-int ridb_open(char *dir_path, struct okv_dbhandle** hdl);
+int ridb_open(char *dir_path, struct okv_dbhandle **hdl);
 
-void ridb_close(struct okv_dbhandle** hdl);
+void ridb_close(struct okv_dbhandle **hdl);
 
-int ridb_purge_db(char* dir_path);
+int ridb_purge_db(char *dir_path);
 
-int ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** path);
+int ridb_get(struct okv_dbhandle *hdl, struct AFSFid *key, char **path);
 
-int ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value);
+int ridb_set(struct okv_dbhandle *hdl, struct AFSFid *key, char *value);
 
-int ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key, char *name);
+int ridb_del(struct okv_dbhandle *hdl, struct AFSFid *key, char *name);
 
 
 

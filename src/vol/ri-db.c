@@ -42,21 +42,35 @@ struct ridb_key {
 };
 
 
-static void user_to_ridb_key(struct AFSFid *user_key, struct ridb_key * key, 
-                            char *name) {
+static void
+user_to_ridb_key(struct AFSFid *user_key, struct ridb_key *key, char *name)
+{
 
     key->Vnode = user_key->Vnode;
     key->Unique = user_key->Unique;
 
     if (strlen(name) > AFSNAMEMAX) {
-    RIDB_log(("ridb_key: Filename too long: %lu\n", strlen(name)));
+	RIDB_log(("ridb_key: Filename too long: %lu\n", strlen(name)));
     }
 
     strncpy(key->Name, name, AFSNAMEMAX);
 }
 
+
+/*
+ * Create a new reverse index database
+ *
+ * @param[in]  dir_path	Path to a nonexistent dir that will contain the ridb
+ * @param[out] a_dbh	On success, set to a context for the newly-created ridb
+ *			as would be returned from 'ridb_open'.
+ *
+ * @return errno error codes
+ * @retval EEXIST   'dir_path' already exists
+ */
+
 int
-ridb_create(char* dir_path, struct okv_dbhandle** hdl) {
+ridb_create(char *dir_path, struct okv_dbhandle **hdl)
+{
     int retcode = 0;
     struct okv_create_opts c_opts;
 
@@ -70,13 +84,26 @@ ridb_create(char* dir_path, struct okv_dbhandle** hdl) {
     retcode = okv_create(dir_path, &c_opts, hdl);
 
     if (retcode)
-        RIDB_log(("ridb_create: BAD PATH: %s\n",dir_path));
+	RIDB_log(("ridb_create: BAD PATH: %s\n", dir_path));
 
     return retcode;
 }
 
+
+/*
+ * Open a RI database handle.
+ *
+ * @param[in] dir_path	Path to the reverse index db directory to open.
+ * @param[out] hdl	On success, set to the db handle for the requested dir.
+ *
+ * @return errno error codes
+ * @retval ENOENT   'dir_path' does not exist
+ * @retval ENOTBLK  'dir_path' does exist, but does not appear to be a valid
+ *		    reverse index database
+ */
 int
-ridb_open(char* dir_path, struct okv_dbhandle** hdl) {
+ridb_open(char *dir_path, struct okv_dbhandle **hdl)
+{
     int retcode = 0;
     opr_Assert(dir_path != NULL);
 
@@ -85,29 +112,50 @@ ridb_open(char* dir_path, struct okv_dbhandle** hdl) {
     retcode = okv_open(dir_path, hdl);
 
     if (retcode)
-        RIDB_log(("ridb_open: BAD PATH: %s\n",dir_path));
-    
+	RIDB_log(("ridb_open: BAD PATH: %s\n", dir_path));
+
     return retcode;
 }
 
+
+/*
+ * Close the reverse index db.
+ * Wrapper for okv_unlink()
+ *
+ * @param[inout] hdl	The db handle to close. If NULL, this is a no-op. 
+ * 			Set to NULL on return.
+ */
+
 void
-ridb_close(struct okv_dbhandle** hdl) {
+ridb_close(struct okv_dbhandle **hdl)
+{
     RIDB_log(("ridb_close: Closing RIDB\n"));
     okv_close(hdl);
 }
 
+
+/*
+ * Purge/delete the reverse index db from disk.
+ * Wrapper for okv_unlink()
+ *
+ * @param[in] dir_path	Path to the okv db dir to delete.
+ * 
+ * @returns 0 on success, error from okv_unlink() otherwise.
+ */
+
 int
-ridb_purge_db(char* dir_path) {
-    
+ridb_purge_db(char *dir_path)
+{
+
     int retcode = 0;
     opr_Assert(dir_path != NULL);
     RIDB_log(("ridb_purge_db: Purging RIDB at '%s'\n", dir_path));
-    
+
     retcode = okv_unlink(dir_path);
 
     if (retcode)
-        RIDB_log(("ridb_purge_db: BAD PATH: %s\n",dir_path));
-    
+	RIDB_log(("ridb_purge_db: BAD PATH: %s\n", dir_path));
+
     return retcode;
 }
 
@@ -123,34 +171,33 @@ ridb_purge_db(char* dir_path) {
  * @param[out] value  On success and if the key exists, set to the value
  *			          associated with the given key.
  * 
- * @returns errno error codes
- * @retval RIDB_BAD_KEY   The given key does not exist or is invalid
- * @retval RIDB_BAD_HDL   The given handle is not valid
- * @retval RIDB_BAD_VAL   The value arg is NULL or Database returned a 0 length
- *                        value.
+ * @returns following error code on any error, 0 on success.
+ * @retval EINVAL     Invalid key
+ * @retval EIO 	      Any other error
  */
 
 int
-ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** name) {
-    
+ridb_get(struct okv_dbhandle *hdl, struct AFSFid *key, char **name)
+{
+
     struct okv_trans *txn = NULL;
     int code, eof = 0;
     struct rx_opaque dbkey, dbval;
     char *path = NULL;
     struct ridb_key rik;
-    char temp_name[AFSNAMEMAX] = {0};
+    char temp_name[AFSNAMEMAX] = { 0 };
 
     if (!hdl) {
-    RIDB_log(("ridb_get: NULL Handle\n"));
-    return EIO;
+	RIDB_log(("ridb_get: NULL Handle\n"));
+	return EIO;
     }
     if (!key) {
-    RIDB_log(("ridb_get: NULL key\n"));
-    return EIO;
+	RIDB_log(("ridb_get: NULL key\n"));
+	return EIO;
     }
     if (!name) {
-    RIDB_log(("ridb_get: Nowhere to store the path\n"));
-    return EIO;
+	RIDB_log(("ridb_get: Nowhere to store the path\n"));
+	return EIO;
     }
 
     memset(&dbval, 0, sizeof(dbval));
@@ -164,47 +211,46 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** name) {
     /* Start txn */
     code = okv_begin(hdl, OKV_BEGIN_RO, &txn);
     if (code != 0) {
-    /* Handle begin txn error here */
-    RIDB_log(("ridb_get: BAD handle\n"));
-    return EIO;
+	/* Handle begin txn error here */
+	RIDB_log(("ridb_get: BAD handle\n"));
+	return EIO;
     }
-    
+
     code = okv_next(txn, &dbkey, &dbval, &eof);
     if (code != 0) {
-    /* Handle get txn error here and abort, should not reach here */
-    RIDB_log(("ridb_get: Internal error: TXN Abort!"));
-    okv_abort(&txn);
-    return EIO;
+	/* Handle get txn error here and abort, should not reach here */
+	RIDB_log(("ridb_get: Internal error: TXN Abort!"));
+	okv_abort(&txn);
+	return EIO;
     }
 
     /* There was at least one match! */
     if ((!eof) &&
-        (key->Vnode == ((struct ridb_key *)dbkey.val)->Vnode) &&
-        (key->Unique == ((struct ridb_key *)dbkey.val)->Unique)
-        ) {
-    path = (char *) calloc(dbval.len+1, sizeof(char)); 
-    if (path)
-        memcpy(path, dbval.val, dbval.len);
-    
-    *name = path;
-    }
-    else {
-    RIDB_log(("ridb_get: Invalid Key: %u:%u\n", key->Vnode, key->Unique));
-    *name = NULL;
+	(key->Vnode == ((struct ridb_key *)dbkey.val)->Vnode) &&
+	(key->Unique == ((struct ridb_key *)dbkey.val)->Unique)
+	) {
+	path = (char *)calloc(dbval.len + 1, sizeof(char));
+	if (path)
+	    memcpy(path, dbval.val, dbval.len);
+
+	*name = path;
+    } else {
+	RIDB_log(("ridb_get: Invalid Key: %u:%u\n", key->Vnode, key->Unique));
+	*name = NULL;
     }
 
     /* Commit */
     code = okv_commit(&txn);
 
     if (code) {
-    RIDB_log(("ridb_get: Internal error occurred: %d\n", code));
-    return EIO;
+	RIDB_log(("ridb_get: Internal error occurred: %d\n", code));
+	return EIO;
     }
-    
-   if (NULL == (*name))
-      code = EINVAL;
 
-   return code;
+    if (NULL == (*name))
+	code = EINVAL;
+
+    return code;
 }
 
 
@@ -218,16 +264,14 @@ ridb_get(struct okv_dbhandle* hdl, struct AFSFid* key, char** name) {
  * @param[in]  value   On success and if the key exists, set to the value
  *			           associated with the given key.
  * 
- * @returns errno error codes
- * @retval RIDB_BAD_KEY   The given key does not exist or is invalid
- * @retval RIDB_BAD_HDL   The given handle is not valid
- * @retval RIDB_BAD_VAL   The value arg is NULL or is of 0 length
+ * @returns EIO on any error
  */
 
 
 int
-ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value){
-    
+ridb_set(struct okv_dbhandle *hdl, struct AFSFid *key, char *value)
+{
+
     struct okv_trans *txn = NULL;
     int code;
     struct rx_opaque dbkey, dbval;
@@ -235,16 +279,16 @@ ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value){
     size_t val_len = 0;
 
     if (!hdl) {
-    RIDB_log(("ridb_set: NULL Handle\n"));
-    return EIO;
+	RIDB_log(("ridb_set: NULL Handle\n"));
+	return EIO;
     }
     if (!key) {
-    RIDB_log(("ridb_set: NULL key\n"));
-    return EIO;
+	RIDB_log(("ridb_set: NULL key\n"));
+	return EIO;
     }
     if (!value) {
-    RIDB_log(("ridb_set: NULL value\n"));
-    return EIO;
+	RIDB_log(("ridb_set: NULL value\n"));
+	return EIO;
     }
 
     memset(&dbval, 0, sizeof(dbval));
@@ -257,9 +301,9 @@ ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value){
 
     val_len = strlen(value);
 
-    if ( val_len == 0 ) {
-    RIDB_log(("ridb_set: Value Length is zero (0)\n"));
-    return EIO;
+    if (val_len == 0) {
+	RIDB_log(("ridb_set: Value Length is zero (0)\n"));
+	return EIO;
     }
 
     dbval.len = val_len;
@@ -267,27 +311,26 @@ ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value){
 
     /* Start txn */
     code = okv_begin(hdl, OKV_BEGIN_RW, &txn);
-    if (code != 0)
-    {
-    /* Handle begin txn error here */
-    RIDB_log(("ridb_set: Bad handle\n"));
-    return EIO;
+    if (code != 0) {
+	/* Handle begin txn error here */
+	RIDB_log(("ridb_set: Bad handle\n"));
+	return EIO;
     }
 
     code = okv_put(txn, &dbkey, &dbval, OKV_PUT_REPLACE);
     if (code != 0) {
-    /* Handle get txn error here and abort */
-    okv_abort(&txn);
-    RIDB_log(("ridb_set: Bad key\n"));
-    return EIO;
+	/* Handle get txn error here and abort */
+	okv_abort(&txn);
+	RIDB_log(("ridb_set: Bad key\n"));
+	return EIO;
     }
 
     /* Commit */
     code = okv_commit(&txn);
 
     if (code) {
-    RIDB_log(("ridb_set: Internal error occurred: %d\n", code));
-    return EIO;
+	RIDB_log(("ridb_set: Internal error occurred: %d\n", code));
+	return EIO;
     }
 
     return code;
@@ -304,7 +347,8 @@ ridb_set(struct okv_dbhandle* hdl, struct AFSFid* key, char* value){
  * @returns EIO on any error
  */
 int
-ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key, char *name) {
+ridb_del(struct okv_dbhandle *hdl, struct AFSFid *key, char *name)
+{
 
     struct okv_trans *txn = NULL;
     int code;
@@ -312,57 +356,56 @@ ridb_del(struct okv_dbhandle* hdl, struct AFSFid* key, char *name) {
     struct ridb_key rik;
 
     if (!hdl) {
-    RIDB_log(("ridb_del: NULL Handle\n"));
-    return EIO;
+	RIDB_log(("ridb_del: NULL Handle\n"));
+	return EIO;
     }
     if (!key) {
-    RIDB_log(("ridb_del: NULL key\n"));
-    return EIO;
+	RIDB_log(("ridb_del: NULL key\n"));
+	return EIO;
     }
 
     if (!name) {
-    RIDB_log(("ridb_del: NULL name\n"));
-    return EIO;
+	RIDB_log(("ridb_del: NULL name\n"));
+	return EIO;
     }
 
-    
+
     memset(&dbkey, 0, sizeof(dbkey));
-    
+
     user_to_ridb_key(key, &rik, name);
 
     dbkey.len = sizeof(struct ridb_key);
     dbkey.val = &rik;
 
-    if ( strlen(name) == 0 ) {
-    RIDB_log(("ridb_del: Value Length is zero (0)\n"));
-    return EIO;
+    if (strlen(name) == 0) {
+	RIDB_log(("ridb_del: Value Length is zero (0)\n"));
+	return EIO;
     }
 
     /* Start txn */
     code = okv_begin(hdl, OKV_BEGIN_RW, &txn);
-    if (code != 0)
-    {
-    /* Handle begin txn error here */
-    RIDB_log(("ridb_del: Bad handle\n"));
-    return EIO;
+    if (code != 0) {
+	/* Handle begin txn error here */
+	RIDB_log(("ridb_del: Bad handle\n"));
+	return EIO;
     }
-   
+
     /* Delete key */
     code = okv_del(txn, &dbkey, NULL);
 
     if (code != 0) {
-    /* Handle get txn error here and abort */
-    okv_abort(&txn);
-    RIDB_log(("ridb_del: Bad key\n"));
-    return EIO;
+	/* Handle get txn error here and abort */
+	okv_abort(&txn);
+	RIDB_log(("ridb_del: Bad key\n"));
+	return EIO;
     }
 
     /* Commit */
     code = okv_commit(&txn);
 
     if (code) {
-    RIDB_log(("ridb_set: Internal error occurred: %d\n", code));
-    return EIO;
+	RIDB_log(("ridb_set: Internal error occurred: %d\n", code));
+	return EIO;
     }
 
     return code;
