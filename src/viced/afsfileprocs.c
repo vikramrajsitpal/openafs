@@ -2207,6 +2207,51 @@ FileNameOK(char *aname)
 }				/*FileNameOK */
 
 
+afs_int32
+SRXAFS_InverseLookup2(struct rx_call *call, AFSFid *Fid, char **filename,
+		      AFSFid *ParentFid)
+{
+#ifdef AFS_DEMAND_ATTACH_FS
+    Vnode *targetptr = NULL;			 /* vnode of the base file */
+    Vnode *parentptr = NULL;				   /* parent vnode */
+    Volume *volptr = NULL;		   /* pointer to the volume header */
+    Error errorCode = 0;				     /* error code */
+    struct client *client = NULL;	    /* pointer to client structure */
+    afs_int32 ret = 0;
+
+    if ( Fid == NULL || call == NULL || filename == NULL || ParentFid == NULL)
+        return EINVAL;
+
+    if ((errorCode = CheckVnode(Fid, &volptr, &targetptr, READ_LOCK))) {
+	ret = EINVAL;
+	goto lookup_done;
+    }
+
+    if (ridb_get(V_ridbHandle(volptr), Fid, filename) != 0) {
+	ret = EINVAL;
+	goto lookup_done;
+    }
+
+    parentptr = VGetVnode(&errorCode, volptr, targetptr->disk.parent,
+			  READ_LOCK);
+    if (errorCode != 0) {
+	ret = EINVAL;
+	goto lookup_done;
+    }
+
+    ParentFid->Volume = V_id(volptr);
+    ParentFid->Vnode = targetptr->disk.parent;
+    ParentFid->Unique = parentptr->disk.uniquifier;
+
+ lookup_done:
+    (void)PutVolumePackage(call, NULL, targetptr, parentptr, volptr, &client);
+
+    return ret;
+#else
+    return RXGEN_OPCODE;
+#endif
+}
+
 /*
  * This variant of symlink is expressly to support the AFS/DFS translator
  * and is not supported by the AFS fileserver. We just return EINVAL.
