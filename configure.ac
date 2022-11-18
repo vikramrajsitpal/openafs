@@ -202,7 +202,8 @@ AC_CONFIG_FILES([
     tests/tap/Makefile
     tests/util/Makefile
     tests/vlserver/Makefile
-    tests/volser/Makefile])
+    tests/volser/Makefile
+    tests/vol/Makefile])
 AC_CONFIG_COMMANDS([default],[chmod a+x src/config/shlib-build
  chmod a+x src/config/shlib-install
  chmod a+x src/config/cc-wrapper],[])

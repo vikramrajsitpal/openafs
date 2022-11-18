@@ -663,6 +663,7 @@ typedef struct Volume {
     bit32 cacheCheck;		/* Online sequence number to be used to invalidate vnode cache entries
 				 * that stayed around while a volume was offline */
     short nUsers;		/* Number of users of this volume header */
+    struct okv_dbhandle* ridb_hdl; /* Reverse-index database handle */
 #define VOL_PUTBACK 1
 #define VOL_PUTBACK_DELETE 2
     byte needsPutBack;		/* For a volume utility, this flag is set to VOL_PUTBACK if we
@@ -716,6 +717,7 @@ struct volHeader {
 #define V_nextVnodeUnique(vp)	((vp)->nextVnodeUnique)
 #define V_linkHandle(vp)	((vp)->linkHandle)
 #define V_checkoutMode(vp)      ((vp)->checkoutMode)
+#define V_ridbHandle(vp)        ((vp)->ridb_hdl)
 #ifdef AFS_DEMAND_ATTACH_FS
 #define V_attachState(vp)       ((vp)->attach_state)
 #define V_attachFlags(vp)       ((vp)->attach_flags)

@@ -21,7 +21,7 @@ VOLSEROBJS=volmain.o volprocs.o physio.o voltrans.o volerr.o volint.cs.o dumpstu
 
 DIROBJS=buffer.o dir.o salvage.o
 
-VOLOBJS= vnode.o volume.o vutil.o partition.o fssync-client.o purge.o \
+VOLOBJS= vnode.o volume.o ri-db.o vutil.o partition.o fssync-client.o purge.o \
 	 clone.o devname.o common.o ihandle.o listinodes.o \
 	 namei_ops.o nuke.o salvsync-client.o daemon_com.o
 
@@ -34,6 +34,7 @@ LIBS=	$(top_builddir)/src/cmd/liboafs_cmd.la		\
         $(top_builddir)/src/rxkad/liboafs_rxkad.la \
         $(top_builddir)/src/lwp/liboafs_lwpcompat.la \
 	$(top_builddir)/src/util/liboafs_util.la	\
+	$(top_builddir)/src/okv/liboafs_okv.la	\
 	$(top_builddir)/src/opr/liboafs_opr.la		\
 	$(top_builddir)/src/usd/liboafs_usd.la
 
@@ -92,6 +93,9 @@ vnode.o: ${VOL}/vnode.c
 
 volume.o: ${VOL}/volume.c
 	$(AFS_CCRULE) $(VOL)/volume.c
+
+ri-db.o: ${VOL}/ri-db.c
+	$(AFS_CCRULE) $(VOL)/ri-db.c
 
 vutil.o: ${VOL}/vutil.c
 	$(AFS_CCRULE) $(VOL)/vutil.c

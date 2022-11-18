@@ -25,7 +25,7 @@ VICEDOBJS=viced.o afsfileprocs.o host.o physio.o callback.o serialize_state.o \
 
 DIROBJS=buffer.o dir.o salvage.o
 
-VOLOBJS= vnode.o volume.o vutil.o partition.o fssync-server.o \
+VOLOBJS= vnode.o volume.o ri-db.o vutil.o partition.o fssync-server.o \
 	 clone.o devname.o common.o ihandle.o listinodes.o namei_ops.o \
 	 salvsync-client.o daemon_com.o vg_cache.o vg_scan.o
 
@@ -46,7 +46,8 @@ LIBS= \
      $(top_builddir)/src/fsint/liboafs_fsint.la \
      $(top_builddir)/src/cmd/liboafs_cmd.la \
      $(top_builddir)/src/opr/liboafs_opr.la \
-     $(top_builddir)/src/util/liboafs_util.la
+     $(top_builddir)/src/util/liboafs_util.la \
+     $(top_builddir)/src/okv/liboafs_okv.la
 
 all: dafileserver state_analyzer
 
@@ -85,6 +86,9 @@ vnode.o: ${VOL}/vnode.c
 
 volume.o: ${VOL}/volume.c
 	$(AFS_CCRULE) $(VOL)/volume.c
+
+ri-db.o: ${VOL}/ri-db.c
+	$(AFS_CCRULE) $(VOL)/ri-db.c
 
 vutil.o: ${VOL}/vutil.c
 	$(AFS_CCRULE) $(VOL)/vutil.c

@@ -27,6 +27,8 @@
 #include <ctype.h>
 #include <stddef.h>
 
+#include <libgen.h>
+
 #ifdef HAVE_SYS_FILE_H
 #include <sys/file.h>
 #endif
@@ -104,6 +106,7 @@
 #include "salvsync.h"
 #include "vnode.h"
 #include "volume.h"
+#include "ri-db.h"
 #include "partition.h"
 #include "volume_inline.h"
 #include "common.h"
@@ -3126,6 +3129,86 @@ attach_check_vop(Error *ec, VolumeId volid, struct DiskPartition64 *partp,
 	VOL_UNLOCK;
     }
 }
+
+
+/**
+ * Create reverse-index database: 1 for each volume.
+ * Dir is always the parent directory for "V_linkHandle(vp)"
+ * Name of the RIDB directory is "ridb_<VolID>.db"
+ * 
+ * This function creates a database if it does not exist.
+ * Then it opens it and adds the handle to V_ridbHandle(vp).
+ * 
+ * Otherwise, it just opens up the database.
+ * 
+ * @param[in] vp       volume object
+ * @returns EIO on any error
+ */
+int
+OpenRIDatabase (Volume *vp)
+{
+    int code;
+    namei_t name;
+    char *basedir;
+    char dbdir[AFSPATHMAX] = {0};
+
+    if (V_ridbHandle(vp) != NULL) {
+	Log("OpenRIDatabase: RIDB handle in Volume ptr is not NULL\n");
+	return EIO;
+    }
+
+    /* Get the directory path to create RIDB */
+    if (V_linkHandle(vp) == NULL) {
+	Log("OpenRIDatabase: Link handle in Volume ptr is NULL\n");
+	return EIO;
+    }
+    
+    namei_HandleToName(&name, V_linkHandle(vp));
+
+    basedir = dirname(name.n_path);
+
+    /* Expected basedir is neither "." NOR "/" */
+    if ((strcmp(".", basedir) == 0) || (strcmp("/", basedir) == 0)) {
+	Log("OpenRIDatabase: Wrong base directory: '%s'\n", basedir);
+	return EIO;
+    }
+    
+    snprintf(dbdir, AFSPATHMAX, "%s/ridb_%u.db", basedir, V_id(vp));
+
+    code = ridb_open(dbdir, &(V_ridbHandle(vp)));
+    
+    if ( code == ENOENT) {
+	/* ENOENT - need to create since the dir exists,
+	 * so ignore that error */
+	code = ridb_create(dbdir, &(V_ridbHandle(vp)));
+
+	if (code != 0) {
+	    Log("OpenRIDatabase: Unable to create DB at '%s'\n", dbdir);
+	    code = EIO;
+	}   
+    } else if (code != 0) {
+	Log("OpenRIDatabase: Unable to open DB:"
+	    "Incorrect base directory format: '%s'\n", dbdir);
+	code = EIO;
+    }
+
+    return code;
+}
+
+
+/**
+ * Close the reverse-index database in the volume.
+ * @param[in] vp       volume object
+ */
+void
+CloseRIDatabase (Volume *vp)
+{
+    if (NULL == V_ridbHandle(vp)) {
+	Log("CloseRIDatabase: RIDB handle in Volume ptr is NULL\n");
+    }
+
+    ridb_close(&(V_ridbHandle(vp)));
+}
 #endif /* AFS_DEMAND_ATTACH_FS */
 
 /**
@@ -3487,7 +3570,13 @@ attach2(Error * ec, VolumeId volumeId, char *path, struct DiskPartition64 *partp
 	(V_inUse(vp) == fileServer)) {
 	AddVolumeToVByPList_r(vp);
 	VLRU_Add_r(vp);
-	VChangeState_r(vp, VOL_STATE_ATTACHED);
+
+	/* open reverse-index database here */
+	if (OpenRIDatabase(vp) != 0 ) {
+	    VChangeState_r(vp, VOL_STATE_UNATTACHED);
+	} else {
+	    VChangeState_r(vp, VOL_STATE_ATTACHED);
+	}
     } else {
 	VChangeState_r(vp, VOL_STATE_UNATTACHED);
     }
@@ -4771,6 +4860,9 @@ VCloseVolumeHandles_r(Volume * vp)
 
     /* Too time consuming and unnecessary for the volserver */
     if (programType == fileServer) {
+#ifdef AFS_DEMAND_ATTACH_FS
+	CloseRIDatabase(vp);
+#endif
 	IH_CONDSYNC(vp->vnodeIndex[vLarge].handle);
 	IH_CONDSYNC(vp->vnodeIndex[vSmall].handle);
 	IH_CONDSYNC(vp->diskDataHandle);
@@ -4824,6 +4916,9 @@ VReleaseVolumeHandles_r(Volume * vp)
 
     /* Too time consuming and unnecessary for the volserver */
     if (programType == fileServer) {
+#ifdef AFS_DEMAND_ATTACH_FS
+	CloseRIDatabase(vp);
+#endif
 	IH_CONDSYNC(vp->vnodeIndex[vLarge].handle);
 	IH_CONDSYNC(vp->vnodeIndex[vSmall].handle);
 	IH_CONDSYNC(vp->diskDataHandle);
